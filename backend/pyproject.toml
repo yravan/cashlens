@@ -1,0 +1,49 @@
+[project]
+name = "cashlens-backend"
+version = "0.1.0"
+description = "CashLens — LLM-powered personal finance tracker"
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    # Database
+    "sqlalchemy[asyncio]>=2.0.0",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    # Settings
+    "pydantic-settings>=2.0.0",
+    # Auth
+    "fastapi-clerk-auth>=0.0.1",
+    # LLM (OpenRouter via OpenAI-compatible SDK + structured output)
+    "openai>=1.50.0",
+    "instructor>=1.5.0",
+    # Bank sync — providers
+    "httpx>=0.27.0",
+    "plaid-python>=29.0.0",
+    "ofxtools>=0.9.0",
+    "chardet>=5.0.0",
+    # Gmail
+    "google-api-python-client>=2.150.0",
+    "google-auth-oauthlib>=1.2.0",
+    # Email / receipt parsing
+    "mail-parser>=3.15.0",
+    "beautifulsoup4>=4.12.0",
+    # Image processing
+    "Pillow>=10.0.0",
+    # Push notifications
+    "pywebpush>=2.0.0",
+    # Encryption
+    "cryptography>=43.0.0",
+    # File upload
+    "python-multipart>=0.0.9",
+    # Scheduling
+    "apscheduler>=3.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+]
