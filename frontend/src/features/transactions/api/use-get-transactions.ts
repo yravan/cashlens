@@ -1,5 +1,7 @@
+"use client";
+
 import { useQuery } from "@tanstack/react-query";
-import { API_URL } from "@/lib/utils";
+import { useApiClient } from "@/lib/api";
 
 export type Transaction = {
   id: string;
@@ -23,6 +25,8 @@ export function useGetTransactions(params?: {
   from?: string;
   to?: string;
 }) {
+  const { apiFetch } = useApiClient();
+
   const searchParams = new URLSearchParams();
   if (params?.limit) searchParams.set("limit", String(params.limit));
   if (params?.offset) searchParams.set("offset", String(params.offset));
@@ -33,11 +37,7 @@ export function useGetTransactions(params?: {
   return useQuery({
     queryKey: ["transactions", params],
     queryFn: async (): Promise<Transaction[]> => {
-      const res = await fetch(
-        `${API_URL}/api/data/transactions?${searchParams.toString()}`
-      );
-      if (!res.ok) throw new Error("Failed to fetch transactions");
-      return res.json();
+      return apiFetch(`/api/data/transactions?${searchParams.toString()}`);
     },
   });
 }

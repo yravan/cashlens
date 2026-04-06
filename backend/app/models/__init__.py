@@ -15,6 +15,7 @@ from app.models.infrastructure import (  # noqa: F401
     Contact,
     ProcessedEmail,
     SystemEvent,
+    UserOAuthToken,
 )
 from app.models.llm import ChatMessage, LLMUsageLog, MerchantCategoryCache  # noqa: F401
 from app.models.receipts import Receipt, ReceiptLineItem  # noqa: F401

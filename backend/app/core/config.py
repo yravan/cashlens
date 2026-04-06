@@ -6,6 +6,15 @@ class Settings(BaseSettings):
 
     # Clerk
     clerk_secret_key: str = ""
+    clerk_jwks_url: str = ""
+
+    # URLs
+    frontend_url: str = "http://localhost:3000"
+    api_base_url: str = "http://localhost:8000"
+
+    # Gmail OAuth
+    gmail_client_id: str = ""
+    gmail_client_secret: str = ""
 
     # SimpleFIN
     simplefin_access_url: str = ""

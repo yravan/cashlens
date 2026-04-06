@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Wallet } from "lucide-react";
+import { UserButton } from "@clerk/nextjs";
 import {
   Sidebar,
   SidebarContent,
@@ -70,7 +71,15 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <ThemeToggle />
+            <div className="flex items-center justify-between px-2">
+              <UserButton
+                afterSignOutUrl="/"
+                appearance={{
+                  elements: { avatarBox: "size-8" },
+                }}
+              />
+              <ThemeToggle />
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

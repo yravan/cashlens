@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -85,3 +86,19 @@ class Contact(TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True
     )
     last_transaction_at: Mapped[Optional[datetime]] = mapped_column()
+
+
+class UserOAuthToken(TimestampMixin, Base):
+    __tablename__ = "user_oauth_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=gen_uuid)
+    user_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)  # "gmail"
+    encrypted_token_data: Mapped[str] = mapped_column(Text, nullable=False)
+    scopes: Mapped[Optional[list[str]]] = mapped_column(ARRAY(Text))
+    email_address: Mapped[Optional[str]] = mapped_column(Text)
+    expires_at: Mapped[Optional[datetime]] = mapped_column()
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", name="uq_user_oauth_provider"),
+    )

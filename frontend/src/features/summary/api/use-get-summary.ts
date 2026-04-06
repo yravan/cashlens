@@ -1,5 +1,7 @@
+"use client";
+
 import { useQuery } from "@tanstack/react-query";
-import { API_URL } from "@/lib/utils";
+import { useApiClient } from "@/lib/api";
 
 export type SummaryData = {
   total_balance: number;
@@ -14,6 +16,8 @@ export type SummaryData = {
 };
 
 export function useGetSummary(params?: { from?: string; to?: string; accountId?: string }) {
+  const { apiFetch } = useApiClient();
+
   const searchParams = new URLSearchParams();
   if (params?.from) searchParams.set("from", params.from);
   if (params?.to) searchParams.set("to", params.to);
@@ -23,27 +27,26 @@ export function useGetSummary(params?: { from?: string; to?: string; accountId?:
     queryKey: ["summary", params],
     queryFn: async (): Promise<SummaryData> => {
       const qs = searchParams.toString();
-      const res = await fetch(`${API_URL}/api/data/summary${qs ? `?${qs}` : ""}`);
-      if (!res.ok) {
+      try {
+        return await apiFetch(`/api/data/summary${qs ? `?${qs}` : ""}`);
+      } catch {
         // Fallback: compute from accounts + transactions client-side
-        return computeSummaryFallback();
+        return computeSummaryFallback(apiFetch);
       }
-      return res.json();
     },
   });
 }
 
-async function computeSummaryFallback(): Promise<SummaryData> {
-  const [acctRes, txnRes] = await Promise.all([
-    fetch(`${API_URL}/api/data/accounts`),
-    fetch(`${API_URL}/api/data/transactions?limit=500`),
+async function computeSummaryFallback(
+  apiFetch: (path: string, options?: RequestInit) => Promise<unknown>
+): Promise<SummaryData> {
+  const [accounts, transactions] = await Promise.all([
+    apiFetch("/api/data/accounts").catch(() => []) as Promise<Record<string, unknown>[]>,
+    apiFetch("/api/data/transactions?limit=500").catch(() => []) as Promise<Record<string, unknown>[]>,
   ]);
 
-  const accounts = acctRes.ok ? await acctRes.json() : [];
-  const transactions = txnRes.ok ? await txnRes.json() : [];
-
-  const totalBalance = accounts.reduce(
-    (sum: number, a: any) => sum + Number(a.balance_current || 0),
+  const totalBalance = (accounts as Record<string, unknown>[]).reduce(
+    (sum: number, a: Record<string, unknown>) => sum + Number(a.balance_current || 0),
     0
   );
 
@@ -57,19 +60,19 @@ async function computeSummaryFallback(): Promise<SummaryData> {
 
   const dailyMap = new Map<string, { income: number; expenses: number }>();
 
-  for (const tx of transactions) {
+  for (const tx of transactions as Record<string, unknown>[]) {
     const amt = Number(tx.amount);
-    const txDate = new Date(tx.date);
+    const txDate = new Date(tx.date as string);
     if (txDate >= thirtyDaysAgo) {
       if (amt < 0) {
         income += Math.abs(amt);
       } else {
         expenses += amt;
       }
-      const cat = tx.category || "Uncategorized";
+      const cat = (tx.category as string) || "Uncategorized";
       categoryMap.set(cat, (categoryMap.get(cat) || 0) + Math.abs(amt));
 
-      const dateKey = tx.date;
+      const dateKey = tx.date as string;
       const day = dailyMap.get(dateKey) || { income: 0, expenses: 0 };
       if (amt < 0) day.income += Math.abs(amt);
       else day.expenses += amt;

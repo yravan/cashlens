@@ -4,19 +4,21 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_current_user_id
 from app.db.session import get_db
 from app.models.financial import Account, Transaction
 
 router = APIRouter(prefix="/data", tags=["data"])
 
-USER_ID = "default"  # TODO: Clerk auth
-
 
 @router.get("/accounts")
-async def list_accounts(db: AsyncSession = Depends(get_db)):
+async def list_accounts(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
     result = await db.execute(
         select(Account)
-        .where(Account.user_id == USER_ID, Account.is_active == True)
+        .where(Account.user_id == user_id, Account.is_active == True)
         .order_by(Account.sort_order, Account.name)
     )
     accounts = result.scalars().all()
@@ -41,8 +43,9 @@ async def list_transactions(
     offset: int = 0,
     account_id: str | None = None,
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
-    q = select(Transaction).where(Transaction.user_id == USER_ID)
+    q = select(Transaction).where(Transaction.user_id == user_id)
     if account_id:
         q = q.where(Transaction.account_id == account_id)
     q = q.order_by(Transaction.date.desc()).limit(limit).offset(offset)

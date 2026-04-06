@@ -1,5 +1,7 @@
+"use client";
+
 import { useQuery } from "@tanstack/react-query";
-import { API_URL } from "@/lib/utils";
+import { useApiClient } from "@/lib/api";
 
 export type Account = {
   id: string;
@@ -14,12 +16,12 @@ export type Account = {
 };
 
 export function useGetAccounts() {
+  const { apiFetch } = useApiClient();
+
   return useQuery({
     queryKey: ["accounts"],
     queryFn: async (): Promise<Account[]> => {
-      const res = await fetch(`${API_URL}/api/data/accounts`);
-      if (!res.ok) throw new Error("Failed to fetch accounts");
-      return res.json();
+      return apiFetch("/api/data/accounts");
     },
   });
 }

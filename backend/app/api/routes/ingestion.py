@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from httpx import HTTPStatusError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_current_user_id
 from app.core.config import settings
 from app.db.session import get_db
 from app.providers.camera_scan import scan_receipt
@@ -23,9 +24,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
-# TODO: replace with real Clerk auth dependency
-USER_ID = "default"
-
 
 # ── Bank Connections ──────────────────────────────────────────────
 
@@ -35,10 +33,11 @@ async def connect_teller(
     access_token: str,
     institution_name: str = "",
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
     """Save a Teller enrollment and run initial 3-month backfill sync."""
     connection = await save_bank_connection(
-        db, USER_ID, "teller", access_token, institution_name or None,
+        db, user_id, "teller", access_token, institution_name or None,
     )
     try:
         result = await sync_connection(db, connection)
@@ -54,10 +53,11 @@ async def connect_teller(
 async def connect_simplefin(
     access_url: str,
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
     """Save a SimpleFIN connection and run initial 3-month backfill sync."""
     connection = await save_bank_connection(
-        db, USER_ID, "simplefin", access_url,
+        db, user_id, "simplefin", access_url,
     )
     try:
         result = await sync_connection(db, connection)
@@ -72,6 +72,7 @@ async def sync_bank_connection(
     connection_id: str,
     days_back: int = 30,
     db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
     """Re-sync an existing bank connection."""
     import uuid as _uuid
@@ -89,7 +90,10 @@ async def sync_bank_connection(
 
 
 @router.post("/simplefin/claim")
-async def simplefin_claim(setup_token: str):
+async def simplefin_claim(
+    setup_token: str,
+    user_id: str = Depends(get_current_user_id),
+):
     """One-time: convert SimpleFIN setup token to access URL."""
     access_url = await claim_setup_token(setup_token)
     return {"access_url": access_url}
@@ -99,7 +103,11 @@ async def simplefin_claim(setup_token: str):
 
 
 @router.post("/teller/test")
-async def teller_test(access_token: str, days_back: int = 30):
+async def teller_test(
+    access_token: str,
+    days_back: int = 30,
+    user_id: str = Depends(get_current_user_id),
+):
     """Test Teller connection without saving to DB."""
     from datetime import date, timedelta
 
@@ -129,7 +137,11 @@ async def teller_test(access_token: str, days_back: int = 30):
 
 
 @router.post("/upload/csv")
-async def upload_csv(file: UploadFile = File(...), account_id: str = ""):
+async def upload_csv(
+    file: UploadFile = File(...),
+    account_id: str = "",
+    user_id: str = Depends(get_current_user_id),
+):
     contents = await file.read()
     provider = CSVProvider(file_bytes=contents, filename=file.filename or "upload.csv")
     transactions = await provider.fetch_transactions(account_id=account_id)
@@ -138,7 +150,11 @@ async def upload_csv(file: UploadFile = File(...), account_id: str = ""):
 
 
 @router.post("/upload/ofx")
-async def upload_ofx(file: UploadFile = File(...), account_id: str = ""):
+async def upload_ofx(
+    file: UploadFile = File(...),
+    account_id: str = "",
+    user_id: str = Depends(get_current_user_id),
+):
     contents = await file.read()
     provider = OFXProvider(file_bytes=contents, filename=file.filename or "upload.ofx")
     transactions = await provider.fetch_transactions(account_id=account_id)
@@ -150,7 +166,10 @@ async def upload_ofx(file: UploadFile = File(...), account_id: str = ""):
 
 
 @router.post("/scan/receipt")
-async def scan_receipt_endpoint(file: UploadFile = File(...)):
+async def scan_receipt_endpoint(
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id),
+):
     contents = await file.read()
     result = await scan_receipt(contents)
     if result is None:
