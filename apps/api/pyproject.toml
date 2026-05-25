@@ -1,0 +1,27 @@
+[project]
+name = "cash-lens-api"
+version = "0.1.0"
+description = "Cash Lens FastAPI backend"
+readme = "README.md"
+authors = [
+    { name = "yravan", email = "yajvanravan@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.18.4",
+    "cryptography>=48.0.0",
+    "fastapi>=0.136.3",
+    "httpx>=0.28.1",
+    "plaid-python>=39.2.0",
+    "pydantic-settings>=2.14.1",
+    "python-dateutil>=2.9.0.post0",
+    "sqlalchemy>=2.0.50",
+    "uvicorn[standard]>=0.48.0",
+]
+
+[project.scripts]
+cash-lens-api = "cash_lens_api.main:main"
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"

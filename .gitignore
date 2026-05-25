@@ -1,0 +1,10 @@
+.DS_Store
+.idea/
+__pycache__/
+.pytest_cache/
+cashlens.db
+apps/api/cashlens.db
+apps/api/.venv/
+apps/web/.next/
+apps/web/node_modules/
+apps/web/.vercel/
