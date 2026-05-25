@@ -1,0 +1,12 @@
+.gcloudignore
+.git
+.gitignore
+.env
+.env.local
+.env.*
+.venv/
+__pycache__/
+*.pyc
+cashlens.db
+tests/
+gha-creds-*.json

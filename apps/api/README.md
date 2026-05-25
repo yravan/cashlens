@@ -14,7 +14,7 @@ This FastAPI app powers the Cash Lens MVP.
 ```bash
 cd /Users/yajvanravan/cashlens/apps/api
 UV_CACHE_DIR=/private/tmp/uv-cache uv sync
-./.venv/bin/python -m uvicorn cash_lens_api.main:app --host 127.0.0.1 --port 8000
+uv run uvicorn cash_lens_api.main:app --host 127.0.0.1 --port 8000
 ```
 
 ### Important env vars
@@ -27,3 +27,12 @@ UV_CACHE_DIR=/private/tmp/uv-cache uv sync
 - `PLAID_WEBHOOK_URL`
 
 If the Plaid keys are omitted, the API runs in demo mode and seeds a realistic single-user workspace.
+
+### GitHub deployment
+
+The production deployment path is GitHub-based:
+
+- GitHub Actions workflow: `.github/workflows/deploy-api.yml`
+- Cloud Run source deployment target: `apps/api`
+- Runtime secrets source: Google Secret Manager
+- Container build file: `apps/api/Dockerfile`

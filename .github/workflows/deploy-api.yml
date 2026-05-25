@@ -1,0 +1,65 @@
+name: Deploy API to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/api/**"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_REGION: us-central1
+  CLOUD_RUN_SERVICE: cash-lens-api
+  CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT: cash-lens-runtime@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - id: deploy
+        name: Deploy backend to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ env.CLOUD_RUN_SERVICE }}
+          region: ${{ env.GCP_REGION }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          source: ./apps/api
+          env_vars_update_strategy: overwrite
+          env_vars: |
+            ENVIRONMENT=production
+            APP_BASE_URL=${{ vars.APP_BASE_URL }}
+            ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
+            PLAID_ENV=${{ vars.PLAID_ENV }}
+            PLAID_WEBHOOK_URL=${{ vars.PLAID_WEBHOOK_URL }}
+            DEMO_MODE=false
+            SEED_DEMO_DATA=false
+          secrets_update_strategy: overwrite
+          secrets: |
+            DATABASE_URL=cash-lens-database-url:latest
+            APP_ENCRYPTION_KEY=cash-lens-app-encryption-key:latest
+            PLAID_CLIENT_ID=cash-lens-plaid-client-id:latest
+            PLAID_SECRET=cash-lens-plaid-secret:latest
+          flags: >-
+            --allow-unauthenticated
+            --service-account=${{ env.CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT }}
+
+      - name: Print deployed URL
+        run: echo "Cloud Run service URL: ${{ steps.deploy.outputs.url }}"

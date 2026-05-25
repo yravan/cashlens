@@ -8,3 +8,12 @@ apps/api/.venv/
 apps/web/.next/
 apps/web/node_modules/
 apps/web/.vercel/
+.env
+.env.local
+.env.*
+**/.env
+**/.env.local
+**/.env.*
+!**/.env.example
+!**/.env.sample
+gha-creds-*.json

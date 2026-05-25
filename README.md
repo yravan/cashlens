@@ -45,4 +45,6 @@ pnpm exec next dev --webpack --hostname 127.0.0.1 --port 3000
 
 ## Deployment
 
-See [deployment instructions.md](/Users/yajvanravan/cashlens/deployment instructions.md) for a non-technical walkthrough.
+The backend is set up for GitHub-based Cloud Run deployments from `.github/workflows/deploy-api.yml`, and the Python container uses `uv` inside [apps/api/Dockerfile](/Users/yajvanravan/cashlens/apps/api/Dockerfile).
+
+See [deployment instructions.md](/Users/yajvanravan/cashlens/deployment instructions.md) for the full non-technical walkthrough, including GitHub Actions, Workload Identity Federation, Secret Manager, Cloud Run, and Vercel.
