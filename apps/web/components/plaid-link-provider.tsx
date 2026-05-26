@@ -203,7 +203,9 @@ function LivePlaidLinkController({
   }, [onReadyChange, ready]);
 
   useEffect(() => {
-    onRegisterOpen(() => open);
+    onRegisterOpen(() => {
+      open();
+    });
     return () => {
       onRegisterOpen(null);
     };
