@@ -16,6 +16,7 @@ type PlaidLinkContextValue = {
   mode: "demo" | "live";
   pending: boolean;
   ready: boolean;
+  errorMessage: string | null;
   connect: () => void;
 };
 
@@ -30,7 +31,9 @@ export function PlaidLinkProvider({
   const [mode, setMode] = useState<"demo" | "live">(initialMode);
   const [linkToken, setLinkToken] = useState(initialLinkToken);
   const [pending, setPending] = useState(false);
+  const [launchRequested, setLaunchRequested] = useState(false);
   const [ready, setReady] = useState(initialMode === "demo");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const liveOpenRef = useRef<(() => void) | null>(null);
 
   async function requestFreshLinkToken() {
@@ -51,6 +54,7 @@ export function PlaidLinkProvider({
 
   async function exchangePublicToken(publicToken: string) {
     setPending(true);
+    setErrorMessage(null);
     try {
       const response = await fetch("/api/proxy/plaid/exchange-public-token", {
         method: "POST",
@@ -64,6 +68,9 @@ export function PlaidLinkProvider({
 
       await requestFreshLinkToken();
       startTransition(() => router.refresh());
+    } catch (error) {
+      console.error(error);
+      setErrorMessage("Plaid connected, but Cash Lens could not finish the handoff.");
     } finally {
       setPending(false);
     }
@@ -71,6 +78,7 @@ export function PlaidLinkProvider({
 
   async function connectDemoInstitution() {
     setPending(true);
+    setErrorMessage(null);
     try {
       const response = await fetch("/api/proxy/plaid/exchange-public-token", {
         method: "POST",
@@ -86,6 +94,25 @@ export function PlaidLinkProvider({
       }
 
       startTransition(() => router.refresh());
+    } catch (error) {
+      console.error(error);
+      setErrorMessage("Cash Lens could not add the demo institution.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function prepareLiveLaunch() {
+    setPending(true);
+    setLaunchRequested(true);
+    setErrorMessage(null);
+
+    try {
+      await requestFreshLinkToken();
+    } catch (error) {
+      console.error(error);
+      setLaunchRequested(false);
+      setErrorMessage("Plaid could not initialize. Refresh and try again.");
     } finally {
       setPending(false);
     }
@@ -101,7 +128,13 @@ export function PlaidLinkProvider({
       return;
     }
 
-    liveOpenRef.current?.();
+    if (ready && liveOpenRef.current) {
+      setErrorMessage(null);
+      liveOpenRef.current();
+      return;
+    }
+
+    void prepareLiveLaunch();
   }
 
   return (
@@ -109,12 +142,17 @@ export function PlaidLinkProvider({
       value={{
         mode,
         pending,
-        ready: mode === "demo" ? !pending : ready && !pending,
+        ready: mode === "demo" ? !pending : ready,
+        errorMessage,
         connect,
       }}
     >
       {mode === "live" ? (
         <LivePlaidLinkController
+          launchRequested={launchRequested}
+          onLaunchHandled={() => {
+            setLaunchRequested(false);
+          }}
           token={linkToken}
           onReadyChange={setReady}
           onRegisterOpen={(open) => {
@@ -137,6 +175,8 @@ export function usePlaidLinkContext() {
 }
 
 type LivePlaidLinkControllerProps = {
+  launchRequested: boolean;
+  onLaunchHandled: () => void;
   token: string;
   onReadyChange: (ready: boolean) => void;
   onRegisterOpen: (open: (() => void) | null) => void;
@@ -144,6 +184,8 @@ type LivePlaidLinkControllerProps = {
 };
 
 function LivePlaidLinkController({
+  launchRequested,
+  onLaunchHandled,
   token,
   onReadyChange,
   onRegisterOpen,
@@ -166,6 +208,15 @@ function LivePlaidLinkController({
       onRegisterOpen(null);
     };
   }, [onRegisterOpen, open]);
+
+  useEffect(() => {
+    if (!launchRequested || !ready) {
+      return;
+    }
+
+    open();
+    onLaunchHandled();
+  }, [launchRequested, onLaunchHandled, open, ready]);
 
   return null;
 }
