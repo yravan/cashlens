@@ -255,13 +255,31 @@ Then open:
 
 If you see the dashboard, local setup is working.
 
-## 12. Enable the Google Cloud APIs needed for GitHub-based deploys
+## 12. Set up Google Cloud and GitHub for backend deployments
 
-In Terminal:
+This is the one-time setup that lets GitHub deploy `apps/api` to Cloud Run for you.
+If you complete this section once, you should not need to keep deploying the backend from your laptop.
+
+### 12A. Save the project values in Terminal
+
+Run:
 
 ```bash
 export PROJECT_ID="YOUR_GCP_PROJECT_ID"
+export PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+export GITHUB_REPO="yravan/cashlens"
+echo "$PROJECT_ID"
+echo "$PROJECT_NUMBER"
+echo "$GITHUB_REPO"
+```
 
+If your GitHub repo is under a different owner or has a different name, replace `yravan/cashlens`.
+
+### 12B. Enable the Google Cloud APIs
+
+Run:
+
+```bash
 gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
@@ -273,56 +291,35 @@ gcloud services enable \
   --project "$PROJECT_ID"
 ```
 
-## 13. Collect your Google Cloud project number
+### 12C. Create the two service accounts
 
-You need both the project ID and the project number.
+The app needs:
 
-Run:
+- one service account that Cloud Run will use while the API is running
+- one service account that GitHub Actions will use while deploying
 
-```bash
-export PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
-echo "$PROJECT_NUMBER"
-```
-
-## 14. Create the Cloud Run runtime service account
-
-This is the identity the running backend will use inside Google Cloud.
-
-Create it:
+Create both:
 
 ```bash
 gcloud iam service-accounts create cash-lens-runtime \
   --project "$PROJECT_ID" \
   --display-name "Cash Lens Cloud Run runtime"
-```
 
-Its email will be:
-
-```txt
-cash-lens-runtime@YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com
-```
-
-## 15. Create the GitHub deployer service account
-
-This is the identity GitHub Actions will impersonate when it deploys the backend.
-
-Create it:
-
-```bash
 gcloud iam service-accounts create cash-lens-github-deployer \
   --project "$PROJECT_ID" \
   --display-name "Cash Lens GitHub deployer"
 ```
 
-Its email will be:
+Their emails will be:
 
 ```txt
+cash-lens-runtime@YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com
 cash-lens-github-deployer@YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com
 ```
 
-## 16. Grant the GitHub deployer the required Google Cloud permissions
+### 12D. Grant the required permissions
 
-Run these commands:
+Run:
 
 ```bash
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
@@ -342,36 +339,24 @@ gcloud iam service-accounts add-iam-policy-binding \
   --project "$PROJECT_ID" \
   --member="serviceAccount:cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
-```
 
-## 17. Grant the Cloud Build service account permission to build source deployments
-
-Cloud Run source deployments use Cloud Build behind the scenes.
-
-Run:
-
-```bash
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/run.builder"
 ```
 
-## 18. Create the Workload Identity pool and provider for GitHub Actions
+### 12E. Create Workload Identity for GitHub Actions
 
-This is what lets GitHub deploy to Google Cloud without storing a long-lived Google key in GitHub.
+This is what allows GitHub to deploy without storing a long-lived Google key in GitHub.
 
-Create the pool:
+Run:
 
 ```bash
 gcloud iam workload-identity-pools create "github" \
   --project="$PROJECT_ID" \
   --location="global" \
   --display-name="GitHub Actions Pool"
-```
 
-Create the provider:
-
-```bash
 gcloud iam workload-identity-pools providers create-oidc "cash-lens" \
   --project="$PROJECT_ID" \
   --location="global" \
@@ -379,26 +364,20 @@ gcloud iam workload-identity-pools providers create-oidc "cash-lens" \
   --display-name="Cash Lens GitHub Provider" \
   --issuer-uri="https://token.actions.githubusercontent.com" \
   --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
-  --attribute-condition="assertion.repository=='yravan/cashlens'"
+  --attribute-condition="assertion.repository=='${GITHUB_REPO}'"
 ```
 
-If you renamed the GitHub repo, replace `yravan/cashlens` with your real `OWNER/REPO`.
-
-## 19. Allow that GitHub repo to impersonate the deployer service account
-
-Run:
+Then allow your repo to use the deployer account:
 
 ```bash
 gcloud iam service-accounts add-iam-policy-binding \
   "cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com" \
   --project "$PROJECT_ID" \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/yravan/cashlens"
+  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/${GITHUB_REPO}"
 ```
 
-Again, if your repo name is different, replace `yravan/cashlens`.
-
-## 20. Get the full Workload Identity provider name
+### 12F. Copy the Workload Identity provider name
 
 Run:
 
@@ -410,40 +389,31 @@ gcloud iam workload-identity-pools providers describe "cash-lens" \
   --format="value(name)"
 ```
 
-The result will look like:
+It will look like:
 
 ```txt
 projects/123456789/locations/global/workloadIdentityPools/github/providers/cash-lens
 ```
 
-Copy that value.
+Copy that value somewhere safe.
 
-## 21. Create the runtime secrets in Google Secret Manager
+### 12G. Create the runtime secrets in Secret Manager
 
-Create these four secrets:
+In Google Cloud Secret Manager, create these four secrets:
 
 1. `cash-lens-database-url`
 2. `cash-lens-app-encryption-key`
 3. `cash-lens-plaid-client-id`
 4. `cash-lens-plaid-secret`
 
-You can do this in the Google Cloud console:
-
-1. Open Secret Manager
-2. Click `Create Secret`
-3. Use the exact names above
-4. Paste the matching values
-
-Mapping:
+Use these values:
 
 - `cash-lens-database-url` = your Neon pooled URL
 - `cash-lens-app-encryption-key` = your long random encryption key
 - `cash-lens-plaid-client-id` = your Plaid client ID
 - `cash-lens-plaid-secret` = your Plaid secret
 
-## 22. Give the runtime service account access to those secrets
-
-The running API needs permission to read the secrets at runtime.
+### 12H. Give Cloud Run access to those secrets
 
 Run:
 
@@ -461,53 +431,52 @@ do
 done
 ```
 
-## 23. Add the Google auth secrets to GitHub Actions
+### 12I. Add the GitHub Actions secrets
 
-Go to your GitHub repo:
+Open:
 
 - [https://github.com/yravan/cashlens/settings/secrets/actions](https://github.com/yravan/cashlens/settings/secrets/actions)
 
-Add these repository secrets:
+Create these repository secrets:
 
 1. `GCP_PROJECT_ID`
 2. `GCP_WORKLOAD_IDENTITY_PROVIDER`
 3. `GCP_SERVICE_ACCOUNT`
 
-Use these values:
+Set them to:
 
 - `GCP_PROJECT_ID` = your Google Cloud project ID
-- `GCP_WORKLOAD_IDENTITY_PROVIDER` = the full provider name from step 20
+- `GCP_WORKLOAD_IDENTITY_PROVIDER` = the full provider name you copied in 12F
 - `GCP_SERVICE_ACCOUNT` = `cash-lens-github-deployer@YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com`
 
-## 24. Add the GitHub Actions repository variables
+### 12J. Add the GitHub Actions variables
 
-Go to:
+Open:
 
 - [https://github.com/yravan/cashlens/settings/variables/actions](https://github.com/yravan/cashlens/settings/variables/actions)
 
-Add these repository variables:
+Create these repository variables:
 
 1. `APP_BASE_URL`
 2. `ALLOWED_ORIGINS`
 3. `PLAID_ENV`
 4. `PLAID_WEBHOOK_URL`
 
-What to put in them:
+Use:
 
 - `APP_BASE_URL`
   - if you already know your Vercel production URL, use it
-  - otherwise temporarily use `http://127.0.0.1:3000`
+  - otherwise temporarily use `http://localhost:3000`
 - `ALLOWED_ORIGINS`
-  - start with `http://127.0.0.1:3000`
+  - start with `http://localhost:3000`
   - later change it to include your Vercel URL
 - `PLAID_ENV`
   - set to `sandbox` first
 - `PLAID_WEBHOOK_URL`
-  - you can leave this blank for the very first backend deploy
-  - after the backend exists, change it to:
-    - `https://YOUR-CLOUD-RUN-URL/plaid/webhook`
+  - leave blank for the first backend deploy
+  - later change it to `https://YOUR-CLOUD-RUN-URL/plaid/webhook`
 
-## 25. Make sure the backend workflow file is in GitHub
+## 13. Make sure the backend workflow file is in GitHub
 
 This repo now includes:
 
@@ -523,7 +492,7 @@ git commit -m "Add GitHub-based Cloud Run backend deployment"
 git push origin main
 ```
 
-## 26. Watch the first backend deployment in GitHub Actions
+## 14. Watch the first backend deployment in GitHub Actions
 
 Go to:
 
@@ -543,7 +512,7 @@ https://cash-lens-api-xxxxx-uc.a.run.app
 
 Copy that URL.
 
-## 27. Update the GitHub variables now that the backend URL exists
+## 15. Update the GitHub variables now that the backend URL exists
 
 Set:
 
@@ -556,7 +525,7 @@ If you also know your frontend URL already, set:
 
 After updating variables, go back to GitHub Actions and rerun the backend workflow once.
 
-## 28. Point Plaid to the backend webhook
+## 16. Point Plaid to the backend webhook
 
 In Plaid:
 
@@ -566,7 +535,7 @@ In Plaid:
    - `https://YOUR-CLOUD-RUN-URL/plaid/webhook`
 4. Save
 
-## 29. Deploy the frontend to Vercel
+## 17. Deploy the frontend to Vercel
 
 1. Go to [https://vercel.com](https://vercel.com)
 2. Click `Add New Project`
@@ -589,7 +558,7 @@ apps/web
 
 When Vercel finishes, copy the site URL.
 
-## 30. Update the GitHub backend variables for the real frontend URL
+## 18. Update the GitHub backend variables for the real frontend URL
 
 Once Vercel gives you the real production URL, go back to GitHub repository variables and update:
 
@@ -603,7 +572,7 @@ Example:
 
 Then rerun the backend GitHub Actions workflow once so Cloud Run gets the new values.
 
-## 31. Set Clerk allowed URLs
+## 19. Set Clerk allowed URLs
 
 In Clerk:
 
@@ -615,7 +584,7 @@ In Clerk:
 
 This matters because Clerk sign-in can fail if the deployed domain is not allowed.
 
-## 32. First production smoke test
+## 20. First production smoke test
 
 After both deployments are live:
 
@@ -630,7 +599,7 @@ After both deployments are live:
 
 If those work, the MVP is live.
 
-## 33. What happens from now on
+## 21. What happens from now on
 
 From this point forward:
 
@@ -640,7 +609,7 @@ From this point forward:
 That means you should no longer think of the backend deploy as "something you run from your laptop".
 The GitHub repo becomes the deployment source of truth.
 
-## 34. Switching Plaid from Sandbox to Production
+## 22. Switching Plaid from Sandbox to Production
 
 Only do this after sandbox testing feels stable.
 
@@ -660,7 +629,7 @@ Also verify in Plaid:
 - the `transactions` product is enabled in production
 - the webhook URL is still correct
 
-## 35. Common problems and what they usually mean
+## 23. Common problems and what they usually mean
 
 ### Problem: GitHub Actions fails before deploy
 
@@ -717,7 +686,7 @@ What to do:
 2. re-check Vercel env vars
 3. trigger a Vercel redeploy
 
-## 36. Safe first-launch sequence
+## 24. Safe first-launch sequence
 
 If you want the least stressful path, do it in this order:
 
