@@ -505,9 +505,9 @@ def _upsert_live_transactions(
             merchant=transaction.get("merchant_name"),
             amount=float(transaction["amount"]),
         )
-        posted_date = date.fromisoformat(transaction["date"])
+        posted_date = _coerce_plaid_date(transaction["date"])
         authorized_date = transaction.get("authorized_date")
-        parsed_authorized_date = date.fromisoformat(authorized_date) if authorized_date else None
+        parsed_authorized_date = _coerce_plaid_date(authorized_date) if authorized_date else None
 
         if raw:
             raw.amount = float(transaction["amount"])
@@ -579,6 +579,14 @@ def _upsert_live_transactions(
         )
         imported += 1
     return imported
+
+
+def _coerce_plaid_date(value: date | datetime | str) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(value)
 
 
 def _classify_transaction(name: str, merchant: str | None, amount: float) -> dict[str, str | bool]:
