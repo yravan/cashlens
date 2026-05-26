@@ -52,11 +52,37 @@ echo "-- Vercel CLI --"
 if command -v vercel >/dev/null 2>&1; then
   if vercel whoami >/dev/null 2>&1; then
     echo "vercel user: $(vercel whoami)"
+    echo "vercel projects:"
+    vercel project ls 2>/dev/null | sed -n '1,8p' || true
   else
     echo "vercel is installed but not authenticated."
   fi
 else
   echo "vercel not installed."
+fi
+echo
+
+echo "-- Neon CLI --"
+if command -v neon >/dev/null 2>&1; then
+  if neon me >/dev/null 2>&1; then
+    neon me
+  else
+    echo "neon is installed but not authenticated."
+  fi
+else
+  echo "neon not installed."
+fi
+echo
+
+echo "-- Clerk CLI --"
+if command -v clerk >/dev/null 2>&1; then
+  if clerk whoami >/dev/null 2>&1; then
+    clerk whoami
+  else
+    echo "clerk is installed but not authenticated."
+  fi
+else
+  echo "clerk not installed."
 fi
 echo
 

@@ -45,6 +45,7 @@ Core commands:
 ```bash
 vercel whoami
 vercel ls
+vercel project ls
 vercel inspect <deployment-url-or-id>
 ```
 
@@ -56,7 +57,16 @@ When the deployed web app behaves differently from local:
 
 ## Neon
 
-There is no Neon CLI installed in this environment by default.
+Neon CLI is installed in this environment and can be used directly when authenticated.
+
+Core commands:
+
+```bash
+neon me
+neon projects list
+neon branches list
+neon connection-string
+```
 
 Use these fallback sources first:
 
@@ -66,13 +76,23 @@ Use these fallback sources first:
 
 If dashboard-only Neon state is needed:
 
-- ask for a Neon CLI login or token
+- prefer the Neon CLI first
+- ask for a Neon CLI login or token only if the CLI is no longer authenticated
 - or ask for the exact value needed
 - do not ask for screenshots unless there is no better option
 
 ## Clerk
 
-There is no Clerk CLI installed in this environment by default.
+Clerk CLI is installed in this environment and can be used directly when authenticated.
+
+Core commands:
+
+```bash
+clerk whoami
+clerk apps list
+clerk env ls
+clerk doctor --mode agent
+```
 
 Use these sources first:
 
@@ -86,6 +106,7 @@ When checking production readiness:
 1. determine whether the deployed site is using development or production Clerk keys
 2. distinguish Clerk development-instance behavior from true production-domain behavior
 3. avoid requiring screenshots when exact dashboard field names or values are enough
+4. check whether the linked Clerk app already has a production instance
 
 ## Plaid
 

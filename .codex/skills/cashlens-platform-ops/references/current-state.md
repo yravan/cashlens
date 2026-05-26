@@ -15,6 +15,8 @@
 - Backend service name: `cash-lens-api`
 - Backend region: `us-central1`
 - Latest known GCP project: `cashlens-492517`
+- Latest known Vercel project: `cashlens`
+- Latest known Vercel production URL: `https://cashlens-pied.vercel.app`
 
 ## Important local files
 
@@ -31,6 +33,30 @@
 - Plaid exchange-public-token: `/plaid/exchange-public-token`
 - Plaid webhook: `/plaid/webhook`
 
+## Verified local CLI access
+
+Last verified on `2026-05-25`:
+
+- `gh`
+  - authenticated as `yravan`
+- `gcloud`
+  - active project `cashlens-492517`
+  - active account `yajvanravan@gmail.com`
+  - default build service account `647780281169-compute@developer.gserviceaccount.com`
+- `vercel`
+  - authenticated as `yravan`
+  - accessible project `cashlens`
+  - latest known production URL `https://cashlens-pied.vercel.app`
+- `neon`
+  - CLI installed
+  - authenticated as `yajvanravan@gmail.com`
+- `clerk`
+  - CLI installed
+  - authenticated
+  - linked app `Cash Lens`
+  - development instance `ins_3EEkaSlJe7c2suikEqMyklUAjUG`
+  - production instance not created yet
+
 ## Dynamic values to verify live
 
 Do not assume these are stable. Check them at runtime:
@@ -39,4 +65,4 @@ Do not assume these are stable. Check them at runtime:
 - current Vercel production URL
 - current default build service account
 - whether Vercel production is using Clerk development or production keys
-- whether Neon and Clerk CLIs are installed locally
+- whether the logged-in Vercel, Neon, and Clerk accounts are still the same
