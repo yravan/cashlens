@@ -425,12 +425,15 @@ def _sync_live_item(db: Session, user: User, plaid_item: PlaidItem, settings: Se
     has_more = True
 
     while has_more:
+        sync_request = {
+            "access_token": access_token,
+            "count": 100,
+        }
+        if cursor:
+            sync_request["cursor"] = cursor
+
         response = client.transactions_sync(
-            TransactionsSyncRequest(
-                access_token,
-                cursor=cursor,
-                count=100,
-            )
+            TransactionsSyncRequest(**sync_request)
         )
         payload = response.to_dict()
         account_lookup = {
