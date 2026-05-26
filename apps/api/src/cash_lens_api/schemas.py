@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -91,7 +92,8 @@ class DashboardRead(BaseModel):
 
 
 class LinkTokenResponse(BaseModel):
-    mode: str
+    mode: Literal["demo", "live"]
+    environment: Literal["demo", "sandbox", "production"]
     link_token: str
     expiration: datetime
 

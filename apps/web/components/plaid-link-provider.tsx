@@ -8,12 +8,14 @@ import type { LinkTokenResponse } from "@/lib/types";
 
 type PlaidLinkProviderProps = {
   initialMode: "demo" | "live";
+  initialEnvironment: "demo" | "sandbox" | "production";
   initialLinkToken: string;
   children: React.ReactNode;
 };
 
 type PlaidLinkContextValue = {
   mode: "demo" | "live";
+  environment: "demo" | "sandbox" | "production";
   pending: boolean;
   ready: boolean;
   errorMessage: string | null;
@@ -24,11 +26,13 @@ const PlaidLinkContext = createContext<PlaidLinkContextValue | null>(null);
 
 export function PlaidLinkProvider({
   initialMode,
+  initialEnvironment,
   initialLinkToken,
   children,
 }: PlaidLinkProviderProps) {
   const router = useRouter();
   const [mode, setMode] = useState<"demo" | "live">(initialMode);
+  const [environment, setEnvironment] = useState<"demo" | "sandbox" | "production">(initialEnvironment);
   const [linkToken, setLinkToken] = useState(initialLinkToken);
   const [pending, setPending] = useState(false);
   const [launchRequested, setLaunchRequested] = useState(false);
@@ -48,6 +52,7 @@ export function PlaidLinkProvider({
 
     const payload = (await response.json()) as LinkTokenResponse;
     setMode(payload.mode);
+    setEnvironment(payload.environment);
     setLinkToken(payload.link_token);
     setReady(payload.mode === "demo");
   }
@@ -141,6 +146,7 @@ export function PlaidLinkProvider({
     <PlaidLinkContext.Provider
       value={{
         mode,
+        environment,
         pending,
         ready: mode === "demo" ? !pending : ready,
         errorMessage,

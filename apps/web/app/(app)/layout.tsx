@@ -16,8 +16,9 @@ export default async function AuthenticatedLayout({
 
   return (
     <PlaidLinkProvider
-      key={`${linkToken.mode}:${linkToken.link_token}`}
+      key={`${linkToken.mode}:${linkToken.environment}:${linkToken.link_token}`}
       initialMode={linkToken.mode}
+      initialEnvironment={linkToken.environment}
       initialLinkToken={linkToken.link_token}
     >
       <AppShell authMode={session.mode}>{children}</AppShell>

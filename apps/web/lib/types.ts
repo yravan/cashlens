@@ -76,6 +76,7 @@ export type Dashboard = {
 
 export type LinkTokenResponse = {
   mode: "demo" | "live";
+  environment: "demo" | "sandbox" | "production";
   link_token: string;
   expiration: string;
 };

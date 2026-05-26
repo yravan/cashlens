@@ -25,6 +25,8 @@ from cash_lens_api.models import FinancialAccount, NotificationEvent, PlaidItem,
 from cash_lens_api.schemas import ExchangePublicTokenResponse, LinkTokenResponse, PlaidItemRead, SyncResponse, WebhookPayload
 from cash_lens_api.services.demo_seed import create_ledger_event, create_transaction
 
+SANDBOX_RETURNING_USER_PHONE = "+14155550010"
+
 
 def _fernet(settings: Settings) -> Fernet:
     key_material = sha256(settings.app_encryption_key.encode("utf-8")).digest()
@@ -55,22 +57,28 @@ def create_link_token(user: User, settings: Settings) -> LinkTokenResponse:
     if not settings.plaid_live_enabled:
         return LinkTokenResponse(
             mode="demo",
+            environment="demo",
             link_token=f"demo-link-{uuid4()}",
             expiration=datetime.now(UTC) + timedelta(hours=4),
         )
 
     client = _build_live_client(settings)
+    link_user = LinkTokenCreateRequestUser(
+        client_user_id=str(user.id),
+        phone_number=SANDBOX_RETURNING_USER_PHONE if settings.plaid_env == "sandbox" else None,
+    )
     request = LinkTokenCreateRequest(
         client_name="Cash Lens",
         language="en",
         country_codes=[CountryCode("US")],
-        user=LinkTokenCreateRequestUser(str(user.id)),
+        user=link_user,
         products=[Products("transactions")],
         webhook=settings.plaid_webhook_url,
     )
     response = client.link_token_create(request)
     return LinkTokenResponse(
         mode="live",
+        environment="sandbox" if settings.plaid_env == "sandbox" else "production",
         link_token=response.link_token,
         expiration=response.expiration,
     )
