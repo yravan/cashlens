@@ -14,6 +14,7 @@ export function PlaidConnectButton() {
         type="button"
         onClick={connect}
         disabled={pending}
+        data-testid="plaid-connect-button"
         className="inline-flex items-center gap-2 rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}

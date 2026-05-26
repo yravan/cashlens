@@ -9,7 +9,6 @@ from cash_lens_api.db import get_db, utc_now
 from cash_lens_api.models import NotificationEvent, User
 from cash_lens_api.schemas import MessageResponse, NotificationRead
 
-
 router = APIRouter(tags=["notifications"])
 
 

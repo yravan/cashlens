@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Deployment guide
+    url: https://github.com/yravan/cashlens/blob/main/deployment%20instructions.md
+    about: Use the deployment guide for environment setup and production rollout steps.

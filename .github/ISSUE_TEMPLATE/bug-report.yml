@@ -1,0 +1,41 @@
+name: Bug report
+description: Report a product, integration, or developer workflow bug.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How can we reproduce it?
+      description: Share the smallest reliable path, including environment details if relevant.
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Logs, screenshots, failing checks, or links that help narrow it down.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Affected area
+      options:
+        - label: Frontend
+        - label: Backend
+        - label: Deploy / infrastructure
+        - label: Developer workflow / CI

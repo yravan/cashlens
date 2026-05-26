@@ -10,7 +10,6 @@ from cash_lens_api.db import get_db
 from cash_lens_api.models import LedgerEvent, User
 from cash_lens_api.schemas import TransactionRead, TransactionUpdate
 
-
 router = APIRouter(tags=["transactions"])
 
 

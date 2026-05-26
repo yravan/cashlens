@@ -1,3 +1,5 @@
+Follow [the repo-level AGENTS guide](/Users/yajvanravan/cashlens/AGENTS.md) first, then apply the Next.js-specific rule below.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

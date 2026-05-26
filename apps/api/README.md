@@ -7,14 +7,23 @@ This FastAPI app powers the Cash Lens MVP.
 - SQLAlchemy data model for users, Plaid items, accounts, raw transactions, ledger events, notifications, and sync runs
 - Demo-first seeding so the product works without live credentials
 - Optional live Plaid path when `PLAID_CLIENT_ID` and `PLAID_SECRET` are configured
-- Header-based auth bridge designed for a Next.js proxy layer
+- Clerk session-token verification for production API requests
+- `pytest` and `ruff` coverage for long-term development
 
 ### Run locally
 
 ```bash
 cd /Users/yajvanravan/cashlens/apps/api
-UV_CACHE_DIR=/private/tmp/uv-cache uv sync
+UV_CACHE_DIR=/private/tmp/uv-cache uv sync --group dev
 uv run uvicorn cash_lens_api.main:app --host 127.0.0.1 --port 8000
+```
+
+### Test locally
+
+```bash
+cd /Users/yajvanravan/cashlens/apps/api
+uv run ruff check src tests
+uv run pytest
 ```
 
 ### Important env vars

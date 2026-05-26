@@ -4,7 +4,14 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from cash_lens_api.models import FinancialAccount, LedgerEvent, NotificationEvent, PlaidItem, SyncRun, User
-from cash_lens_api.schemas import AccountRead, DashboardRead, DashboardSummary, NotificationRead, PlaidItemRead, TransactionRead
+from cash_lens_api.schemas import (
+    AccountRead,
+    DashboardRead,
+    DashboardSummary,
+    NotificationRead,
+    PlaidItemRead,
+    TransactionRead,
+)
 
 
 def build_dashboard(db: Session, user: User) -> DashboardRead:

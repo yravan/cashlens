@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a new feature, platform capability, or workflow improvement.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the user or team outcome we want to unlock.
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and edge cases
+      description: Include product, security, data, or testing constraints we should respect.
+
+  - type: textarea
+    id: rollout
+    attributes:
+      label: Rollout notes
+      description: Mention any migration, backfill, or integration risks you already know about.
