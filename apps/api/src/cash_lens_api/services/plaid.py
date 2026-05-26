@@ -508,6 +508,7 @@ def _upsert_live_transactions(
         posted_date = _coerce_plaid_date(transaction["date"])
         authorized_date = transaction.get("authorized_date")
         parsed_authorized_date = _coerce_plaid_date(authorized_date) if authorized_date else None
+        json_safe_transaction = _json_safe_value(transaction)
 
         if raw:
             raw.amount = float(transaction["amount"])
@@ -517,8 +518,8 @@ def _upsert_live_transactions(
             raw.merchant_name = transaction.get("merchant_name")
             raw.payment_channel = transaction.get("payment_channel")
             raw.pending = transaction.get("pending", False)
-            raw.raw_personal_finance_category = transaction.get("personal_finance_category")
-            raw.raw_json = transaction
+            raw.raw_personal_finance_category = _json_safe_value(transaction.get("personal_finance_category"))
+            raw.raw_json = json_safe_transaction
             if raw.ledger_event:
                 raw.ledger_event.event_type = str(classification["event_type"])
                 raw.ledger_event.direction = "inflow" if raw.amount < 0 else "outflow"
@@ -547,8 +548,8 @@ def _upsert_live_transactions(
             merchant_name=transaction.get("merchant_name"),
             payment_channel=transaction.get("payment_channel"),
             pending=transaction.get("pending", False),
-            raw_personal_finance_category=transaction.get("personal_finance_category"),
-            raw_json=transaction,
+            raw_personal_finance_category=_json_safe_value(transaction.get("personal_finance_category")),
+            raw_json=json_safe_transaction,
         )
         db.add(raw)
         db.flush()
@@ -587,6 +588,18 @@ def _coerce_plaid_date(value: date | datetime | str) -> date:
     if isinstance(value, date):
         return value
     return date.fromisoformat(value)
+
+
+def _json_safe_value(value):
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {key: _json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe_value(item) for item in value]
+    return value
 
 
 def _classify_transaction(name: str, merchant: str | None, amount: float) -> dict[str, str | bool]:
