@@ -11,7 +11,7 @@ This app is the Cash Lens frontend:
 
 ```bash
 cd /Users/yajvanravan/cashlens
-pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
+pnpm install --frozen-lockfile --ignore-scripts
 pnpm --filter @cashlens/web exec next dev --webpack --hostname 127.0.0.1 --port 3000
 ```
 

@@ -12,6 +12,5 @@
 /package.json @yravan
 /pnpm-workspace.yaml @yravan
 /pnpm-lock.yaml @yravan
-/.npmrc @yravan
 /packages/ @yravan
 /deployment instructions.md @yravan

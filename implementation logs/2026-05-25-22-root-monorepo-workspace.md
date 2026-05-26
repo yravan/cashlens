@@ -5,11 +5,12 @@
 
 ## What changed
 
-- Added a root `package.json`, `pnpm-workspace.yaml`, `.npmrc`, and root-managed `pnpm-lock.yaml` workflow for the JavaScript side of the repo.
+- Added a root `package.json`, `pnpm-workspace.yaml`, and root-managed `pnpm-lock.yaml` workflow for the JavaScript side of the repo.
 - Promoted `packages/api-types` into a real workspace package and wired the web app to consume it as `@cashlens/api-types`.
 - Moved `pnpm` install, lint, typecheck, build, and e2e entrypoints to the repo root and updated the Makefile and GitHub Actions workflow to use that root workspace.
 - Updated docs, deployment instructions, version-sync checks, CODEOWNERS, and agent guidance to treat the root as the canonical JavaScript workspace entrypoint.
 - Added an app-local `apps/web/vercel.json` install command override so Vercel keeps working with the root pnpm workspace and pnpm's ignored-build policy.
+- Removed the non-portable `trust-lockfile` install flag so the same workspace install command works across local pnpm, GitHub Actions, and Vercel.
 
 ## Why
 

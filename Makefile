@@ -13,7 +13,7 @@ api-test: api-bootstrap
 	cd apps/api && uv run pytest
 
 web-install:
-	pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
+	pnpm install --frozen-lockfile --ignore-scripts
 
 web-test: web-install
 	pnpm lint:web

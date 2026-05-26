@@ -245,7 +245,7 @@ Open a second Terminal window:
 
 ```bash
 cd /Users/yajvanravan/cashlens
-pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
+pnpm install --frozen-lockfile --ignore-scripts
 pnpm --filter @cashlens/web exec next dev --webpack --hostname localhost --port 3000
 ```
 
@@ -607,7 +607,7 @@ Vercel should deploy the frontend from `apps/web` while using the repo-root `pnp
 Also set the Install Command to:
 
 ```txt
-pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
+pnpm install --frozen-lockfile --ignore-scripts
 ```
 
 5. Add these Vercel environment variables:

@@ -62,7 +62,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Install web dependencies
-        run: pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Lint web
         run: pnpm lint:web
@@ -113,7 +113,7 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Install web dependencies
-        run: pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Install Playwright browser
         run: pnpm playwright:install

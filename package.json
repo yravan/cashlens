@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "packageManager": "pnpm@11.3.0",
   "scripts": {
-    "install:js": "pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts",
+    "install:js": "pnpm install --frozen-lockfile --ignore-scripts",
     "dev:web": "pnpm --filter @cashlens/web dev",
     "lint:web": "pnpm --filter @cashlens/web lint",
     "typecheck:web": "pnpm --filter @cashlens/web typecheck",
