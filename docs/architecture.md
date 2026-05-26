@@ -1,11 +1,12 @@
 # Architecture
 
-Cash Lens currently has a simple two-app shape with external managed services.
+Cash Lens currently has a simple polyglot monorepo shape with external managed services.
 
 ## Apps
 
 - `apps/web`: Next.js 16 App Router frontend
 - `apps/api`: FastAPI backend managed with `uv`
+- `packages/api-types`: shared TypeScript contract package consumed by the frontend workspace
 
 ## Core external services
 

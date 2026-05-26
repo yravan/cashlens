@@ -9,4 +9,9 @@
 /.readthedocs.yaml @yravan
 /CHANGELOG.md @yravan
 /VERSION @yravan
+/package.json @yravan
+/pnpm-workspace.yaml @yravan
+/pnpm-lock.yaml @yravan
+/.npmrc @yravan
+/packages/ @yravan
 /deployment instructions.md @yravan

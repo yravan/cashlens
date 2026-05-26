@@ -12,11 +12,13 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 - MkDocs documentation source plus Read the Docs configuration.
 - Root `VERSION` file and version-sync validation.
 - Repo-native skills for PR workflow, testing, database evolution, skill capture, and release hygiene.
+- Root `pnpm` monorepo workspace with a first-class shared `@cashlens/api-types` package.
 
 ### Changed
 
 - `main` now uses a PR-first workflow with required checks and protected-branch guardrails.
 - Frontend and backend now have durable test foundations suitable for ongoing refactors.
+- JavaScript dependency management now lives at the repo root instead of under `apps/web`.
 
 ## [0.1.0] - 2026-05-25
 

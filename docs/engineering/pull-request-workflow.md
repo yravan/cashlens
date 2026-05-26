@@ -20,6 +20,7 @@ This repo is set up for branch-first development.
 - `main` should stay deployable.
 - Required checks map directly to the repo’s real safety nets: `api`, `web`, `e2e`, and `docs`.
 - PRs preserve context for design choices, rollout concerns, and future debugging.
+- The root workspace keeps JavaScript dependency management, shared packages, and lockfile changes visible in one place.
 
 ## Skill capture rule
 

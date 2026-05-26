@@ -10,9 +10,9 @@ This app is the Cash Lens frontend:
 ## Run locally
 
 ```bash
-cd /Users/yajvanravan/cashlens/apps/web
+cd /Users/yajvanravan/cashlens
 pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
-pnpm exec next dev --webpack --hostname 127.0.0.1 --port 3000
+pnpm --filter @cashlens/web exec next dev --webpack --hostname 127.0.0.1 --port 3000
 ```
 
 If you want the simplest local demo path, set:
@@ -25,13 +25,15 @@ API_BASE_URL=http://127.0.0.1:8000
 ## Validate locally
 
 ```bash
-cd /Users/yajvanravan/cashlens/apps/web
-pnpm lint
-pnpm typecheck
-pnpm test --run
-pnpm build
-pnpm exec playwright test
+cd /Users/yajvanravan/cashlens
+pnpm lint:web
+pnpm typecheck:web
+pnpm test:web
+pnpm build:web
+make e2e
 ```
+
+The repo root is the canonical JavaScript workspace entrypoint.
 
 ## Test philosophy
 

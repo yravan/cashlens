@@ -73,3 +73,10 @@ export type Dashboard = {
   recent_notifications: Notification[];
   plaid_items: PlaidItem[];
 };
+
+export type LinkTokenResponse = {
+  mode: "demo" | "live";
+  environment: "demo" | "sandbox" | "production";
+  link_token: string;
+  expiration: string;
+};

@@ -244,9 +244,9 @@ Leave that running.
 Open a second Terminal window:
 
 ```bash
-cd /Users/yajvanravan/cashlens/apps/web
+cd /Users/yajvanravan/cashlens
 pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
-pnpm exec next dev --webpack --hostname localhost --port 3000
+pnpm --filter @cashlens/web exec next dev --webpack --hostname localhost --port 3000
 ```
 
 Then open:
@@ -601,6 +601,9 @@ In Plaid:
 apps/web
 ```
 
+This is still correct even though the repo is now a monorepo.
+Vercel should deploy the frontend from `apps/web` while using the repo-root `pnpm-lock.yaml`.
+
 5. Add these Vercel environment variables:
 
 - `API_BASE_URL` = your Cloud Run backend URL
@@ -876,14 +879,16 @@ This repo now has a built-in versioning and release-note system.
 
 - `VERSION`
 - `CHANGELOG.md`
+- `package.json`
 - `apps/api/pyproject.toml`
 - `apps/web/package.json`
+- `packages/api-types/package.json`
 
 ### What each one means
 
 - `VERSION` is the repo-wide product version
 - `CHANGELOG.md` is the release history
-- the backend and frontend package versions should stay aligned with `VERSION`
+- the repo workspace package, backend package, frontend package, and shared type package versions should stay aligned with `VERSION`
 
 ### Normal day-to-day behavior
 
@@ -893,10 +898,12 @@ Put new notable work into the `Unreleased` section of `CHANGELOG.md`.
 
 1. pick the new version number
 2. update `VERSION`
-3. update the backend version in `apps/api/pyproject.toml`
-4. update the frontend version in `apps/web/package.json`
-5. move the shipped items from `Unreleased` into a new dated release section in `CHANGELOG.md`
-6. run:
+3. update the root workspace version in `package.json`
+4. update the backend version in `apps/api/pyproject.toml`
+5. update the frontend version in `apps/web/package.json`
+6. update the shared type package version in `packages/api-types/package.json`
+7. move the shipped items from `Unreleased` into a new dated release section in `CHANGELOG.md`
+8. run:
 
 ```bash
 cd /Users/yajvanravan/cashlens

@@ -9,8 +9,12 @@ htmlcov/
 site/
 cashlens.db
 apps/api/cashlens.db
+apps/api/cashlens-e2e.db
+apps/api/cashlens-e2e.db-shm
+apps/api/cashlens-e2e.db-wal
 apps/api/.venv/
 apps/web/.next/
+node_modules/
 apps/web/node_modules/
 apps/web/.vercel/
 .pnpm-store/

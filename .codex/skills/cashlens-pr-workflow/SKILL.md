@@ -24,6 +24,7 @@ Use this skill whenever work in Cash Lens is headed toward a merge.
 - Required GitHub checks are `api`, `web`, `e2e`, and `docs`.
 - The PR template is part of the workflow; fill in validation and risk notes.
 - Do not bypass failing checks by weakening assertions without documenting why.
+- The canonical JavaScript workspace entrypoint is the repo root. Prefer root `pnpm` commands or `make` targets over ad hoc installs inside `apps/web`.
 
 ## When to widen the validation set
 

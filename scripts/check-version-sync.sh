@@ -2,6 +2,14 @@
 set -euo pipefail
 
 ROOT_VERSION="$(tr -d '[:space:]' < VERSION)"
+ROOT_PACKAGE_VERSION="$(python3 - <<'PY'
+from pathlib import Path
+import json
+
+data = json.loads(Path("package.json").read_text())
+print(data["version"])
+PY
+)"
 API_VERSION="$(python3 - <<'PY'
 from pathlib import Path
 import tomllib
@@ -18,6 +26,14 @@ data = json.loads(Path("apps/web/package.json").read_text())
 print(data["version"])
 PY
 )"
+API_TYPES_VERSION="$(python3 - <<'PY'
+from pathlib import Path
+import json
+
+data = json.loads(Path("packages/api-types/package.json").read_text())
+print(data["version"])
+PY
+)"
 
 if [[ -z "$ROOT_VERSION" ]]; then
   echo "VERSION is empty"
@@ -29,8 +45,18 @@ if [[ "$ROOT_VERSION" != "$API_VERSION" ]]; then
   exit 1
 fi
 
+if [[ "$ROOT_VERSION" != "$ROOT_PACKAGE_VERSION" ]]; then
+  echo "Version mismatch: VERSION=$ROOT_VERSION package.json=$ROOT_PACKAGE_VERSION"
+  exit 1
+fi
+
 if [[ "$ROOT_VERSION" != "$WEB_VERSION" ]]; then
   echo "Version mismatch: VERSION=$ROOT_VERSION apps/web=$WEB_VERSION"
+  exit 1
+fi
+
+if [[ "$ROOT_VERSION" != "$API_TYPES_VERSION" ]]; then
+  echo "Version mismatch: VERSION=$ROOT_VERSION packages/api-types=$API_TYPES_VERSION"
   exit 1
 fi
 

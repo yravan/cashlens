@@ -13,19 +13,19 @@ api-test: api-bootstrap
 	cd apps/api && uv run pytest
 
 web-install:
-	cd apps/web && pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
+	pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
 
 web-test: web-install
-	cd apps/web && pnpm lint
-	cd apps/web && pnpm typecheck
-	cd apps/web && pnpm test --run
-	cd apps/web && pnpm build
+	pnpm lint:web
+	pnpm typecheck:web
+	pnpm test:web
+	pnpm build:web
 
 web-browsers: web-install
-	cd apps/web && pnpm exec playwright install --with-deps chromium
+	pnpm playwright:install
 
 e2e: api-bootstrap web-install web-browsers
-	cd apps/web && pnpm e2e
+	pnpm e2e:web
 
 docs-build:
 	bash ./scripts/check-version-sync.sh

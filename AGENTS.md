@@ -17,6 +17,13 @@ This repo uses pull-request-first development and keeps repeated workflows in re
 - Docs and version sync: `make docs-build`
 - Full stack before merge when touching cross-app flows: `make ci`
 
+## Workspace rule
+
+- This repo is a polyglot monorepo.
+- JavaScript workspace management is root-owned via `package.json`, `pnpm-workspace.yaml`, and `pnpm-lock.yaml`.
+- Python package management stays in `apps/api` and continues to use `uv`.
+- Prefer root `pnpm` commands or `make` targets instead of installing dependencies from inside `apps/web`.
+
 ## Testing philosophy
 
 - Favor user outcomes and domain invariants over layout specifics.

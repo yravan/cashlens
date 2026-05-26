@@ -2,9 +2,10 @@
 
 Cash Lens is a ledger-first personal finance MVP with:
 
+- `package.json`, `pnpm-workspace.yaml`, and `pnpm-lock.yaml`: root JavaScript monorepo workspace
 - `apps/web`: Next.js 16 App Router frontend
 - `apps/api`: FastAPI backend managed with `uv`
-- `packages/api-types`: shared TypeScript API contracts
+- `packages/api-types`: shared TypeScript API contract package
 - `spec history`: frozen spec snapshots from the planning docs
 - `implementation logs`: technical build notes for each major implementation step
 - `.codex/skills`: repo-native agent skills for repeated development workflows
@@ -43,9 +44,9 @@ uv run uvicorn cash_lens_api.main:app --host 127.0.0.1 --port 8000
 ### Frontend
 
 ```bash
-cd /Users/yajvanravan/cashlens/apps/web
+cd /Users/yajvanravan/cashlens
 pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
-pnpm exec next dev --webpack --hostname 127.0.0.1 --port 3000
+pnpm --filter @cashlens/web exec next dev --webpack --hostname 127.0.0.1 --port 3000
 ```
 
 ### Canonical validation commands
@@ -65,6 +66,7 @@ make docs-build
 - `make e2e` runs Playwright smoke coverage against local backend and frontend servers in demo mode.
 - `make docs-build` validates the MkDocs documentation and version sync rules.
 - Pull requests must satisfy the GitHub `api`, `web`, `e2e`, and `docs` checks before merge.
+- Root `pnpm` is now the canonical JavaScript workspace entrypoint; `apps/web` is no longer treated as a standalone lockfile root.
 
 - Backend imports and endpoint smoke tests passed with `fastapi.testclient`
 - Frontend lint passed with `pnpm lint`
