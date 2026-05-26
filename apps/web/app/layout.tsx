@@ -14,7 +14,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const content = clerkEnabled ? <ClerkProvider dynamic>{children}</ClerkProvider> : children;
+  const content = clerkEnabled ? <ClerkProvider signInUrl="/sign-in">{children}</ClerkProvider> : children;
 
   return (
     <html lang="en" className="h-full antialiased">

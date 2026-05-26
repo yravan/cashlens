@@ -6,6 +6,6 @@ export default async function AuthenticatedLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await getAppSession({ requireAuth: true });
+  const session = await getAppSession();
   return <AppShell authMode={session.mode}>{children}</AppShell>;
 }

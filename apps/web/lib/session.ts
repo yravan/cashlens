@@ -1,6 +1,7 @@
 import "server-only";
 
 import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
 import { DEMO_USER_EMAIL, clerkEnabled } from "@/lib/runtime";
 
@@ -21,7 +22,7 @@ export async function getAppSession(options?: { requireAuth?: boolean }) {
 
   const session = await auth();
   if (!session.userId && options?.requireAuth) {
-    return session.redirectToSignIn();
+    redirect("/sign-in");
   }
 
   return {

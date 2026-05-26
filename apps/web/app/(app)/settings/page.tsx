@@ -34,8 +34,8 @@ export default async function SettingsPage() {
                 <StatusBadge tone={clerkEnabled ? "success" : "warning"}>{clerkEnabled ? "Clerk ready" : "Demo mode"}</StatusBadge>
                 <p className="text-sm text-[var(--muted)]">
                   {clerkEnabled
-                    ? "Clerk credentials are configured for this deployment."
-                    : "Single-user demo mode is active until Clerk is enabled for this environment."}
+                    ? "Clerk credentials are configured and active for this environment."
+                    : "Single-user demo mode is active because Clerk has been explicitly disabled or its keys are missing."}
                 </p>
               </div>
             </div>

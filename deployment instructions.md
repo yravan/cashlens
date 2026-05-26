@@ -206,16 +206,26 @@ Use a long random value for `APP_ENCRYPTION_KEY`.
 Create `/Users/yajvanravan/cashlens/apps/web/.env.local` with:
 
 ```env
-API_BASE_URL=http://127.0.0.1:8000
-NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
+API_BASE_URL=http://localhost:8000
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=YOUR_CLERK_PUBLISHABLE_KEY
 CLERK_SECRET_KEY=YOUR_CLERK_SECRET_KEY
+```
+
+With valid Clerk keys present, local `next dev` now uses Clerk by default.
+
+If you want to force demo mode locally even with Clerk keys present, add:
+
+```env
 ENABLE_CLERK=false
 ```
 
-`ENABLE_CLERK=false` is intentional for local `next dev`.
-That keeps local development in demo mode even if your Clerk keys are present.
-Later, your deployed frontend can enable Clerk.
+When testing Clerk locally, open the app at:
+
+- [http://localhost:3000](http://localhost:3000)
+
+Use `localhost` for local Clerk testing, not `127.0.0.1`.
+Clerk development instances use a browser-bound development handshake tied to the local host, and `localhost` is the safer path.
 
 ## 11. Test locally before deploying
 
@@ -224,7 +234,7 @@ Later, your deployed frontend can enable Clerk.
 ```bash
 cd /Users/yajvanravan/cashlens/apps/api
 UV_CACHE_DIR=/private/tmp/uv-cache uv sync
-uv run uvicorn cash_lens_api.main:app --host 127.0.0.1 --port 8000
+uv run uvicorn cash_lens_api.main:app --host localhost --port 8000
 ```
 
 Leave that running.
@@ -236,12 +246,12 @@ Open a second Terminal window:
 ```bash
 cd /Users/yajvanravan/cashlens/apps/web
 pnpm install
-pnpm exec next dev --webpack --hostname 127.0.0.1 --port 3000
+pnpm exec next dev --webpack --hostname localhost --port 3000
 ```
 
 Then open:
 
-- [http://127.0.0.1:3000](http://127.0.0.1:3000)
+- [http://localhost:3000](http://localhost:3000)
 
 If you see the dashboard, local setup is working.
 
@@ -542,7 +552,7 @@ Set:
 If you also know your frontend URL already, set:
 
 - `APP_BASE_URL` = your Vercel production URL
-- `ALLOWED_ORIGINS` = `https://YOUR-VERCEL-URL.vercel.app,http://127.0.0.1:3000`
+- `ALLOWED_ORIGINS` = `https://YOUR-VERCEL-URL.vercel.app,http://localhost:3000`
 
 After updating variables, go back to GitHub Actions and rerun the backend workflow once.
 
@@ -589,7 +599,7 @@ Once Vercel gives you the real production URL, go back to GitHub repository vari
 Example:
 
 - `APP_BASE_URL` = `https://cashlens-yourteam.vercel.app`
-- `ALLOWED_ORIGINS` = `https://cashlens-yourteam.vercel.app,http://127.0.0.1:3000`
+- `ALLOWED_ORIGINS` = `https://cashlens-yourteam.vercel.app,http://localhost:3000`
 
 Then rerun the backend GitHub Actions workflow once so Cloud Run gets the new values.
 
@@ -601,7 +611,7 @@ In Clerk:
 2. Find the URLs / redirect / domains section
 3. Add your Vercel production URL
 4. Add your local URL:
-   - `http://127.0.0.1:3000`
+   - `http://localhost:3000`
 
 This matters because Clerk sign-in can fail if the deployed domain is not allowed.
 
