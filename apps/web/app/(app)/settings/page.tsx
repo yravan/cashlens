@@ -6,16 +6,15 @@ import { PlaidConnectButton } from "@/components/plaid-connect-button";
 import { SectionCard } from "@/components/section-card";
 import { StatusBadge } from "@/components/status-badge";
 import { apiFetch } from "@/lib/server-api";
-import type { Dashboard, LinkTokenResponse, Notification, User } from "@/lib/types";
+import type { Dashboard, Notification, User } from "@/lib/types";
 import { clerkEnabled } from "@/lib/runtime";
 import { formatDateTime } from "@/lib/utils";
 
 export default async function SettingsPage() {
-  const [user, dashboard, notifications, linkToken] = await Promise.all([
+  const [user, dashboard, notifications] = await Promise.all([
     apiFetch<User>("/me"),
     apiFetch<Dashboard>("/dashboard"),
     apiFetch<Notification[]>("/notifications"),
-    apiFetch<LinkTokenResponse>("/plaid/create-link-token", { method: "POST" }),
   ]);
 
   return (
@@ -42,7 +41,7 @@ export default async function SettingsPage() {
             <div className="rounded-[24px] border border-[var(--border)] bg-white px-4 py-4">
               <p className="text-sm font-medium text-[var(--muted)]">Plaid</p>
               <div className="mt-3 flex flex-wrap gap-3">
-                <PlaidConnectButton mode={linkToken.mode} linkToken={linkToken.link_token} />
+                <PlaidConnectButton />
               </div>
             </div>
           </div>

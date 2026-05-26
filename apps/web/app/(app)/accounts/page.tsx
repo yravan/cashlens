@@ -5,14 +5,13 @@ import { PlaidConnectButton } from "@/components/plaid-connect-button";
 import { SectionCard } from "@/components/section-card";
 import { StatusBadge } from "@/components/status-badge";
 import { apiFetch } from "@/lib/server-api";
-import type { Account, Dashboard, LinkTokenResponse } from "@/lib/types";
+import type { Account, Dashboard } from "@/lib/types";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 export default async function AccountsPage() {
-  const [accounts, dashboard, linkToken] = await Promise.all([
+  const [accounts, dashboard] = await Promise.all([
     apiFetch<Account[]>("/accounts"),
     apiFetch<Dashboard>("/dashboard"),
-    apiFetch<LinkTokenResponse>("/plaid/create-link-token", { method: "POST" }),
   ]);
 
   return (
@@ -20,7 +19,7 @@ export default async function AccountsPage() {
       <SectionCard
         eyebrow="Connections"
         title="Institutions and sync controls"
-        action={<PlaidConnectButton mode={linkToken.mode} linkToken={linkToken.link_token} />}
+        action={<PlaidConnectButton />}
       >
         <div className="grid gap-3 lg:grid-cols-2">
           {dashboard.plaid_items.map((item) => (

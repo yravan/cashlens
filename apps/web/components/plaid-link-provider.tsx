@@ -1,0 +1,171 @@
+"use client";
+
+import { createContext, startTransition, useContext, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { usePlaidLink } from "react-plaid-link";
+
+import type { LinkTokenResponse } from "@/lib/types";
+
+type PlaidLinkProviderProps = {
+  initialMode: "demo" | "live";
+  initialLinkToken: string;
+  children: React.ReactNode;
+};
+
+type PlaidLinkContextValue = {
+  mode: "demo" | "live";
+  pending: boolean;
+  ready: boolean;
+  connect: () => void;
+};
+
+const PlaidLinkContext = createContext<PlaidLinkContextValue | null>(null);
+
+export function PlaidLinkProvider({
+  initialMode,
+  initialLinkToken,
+  children,
+}: PlaidLinkProviderProps) {
+  const router = useRouter();
+  const [mode, setMode] = useState<"demo" | "live">(initialMode);
+  const [linkToken, setLinkToken] = useState(initialLinkToken);
+  const [pending, setPending] = useState(false);
+  const [ready, setReady] = useState(initialMode === "demo");
+  const liveOpenRef = useRef<(() => void) | null>(null);
+
+  async function requestFreshLinkToken() {
+    const response = await fetch("/api/proxy/plaid/create-link-token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to create Plaid link token (${response.status})`);
+    }
+
+    const payload = (await response.json()) as LinkTokenResponse;
+    setMode(payload.mode);
+    setLinkToken(payload.link_token);
+    setReady(payload.mode === "demo");
+  }
+
+  async function exchangePublicToken(publicToken: string) {
+    setPending(true);
+    try {
+      const response = await fetch("/api/proxy/plaid/exchange-public-token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ public_token: publicToken }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to exchange Plaid token (${response.status})`);
+      }
+
+      await requestFreshLinkToken();
+      startTransition(() => router.refresh());
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function connectDemoInstitution() {
+    setPending(true);
+    try {
+      const response = await fetch("/api/proxy/plaid/exchange-public-token", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          public_token: `demo-public-token-${Date.now()}`,
+          institution_name: "Demo Sandbox Bank",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to add demo institution (${response.status})`);
+      }
+
+      startTransition(() => router.refresh());
+    } finally {
+      setPending(false);
+    }
+  }
+
+  function connect() {
+    if (pending) {
+      return;
+    }
+
+    if (mode === "demo") {
+      void connectDemoInstitution();
+      return;
+    }
+
+    liveOpenRef.current?.();
+  }
+
+  return (
+    <PlaidLinkContext.Provider
+      value={{
+        mode,
+        pending,
+        ready: mode === "demo" ? !pending : ready && !pending,
+        connect,
+      }}
+    >
+      {mode === "live" ? (
+        <LivePlaidLinkController
+          token={linkToken}
+          onReadyChange={setReady}
+          onRegisterOpen={(open) => {
+            liveOpenRef.current = open;
+          }}
+          onSuccess={exchangePublicToken}
+        />
+      ) : null}
+      {children}
+    </PlaidLinkContext.Provider>
+  );
+}
+
+export function usePlaidLinkContext() {
+  const value = useContext(PlaidLinkContext);
+  if (!value) {
+    throw new Error("usePlaidLinkContext must be used within PlaidLinkProvider.");
+  }
+  return value;
+}
+
+type LivePlaidLinkControllerProps = {
+  token: string;
+  onReadyChange: (ready: boolean) => void;
+  onRegisterOpen: (open: (() => void) | null) => void;
+  onSuccess: (publicToken: string) => void;
+};
+
+function LivePlaidLinkController({
+  token,
+  onReadyChange,
+  onRegisterOpen,
+  onSuccess,
+}: LivePlaidLinkControllerProps) {
+  const { open, ready } = usePlaidLink({
+    token,
+    onSuccess: (publicToken: string) => {
+      void onSuccess(publicToken);
+    },
+  });
+
+  useEffect(() => {
+    onReadyChange(ready);
+  }, [onReadyChange, ready]);
+
+  useEffect(() => {
+    onRegisterOpen(() => open);
+    return () => {
+      onRegisterOpen(null);
+    };
+  }, [onRegisterOpen, open]);
+
+  return null;
+}
