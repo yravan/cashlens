@@ -12,7 +12,7 @@ export default defineConfig({
   webServer: [
     {
       command:
-        "sh -c 'rm -f /private/tmp/cashlens-e2e.db /private/tmp/cashlens-e2e.db-shm /private/tmp/cashlens-e2e.db-wal && exec .venv/bin/python -m uvicorn cash_lens_api.main:app --host 127.0.0.1 --port 8100'",
+        "sh -c 'rm -f cashlens-e2e.db cashlens-e2e.db-shm cashlens-e2e.db-wal && exec .venv/bin/python -m uvicorn cash_lens_api.main:app --host 127.0.0.1 --port 8100'",
       cwd: "../api",
       url: "http://127.0.0.1:8100/health",
       timeout: 120_000,
@@ -21,7 +21,7 @@ export default defineConfig({
         APP_BASE_URL: "http://127.0.0.1:3100",
         ALLOWED_ORIGINS: "http://127.0.0.1:3100",
         APP_ENCRYPTION_KEY: "cash-lens-e2e-encryption-key",
-        DATABASE_URL: "sqlite:////private/tmp/cashlens-e2e.db",
+        DATABASE_URL: "sqlite:///./cashlens-e2e.db",
         DEMO_MODE: "true",
         PLAID_CLIENT_ID: "",
         PLAID_SECRET: "",

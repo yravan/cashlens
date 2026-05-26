@@ -7,6 +7,7 @@
 
 - Changed the Playwright smoke test to assert that the number of connected institutions increases after adding a demo institution instead of asserting a duplicated institution label.
 - Changed the Playwright backend web server command to delete the throwaway SQLite database before each run.
+- Moved the Playwright database path to a repo-local SQLite file so the same config works on macOS and Linux CI runners.
 - Disabled `reuseExistingServer` for the Playwright-managed backend and frontend servers so the suite always runs against app-owned processes instead of attaching to arbitrary local servers.
 - Updated the repo testing skill with the rule that Playwright should assert user outcomes and use isolated state.
 
