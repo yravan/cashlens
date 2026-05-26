@@ -210,7 +210,12 @@ API_BASE_URL=http://127.0.0.1:8000
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=YOUR_CLERK_PUBLISHABLE_KEY
 CLERK_SECRET_KEY=YOUR_CLERK_SECRET_KEY
+ENABLE_CLERK=false
 ```
+
+`ENABLE_CLERK=false` is intentional for local `next dev`.
+That keeps local development in demo mode even if your Clerk keys are present.
+Later, your deployed frontend can enable Clerk.
 
 ## 11. Test locally before deploying
 
@@ -568,6 +573,7 @@ apps/web
 - `NEXT_PUBLIC_API_BASE_URL` = your Cloud Run backend URL
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` = your Clerk publishable key
 - `CLERK_SECRET_KEY` = your Clerk secret key
+- `ENABLE_CLERK` = `true`
 
 6. Click Deploy
 

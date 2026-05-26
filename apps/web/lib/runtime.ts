@@ -3,5 +3,12 @@ export const API_BASE_URL =
 
 export const DEMO_USER_EMAIL = process.env.DEMO_USER_EMAIL ?? "demo@cashlens.local";
 
-export const clerkEnabled =
+const clerkKeysPresent =
   Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) && Boolean(process.env.CLERK_SECRET_KEY);
+
+const explicitClerkFlag = process.env.ENABLE_CLERK;
+
+export const clerkEnabled =
+  explicitClerkFlag !== undefined
+    ? explicitClerkFlag.toLowerCase() === "true" && clerkKeysPresent
+    : process.env.NODE_ENV === "production" && clerkKeysPresent;

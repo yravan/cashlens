@@ -28,8 +28,8 @@ export default async function LoginPage() {
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--muted)]">Demo mode</p>
         <h1 className="mt-3 text-4xl font-bold tracking-tight text-[var(--foreground)]">The app is ready to explore right away.</h1>
         <p className="mt-4 text-base leading-7 text-[var(--muted)]">
-          Clerk is optional in this local build. Until you add your real keys, Cash Lens uses a seeded single-user demo
-          workspace so you can review the full MVP flow immediately.
+          Clerk is optional in local development. Until Clerk is enabled for this environment, Cash Lens uses a seeded
+          single-user demo workspace so you can review the full MVP flow immediately.
         </p>
         <Link
           href="/dashboard"

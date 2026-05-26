@@ -35,7 +35,7 @@ export default async function SettingsPage() {
                 <p className="text-sm text-[var(--muted)]">
                   {clerkEnabled
                     ? "Clerk credentials are configured for this deployment."
-                    : "Local single-user mode is active until you add Clerk keys."}
+                    : "Single-user demo mode is active until Clerk is enabled for this environment."}
                 </p>
               </div>
             </div>
