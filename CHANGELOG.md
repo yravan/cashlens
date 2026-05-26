@@ -19,6 +19,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 - `main` now uses a PR-first workflow with required checks and protected-branch guardrails.
 - Frontend and backend now have durable test foundations suitable for ongoing refactors.
 - JavaScript dependency management now lives at the repo root instead of under `apps/web`.
+- Deployment guidance is now organized around `local`, `preview`, and `production` instead of historical setup order.
 
 ## [0.1.0] - 2026-05-25
 

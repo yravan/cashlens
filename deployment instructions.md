@@ -1,35 +1,79 @@
-# Cash Lens Deployment Instructions
+# Cash Lens Setup, Deployment, and Environment Guide
 
-This guide assumes:
+This guide is written for a non-technical Mac user.
 
-- you are on a Mac
-- you are not technical
-- you want the app hosted the way this repo is now designed:
-  - frontend on Vercel
-  - backend on Google Cloud Run
-  - backend deployments triggered from GitHub Actions
-  - backend secrets stored in Google Secret Manager
-  - database on Neon
-  - auth on Clerk
-  - bank connections on Plaid
+It is organized around **environments**, not around every historical change we made to the repo.
 
-If you follow this guide from top to bottom, you should end with:
+If you follow it in order, you will end with:
 
-- a working hosted MVP
-- a backend that deploys from GitHub instead of your laptop
-- secrets stored outside the code repo
+- a local development setup for day-to-day work
+- a clear understanding of what Vercel previews are safe for
+- a production deployment path for the real app
+- a docs site path for Read the Docs
 
-## 1. What you are deploying
+## 1. The environment model
 
-Cash Lens has two apps:
+Cash Lens currently works best with this model:
+
+| Environment | Purpose | Where it runs | Auth | Plaid | Database | Use real accounts? |
+| --- | --- | --- | --- | --- | --- | --- |
+| `local` | day-to-day development and sandbox testing | your Mac | Clerk development or demo mode | Sandbox | local SQLite by default, optional Neon dev URL | `No` |
+| `preview` | pull request and UI review | Vercel preview deployments | usually same hosted auth wiring as production | not a safe sandbox | no separate hosted preview backend today | `No` |
+| `production` | the real app | Vercel + Cloud Run | Clerk production | Plaid production when you are ready | Neon production | `Yes`, after the production checklist |
+
+## 2. The most important rule
+
+**Do all development and Plaid sandbox testing locally.**
+
+Why:
+
+- this repo has **one hosted backend** today
+- Vercel previews do **not** have their own separate Cloud Run backend, separate Neon database, or separate Clerk verification key
+- that means preview deployments are good for reviewing UI and frontend changes, but they are **not** a true staging environment
+
+So the safe rule is:
+
+- local = development and sandbox
+- production = real hosted app
+- preview = useful, but not your sandbox
+
+If you later want a true staging environment, you would add:
+
+- a second Cloud Run service
+- a second Neon database or branch
+- a second set of GitHub variables and secrets
+- a second Clerk/Plaid environment plan
+
+That is **not** part of the current repo setup.
+
+## 3. What Cash Lens contains
+
+Cash Lens has two main apps:
 
 - `apps/web`: the website people open in the browser
 - `apps/api`: the Python backend that stores data, talks to Plaid, and powers the dashboard
 
-The website talks to the API.
-The API talks to Neon and Plaid.
+Other important pieces:
 
-## 2. Accounts you need
+- `packages/api-types`: shared TypeScript types used by the frontend
+- `docs`: MkDocs documentation source
+- `.github/workflows/deploy-api.yml`: backend production deployment workflow
+- `.github/workflows/ci.yml`: CI checks
+
+## 4. Hosted production architecture
+
+Production uses:
+
+- **Frontend**: Vercel
+- **Backend**: Google Cloud Run
+- **Backend deploy trigger**: GitHub Actions
+- **Backend secrets**: Google Secret Manager
+- **Database**: Neon
+- **Authentication**: Clerk
+- **Bank connectivity**: Plaid
+- **Docs hosting**: Read the Docs
+
+## 5. Accounts you need
 
 Create or sign into:
 
@@ -39,12 +83,13 @@ Create or sign into:
 4. Clerk
 5. Plaid
 6. Google Cloud
+7. Read the Docs
 
-## 3. Install the tools on your Mac
+## 6. Install the tools on your Mac
 
 Open the Terminal app.
 
-Install Homebrew if needed:
+If you do not have Homebrew yet, install it:
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -57,8 +102,7 @@ brew install node pnpm gh google-cloud-sdk
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-Close Terminal.
-Open Terminal again.
+Close Terminal and open it again.
 
 Confirm the tools exist:
 
@@ -70,7 +114,7 @@ gcloud --version
 uv --version
 ```
 
-## 4. Put the code on GitHub
+## 7. Make sure the repo exists on GitHub
 
 Go to the project folder:
 
@@ -90,156 +134,152 @@ Choose:
 - `HTTPS`
 - `Login with a web browser`
 
-If the repo does not exist yet:
+If you are starting from scratch and the repo does not exist yet:
 
 ```bash
-gh repo create cashlens --private --source=. --remote=origin
+gh repo create cashlens --public --source=. --remote=origin
 ```
 
-If the repo already exists:
+If the repo already exists, you do not need to run that.
 
-```bash
-git remote add origin https://github.com/YOUR_GITHUB_USERNAME/cashlens.git
+## 8. Local development: recommended day-to-day setup
+
+This is the setup you should use for normal feature work and Plaid sandbox testing.
+
+### 8A. Choose your local mode
+
+You have two good local modes:
+
+1. **Fast demo mode**
+   - easiest way to start the app
+   - no live Clerk or Plaid testing
+   - good for UI work
+
+2. **Full local sandbox mode**
+   - Clerk development
+   - Plaid Sandbox
+   - best for realistic development
+
+### 8B. Fast demo mode
+
+If you only want the app running quickly:
+
+- do **not** add Plaid or Clerk settings to the backend
+- create this frontend file:
+
+Create `/Users/yajvanravan/cashlens/apps/web/.env.local`:
+
+```env
+API_BASE_URL=http://localhost:8000
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+ENABLE_CLERK=false
 ```
 
-Then push:
+The backend will use:
 
-```bash
-git push -u origin main
-```
+- local SQLite
+- demo mode
+- seeded demo data
 
-If you intentionally need to overwrite the remote branch:
+### 8C. Full local sandbox mode
 
-```bash
-git push --force origin main
-```
+This is the recommended local setup if you want realistic development.
 
-## 5. Create the Neon database
+#### 1. Create your Clerk application
 
-1. Go to [https://neon.tech](https://neon.tech)
-2. Create a new project
-3. Name it something like `cash-lens`
-4. Create the database
+Go to [https://clerk.com](https://clerk.com)
 
-When Neon shows the connection strings, copy the pooled connection string.
+Create an app called `Cash Lens`.
 
-You will use that as `DATABASE_URL`.
-
-## 6. Create the Clerk app
-
-1. Go to [https://clerk.com](https://clerk.com)
-2. Create a new application
-3. Name it `Cash Lens`
-4. Keep the simplest sign-in method you want
-5. Finish setup
+For local development, use the **Clerk development instance**.
 
 Copy:
 
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
 - `CLERK_SECRET_KEY`
 
-## 7. Create the Plaid app
+You also need the Clerk JWT verification key for the backend.
 
-1. Go to [https://dashboard.plaid.com](https://dashboard.plaid.com)
-2. Create a new app
-3. Choose Sandbox first
-4. Enable the `transactions` product
+If the Clerk CLI is installed and logged in, the easiest path is:
+
+```bash
+clerk api /jwks
+```
+
+Copy the JSON output.
+
+You will use that as `CLERK_JWT_KEY`.
+
+#### 2. Create your Plaid Sandbox app
+
+Go to [https://dashboard.plaid.com](https://dashboard.plaid.com)
+
+Create a Plaid app and choose:
+
+- environment: `Sandbox`
+- product: `transactions`
 
 Copy:
 
 - `PLAID_CLIENT_ID`
 - `PLAID_SECRET`
 
-Do not worry about the webhook URL yet.
-You will add that after the backend is deployed.
+#### 3. Create your backend local environment file
 
-## 8. Create the Google Cloud project
-
-1. Go to [https://console.cloud.google.com](https://console.cloud.google.com)
-2. Create a new project
-3. Enable billing for that project
-
-Pick a project ID.
-Example:
-
-```txt
-cashlens-492517
-```
-
-## 9. Sign into Google Cloud locally
-
-Back in Terminal:
-
-```bash
-gcloud auth login
-gcloud auth application-default login
-```
-
-Then set your project:
-
-```bash
-gcloud config set project YOUR_GCP_PROJECT_ID
-gcloud auth application-default set-quota-project YOUR_GCP_PROJECT_ID
-```
-
-## 10. Create your local environment files
-
-### Backend `.env`
-
-Create `/Users/yajvanravan/cashlens/apps/api/.env` with:
+Create `/Users/yajvanravan/cashlens/apps/api/.env`:
 
 ```env
-DATABASE_URL=YOUR_NEON_POOLED_URL
 APP_ENCRYPTION_KEY=CHANGE_THIS_TO_A_LONG_RANDOM_SECRET
+CLERK_JWT_KEY=PASTE_THE_CLERK_JWKS_JSON_HERE
 PLAID_CLIENT_ID=YOUR_PLAID_CLIENT_ID
 PLAID_SECRET=YOUR_PLAID_SECRET
 PLAID_ENV=sandbox
 PLAID_WEBHOOK_URL=
 DEMO_MODE=false
 SEED_DEMO_DATA=false
+VERIFY_PLAID_WEBHOOKS=false
 ```
 
-Use a long random value for `APP_ENCRYPTION_KEY`.
+Notes:
 
-### Frontend `.env.local`
+- if you do **not** set `DATABASE_URL`, the backend uses a local SQLite file at `apps/api/cashlens.db`
+- that is the easiest local database setup
+- if you prefer a hosted dev database, you may add:
 
-Create `/Users/yajvanravan/cashlens/apps/web/.env.local` with:
+```env
+DATABASE_URL=YOUR_NEON_DEV_DATABASE_URL
+```
+
+#### 4. Create your frontend local environment file
+
+Create `/Users/yajvanravan/cashlens/apps/web/.env.local`:
 
 ```env
 API_BASE_URL=http://localhost:8000
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=YOUR_CLERK_PUBLISHABLE_KEY
 CLERK_SECRET_KEY=YOUR_CLERK_SECRET_KEY
+ENABLE_CLERK=true
 ```
 
-With valid Clerk keys present, local `next dev` now uses Clerk by default.
+Important:
 
-If you want to force demo mode locally even with Clerk keys present, add:
+- use `localhost`, not `127.0.0.1`, when testing Clerk locally
+- Clerk development mode uses a browser-bound local handshake and `localhost` is the safer path
 
-```env
-ENABLE_CLERK=false
-```
+### 8D. Start the local backend
 
-When testing Clerk locally, open the app at:
-
-- [http://localhost:3000](http://localhost:3000)
-
-Use `localhost` for local Clerk testing, not `127.0.0.1`.
-Clerk development instances use a browser-bound development handshake tied to the local host, and `localhost` is the safer path.
-
-## 11. Test locally before deploying
-
-### Backend
+Open Terminal:
 
 ```bash
 cd /Users/yajvanravan/cashlens/apps/api
-UV_CACHE_DIR=/private/tmp/uv-cache uv sync
+UV_CACHE_DIR=/private/tmp/uv-cache uv sync --group dev
 uv run uvicorn cash_lens_api.main:app --host localhost --port 8000
 ```
 
-Leave that running.
+Leave that window running.
 
-### Frontend
+### 8E. Start the local frontend
 
 Open a second Terminal window:
 
@@ -249,50 +289,129 @@ pnpm install --frozen-lockfile --ignore-scripts
 pnpm --filter @cashlens/web exec next dev --webpack --hostname localhost --port 3000
 ```
 
-Then open:
+Open:
 
 - [http://localhost:3000](http://localhost:3000)
 
-If you see the dashboard, local setup is working.
+### 8F. Local validation commands
 
-## 12. Set up Google Cloud and GitHub for backend deployments
+From the repo root:
 
-This is the one-time setup that lets GitHub deploy `apps/api` to Cloud Run for you.
-If you complete this section once, you should not need to keep deploying the backend from your laptop.
+```bash
+cd /Users/yajvanravan/cashlens
+make api-test
+make web-test
+make e2e
+make docs-build
+```
 
-### 12A. Save the project values in Terminal
+Use these as your normal safety checks.
 
-Run:
+## 9. Preview deployments: what they are and what they are not
+
+Vercel creates preview deployments from branches and pull requests.
+
+That is helpful for:
+
+- checking layout changes
+- checking copy changes
+- checking whether the branch builds on Vercel
+- sharing a UI preview with someone else
+
+That is **not** the same as having a staging backend.
+
+### 9A. Safe preview usage
+
+Use previews for:
+
+- visual review
+- navigation review
+- frontend sanity checking
+- confirming the branch still deploys on Vercel
+
+### 9B. Unsafe preview usage
+
+Do **not** use previews for:
+
+- connecting real bank accounts
+- doing Plaid sandbox experiments once production contains real data
+- assuming preview has isolated auth, database, or backend secrets
+
+### 9C. Why
+
+Today, the hosted backend is production-only.
+
+That means the preview frontend does **not** get:
+
+- its own Cloud Run service
+- its own Neon database
+- its own Secret Manager secrets
+- its own Clerk verification key
+
+If you want a true hosted staging setup later, treat that as a separate future project.
+
+## 10. Production setup: one-time infrastructure
+
+This section is for the real hosted app.
+
+### 10A. Neon production database
+
+1. Go to [https://neon.tech](https://neon.tech)
+2. Create a new project
+3. Name it something like `cash-lens`
+4. Create the database
+
+Copy the **pooled connection string**.
+
+That will become `DATABASE_URL` in Secret Manager.
+
+### 10B. Plaid production plan
+
+Start with Plaid Sandbox first.
+
+Only switch Plaid to production after the app is stable and the production checklist later in this guide is complete.
+
+### 10C. Google Cloud project
+
+1. Go to [https://console.cloud.google.com](https://console.cloud.google.com)
+2. Create a new project
+3. Enable billing
+
+Choose a project ID.
+
+Example:
+
+```txt
+cashlens-492517
+```
+
+### 10D. Sign into Google Cloud locally
+
+```bash
+gcloud auth login
+gcloud auth application-default login
+gcloud config set project YOUR_GCP_PROJECT_ID
+gcloud auth application-default set-quota-project YOUR_GCP_PROJECT_ID
+```
+
+## 11. Production backend deployment setup
+
+The backend deploys from GitHub Actions to Cloud Run.
+
+This section is the one-time setup for that.
+
+### 11A. Save your project values
 
 ```bash
 export PROJECT_ID="YOUR_GCP_PROJECT_ID"
 export PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 export GITHUB_REPO="yravan/cashlens"
 export BUILD_SERVICE_ACCOUNT="$(gcloud builds get-default-service-account --project "$PROJECT_ID")"
-echo "$PROJECT_ID"
-echo "$PROJECT_NUMBER"
-echo "$GITHUB_REPO"
-echo "$BUILD_SERVICE_ACCOUNT"
 ```
 
-If your GitHub repo is under a different owner or has a different name, replace `yravan/cashlens`.
+If your GitHub owner or repo name is different, replace `yravan/cashlens`.
 
-`BUILD_SERVICE_ACCOUNT` is important because Google Cloud does not always use the same default build account shape.
-In many projects it will be the Compute Engine default service account:
-
-```txt
-PROJECT_NUMBER-compute@developer.gserviceaccount.com
-```
-
-but some projects still use the legacy Cloud Build service account:
-
-```txt
-PROJECT_NUMBER@cloudbuild.gserviceaccount.com
-```
-
-### 12B. Enable the Google Cloud APIs
-
-Run:
+### 11B. Enable the required Google Cloud APIs
 
 ```bash
 gcloud services enable \
@@ -306,14 +425,7 @@ gcloud services enable \
   --project "$PROJECT_ID"
 ```
 
-### 12C. Create the two service accounts
-
-The app needs:
-
-- one service account that Cloud Run will use while the API is running
-- one service account that GitHub Actions will use while deploying
-
-Create both:
+### 11C. Create the service accounts
 
 ```bash
 gcloud iam service-accounts create cash-lens-runtime \
@@ -325,16 +437,7 @@ gcloud iam service-accounts create cash-lens-github-deployer \
   --display-name "Cash Lens GitHub deployer"
 ```
 
-Their emails will be:
-
-```txt
-cash-lens-runtime@YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com
-cash-lens-github-deployer@YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com
-```
-
-### 12D. Grant the required permissions
-
-Run:
+### 11D. Grant the required IAM permissions
 
 ```bash
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
@@ -376,7 +479,7 @@ gcloud iam service-accounts add-iam-policy-binding \
   --role="roles/iam.serviceAccountUser"
 ```
 
-If `BUILD_SERVICE_ACCOUNT` is the legacy Google-managed Cloud Build account:
+If the build service account is the legacy Google-managed Cloud Build account:
 
 ```txt
 PROJECT_NUMBER@cloudbuild.gserviceaccount.com
@@ -384,23 +487,7 @@ PROJECT_NUMBER@cloudbuild.gserviceaccount.com
 
 skip that last command.
 
-Why this matters:
-
-- Cloud Run source deploys use a build service account behind the scenes
-- that build account needs `roles/run.builder`
-- if the build account is user-managed, your GitHub deployer also needs permission to act as it
-
-Without that extra `act as service account` permission, the deploy can fail with:
-
-```txt
-caller does not have permission to act as service account
-```
-
-### 12E. Create Workload Identity for GitHub Actions
-
-This is what allows GitHub to deploy without storing a long-lived Google key in GitHub.
-
-Run:
+### 11E. Create Workload Identity for GitHub Actions
 
 ```bash
 gcloud iam workload-identity-pools create "github" \
@@ -416,11 +503,7 @@ gcloud iam workload-identity-pools providers create-oidc "cash-lens" \
   --issuer-uri="https://token.actions.githubusercontent.com" \
   --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
   --attribute-condition="assertion.repository=='${GITHUB_REPO}'"
-```
 
-Then allow your repo to use the deployer account:
-
-```bash
 gcloud iam service-accounts add-iam-policy-binding \
   "cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com" \
   --project "$PROJECT_ID" \
@@ -428,9 +511,7 @@ gcloud iam service-accounts add-iam-policy-binding \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/${GITHUB_REPO}"
 ```
 
-### 12F. Copy the Workload Identity provider name
-
-Run:
+### 11F. Copy the Workload Identity provider name
 
 ```bash
 gcloud iam workload-identity-pools providers describe "cash-lens" \
@@ -440,17 +521,19 @@ gcloud iam workload-identity-pools providers describe "cash-lens" \
   --format="value(name)"
 ```
 
+Copy the output.
+
 It will look like:
 
 ```txt
 projects/123456789/locations/global/workloadIdentityPools/github/providers/cash-lens
 ```
 
-Copy that value somewhere safe.
+## 12. Production secrets and GitHub configuration
 
-### 12G. Create the runtime secrets in Secret Manager
+### 12A. Create the Secret Manager secrets
 
-In Google Cloud Secret Manager, create these five secrets:
+Create these Google Secret Manager secrets:
 
 1. `cash-lens-database-url`
 2. `cash-lens-app-encryption-key`
@@ -460,16 +543,13 @@ In Google Cloud Secret Manager, create these five secrets:
 
 Use these values:
 
-- `cash-lens-database-url` = your Neon pooled URL
+- `cash-lens-database-url` = your Neon production pooled URL
 - `cash-lens-app-encryption-key` = your long random encryption key
-- `cash-lens-clerk-jwt-key` = the Clerk JWKS / JWT verification key for the same Clerk instance your frontend will use
-  - the CLI path is `clerk api /jwks`
+- `cash-lens-clerk-jwt-key` = the Clerk JWT verification key for the Clerk instance used by production
 - `cash-lens-plaid-client-id` = your Plaid client ID
 - `cash-lens-plaid-secret` = your Plaid secret
 
-### 12H. Give Cloud Run access to those secrets
-
-Run:
+### 12B. Give the runtime service account access to the secrets
 
 ```bash
 for SECRET_NAME in \
@@ -486,7 +566,7 @@ do
 done
 ```
 
-### 12I. Add the GitHub Actions secrets
+### 12C. Add GitHub Actions secrets
 
 Open:
 
@@ -498,13 +578,13 @@ Create these repository secrets:
 2. `GCP_WORKLOAD_IDENTITY_PROVIDER`
 3. `GCP_SERVICE_ACCOUNT`
 
-Set them to:
+Use:
 
 - `GCP_PROJECT_ID` = your Google Cloud project ID
-- `GCP_WORKLOAD_IDENTITY_PROVIDER` = the full provider name you copied in 12F
+- `GCP_WORKLOAD_IDENTITY_PROVIDER` = the full provider name from step 11F
 - `GCP_SERVICE_ACCOUNT` = `cash-lens-github-deployer@YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com`
 
-### 12J. Add the GitHub Actions variables
+### 12D. Add GitHub Actions variables
 
 Open:
 
@@ -519,45 +599,28 @@ Create these repository variables:
 
 Use:
 
-- `APP_BASE_URL`
-  - if you already know your Vercel production URL, use it
-  - otherwise temporarily use `http://localhost:3000`
-- `ALLOWED_ORIGINS`
-  - start with `http://localhost:3000`
-  - later change it to include your Vercel URL
-- `PLAID_ENV`
-  - set to `sandbox` first
-- `PLAID_WEBHOOK_URL`
-  - leave blank for the first backend deploy
-  - later change it to `https://YOUR-CLOUD-RUN-URL/plaid/webhook`
+- `APP_BASE_URL` = your future production frontend URL, or temporarily `http://localhost:3000`
+- `ALLOWED_ORIGINS` = `http://localhost:3000` at first, then later include the real Vercel production URL
+- `PLAID_ENV` = `sandbox` at first
+- `PLAID_WEBHOOK_URL` = leave blank until the backend has a real Cloud Run URL
 
-## 13. Make sure the backend workflow file is in GitHub
+## 13. First production backend deploy
 
-This repo now includes:
+The repo already contains the backend deploy workflow:
 
 - `.github/workflows/deploy-api.yml`
-- `apps/api/Dockerfile`
 
-Push those files:
+Push the branch you want merged, then merge to `main`.
 
-```bash
-cd /Users/yajvanravan/cashlens
-git add .
-git commit -m "Add GitHub-based Cloud Run backend deployment"
-git push origin main
-```
-
-## 14. Watch the first backend deployment in GitHub Actions
-
-Go to:
+After that, go to:
 
 - [https://github.com/yravan/cashlens/actions](https://github.com/yravan/cashlens/actions)
 
-Open the workflow named:
+Open:
 
 - `Deploy API to Cloud Run`
 
-If it succeeds, it will print the deployed Cloud Run URL.
+When it succeeds, copy the Cloud Run URL.
 
 It will look like:
 
@@ -565,275 +628,174 @@ It will look like:
 https://cash-lens-api-xxxxx-uc.a.run.app
 ```
 
-Copy that URL.
-
-## 15. Update the GitHub variables now that the backend URL exists
-
-Set:
+Then update the GitHub variable:
 
 - `PLAID_WEBHOOK_URL` = `https://YOUR-CLOUD-RUN-URL/plaid/webhook`
 
-If you also know your frontend URL already, set:
+If you already know the frontend production URL, also update:
 
-- `APP_BASE_URL` = your Vercel production URL
-- `ALLOWED_ORIGINS` = `https://YOUR-VERCEL-URL.vercel.app,http://localhost:3000`
+- `APP_BASE_URL`
+- `ALLOWED_ORIGINS`
 
-After updating variables, go back to GitHub Actions and rerun the backend workflow once.
+Then rerun the backend workflow once.
 
-## 16. Point Plaid to the backend webhook
+## 14. Production frontend setup on Vercel
 
-In Plaid:
-
-1. Open your Plaid app settings
-2. Find the webhook URL field
-3. Paste:
-   - `https://YOUR-CLOUD-RUN-URL/plaid/webhook`
-4. Save
-
-## 17. Deploy the frontend to Vercel
+### 14A. Create or import the Vercel project
 
 1. Go to [https://vercel.com](https://vercel.com)
 2. Click `Add New Project`
 3. Import the `cashlens` GitHub repo
-4. Set the root directory to:
+4. Set the **Root Directory** to:
 
 ```txt
 apps/web
 ```
 
-This is still correct even though the repo is now a monorepo.
-Vercel should deploy the frontend from `apps/web` while using the repo-root `pnpm-lock.yaml`.
+This stays correct even though the repo is now a monorepo.
 
-Also set the Install Command to:
+### 14B. Set the Vercel install command
+
+In Vercel, use:
 
 ```txt
 pnpm install --frozen-lockfile --ignore-scripts
 ```
 
-5. Add these Vercel environment variables:
+The repo also includes:
+
+- `apps/web/vercel.json`
+
+which sets that install command for the project.
+
+### 14C. Add Vercel environment variables
+
+For **Production**, add:
 
 - `API_BASE_URL` = your Cloud Run backend URL
 - `NEXT_PUBLIC_API_BASE_URL` = your Cloud Run backend URL
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` = your Clerk publishable key
-- `CLERK_SECRET_KEY` = your Clerk secret key
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` = your Clerk production publishable key when you are ready for real production auth
+- `CLERK_SECRET_KEY` = your Clerk production secret key when you are ready for real production auth
 - `ENABLE_CLERK` = `true`
+
+For **Preview**, you may also add the same variables if you want previews to build and render correctly.
 
 Important:
 
-- for Vercel `Development` and `Preview`, Clerk development keys are fine
-- for Vercel `Production`, use Clerk production keys once you create the Clerk production instance
-- the backend Secret Manager value `cash-lens-clerk-jwt-key` must always match the same Clerk instance as the frontend keys
+- doing that does **not** create a separate preview backend
+- preview is still not a sandbox environment
 
-6. Click Deploy
+### 14D. Deploy production
 
-When Vercel finishes, copy the site URL.
+After the Vercel variables are saved:
 
-## 18. Update the GitHub backend variables for the real frontend URL
+1. deploy the app
+2. copy the production URL
+3. update the GitHub backend variables:
+   - `APP_BASE_URL`
+   - `ALLOWED_ORIGINS`
+4. rerun the backend deploy so Cloud Run gets the new values
 
-Once Vercel gives you the real production URL, go back to GitHub repository variables and update:
+## 15. Clerk production setup
 
-- `APP_BASE_URL`
-- `ALLOWED_ORIGINS`
+### 15A. Development vs production
 
-Example:
+Use this rule:
 
-- `APP_BASE_URL` = `https://cashlens-yourteam.vercel.app`
-- `ALLOWED_ORIGINS` = `https://cashlens-yourteam.vercel.app,http://localhost:3000`
+- local = Clerk development
+- preview = only for review, not for isolated auth testing
+- production = Clerk production
 
-Then rerun the backend GitHub Actions workflow once so Cloud Run gets the new values.
+### 15B. Before real production launch
 
-## 19. Set Clerk allowed URLs
+Before you connect real accounts:
 
-In Clerk:
+1. create or switch to the Clerk **Production** instance
+2. add the real Vercel production URL in Clerk’s domain / allowed URL area
+3. put the Clerk production keys in the **Vercel Production** environment
+4. update the backend Secret Manager value `cash-lens-clerk-jwt-key` to match that same production Clerk instance
+5. rerun the backend workflow
 
-1. Open your application
-2. If you are still on the Clerk `Development` instance, keep using it for local and preview testing
-3. Before real production launch, create or switch to the Clerk `Production` instance
-4. In the Clerk production instance, add your Vercel production URL in the domains / allowed URL area
-5. Keep your local development URL available for local testing:
-   - `http://localhost:3000`
+## 16. Plaid webhook setup
 
-This matters because Clerk sign-in can fail if the deployed domain is not allowed.
+Once Cloud Run is deployed, set the Plaid webhook URL to:
 
-## 20. First production smoke test
+```txt
+https://YOUR-CLOUD-RUN-URL/plaid/webhook
+```
 
-After both deployments are live:
+Do this in two places:
 
-1. Open your Vercel site
-2. Sign in with Clerk
-3. Go to Settings
-4. Click the Plaid connect button
-5. Connect a sandbox bank
-6. Open Dashboard, Accounts, and Transactions
-7. Click manual sync
-8. Edit a transaction in the review panel
+1. the Plaid dashboard
+2. the GitHub variable `PLAID_WEBHOOK_URL`
 
-If those work, the MVP is live.
+## 17. Production smoke test
 
-## 21. What happens from now on
+After the backend and frontend are live:
 
-From this point forward:
+1. open the production Vercel URL
+2. sign in
+3. go to Settings
+4. open the Plaid flow
+5. connect a sandbox bank first
+6. open Dashboard, Accounts, and Transactions
+7. click manual sync
+8. edit a transaction in the review panel
 
-- frontend changes deploy through Vercel when GitHub updates
-- backend changes deploy through GitHub Actions when `apps/api` changes on `main`
+If those work, production hosting is healthy.
 
-That means you should no longer think of the backend deploy as "something you run from your laptop".
-The GitHub repo becomes the deployment source of truth.
+## 18. Checklist before connecting real accounts
 
-## 22. Switching Plaid from Sandbox to Production
+Do **not** connect real accounts until all of these are true:
 
-Only do this after sandbox testing feels stable.
+1. local sandbox testing feels stable
+2. production Vercel deploy works
+3. production Cloud Run deploy works
+4. Clerk production instance is in use for production
+5. `cash-lens-clerk-jwt-key` matches the production Clerk instance
+6. Plaid production credentials are ready
+7. GitHub variable `PLAID_ENV` is changed from `sandbox` to `production`
+8. backend deploy is rerun after those changes
 
-Before you do this, make sure the auth side is also production-ready:
+## 19. Switching Plaid from Sandbox to Production
 
-- the Vercel `Production` environment is using Clerk production keys
-- Secret Manager `cash-lens-clerk-jwt-key` has the Clerk JWT verification key for that same production instance
-- the Clerk production instance has your real Vercel domain configured
+Only do this after the checklist above is complete.
 
 Change:
 
-- the GitHub repository variable `PLAID_ENV` from `sandbox` to `production`
+- GitHub repository variable `PLAID_ENV` from `sandbox` to `production`
 
-Update the Secret Manager secret values for:
+Update these Secret Manager secrets if needed:
 
-- `cash-lens-clerk-jwt-key` if you are switching the backend from Clerk development to Clerk production
+- `cash-lens-clerk-jwt-key`
 - `cash-lens-plaid-client-id`
 - `cash-lens-plaid-secret`
 
-Then rerun the backend workflow.
+Then rerun the backend deployment workflow.
 
 Also verify in Plaid:
 
 - the `transactions` product is enabled in production
-- the webhook URL is still correct
+- the production webhook URL is correct
 
-## 23. Common problems and what they usually mean
+## 20. Read the Docs setup
 
-### Problem: GitHub Actions fails before deploy
+If you want to use the Read the Docs community service, the GitHub repo must be **public**.
 
-Usually means:
-
-- the Workload Identity provider value is wrong
-- the deployer service account email is wrong
-- IAM permissions have not propagated yet
-
-What to do:
-
-1. re-check the three GitHub repository secrets
-2. wait 5 minutes
-3. rerun the workflow
-
-### Problem: GitHub Actions says "caller does not have permission to act as service account"
-
-Usually means:
-
-- the GitHub deployer can start the deploy
-- but it cannot act as the build service account used by Cloud Run source deploys
-
-What to do:
-
-1. run `gcloud builds get-default-service-account --project "$PROJECT_ID"` and note the result
-2. confirm that build service account has `roles/run.builder` on the project
-3. if that build service account is user-managed, confirm `cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com` has `roles/iam.serviceAccountUser` on it
-4. confirm `cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com` also has `roles/iam.serviceAccountUser` on `cash-lens-runtime@$PROJECT_ID.iam.gserviceaccount.com`
-5. wait a few minutes for IAM propagation
-6. rerun the workflow
-
-### Problem: backend deploy works but the site cannot read data
-
-Usually means:
-
-- the Vercel API URL is wrong
-- `ALLOWED_ORIGINS` is wrong
-- the backend cannot read one of its secrets
-
-What to do:
-
-1. open the Cloud Run URL and check `/health`
-2. confirm `ALLOWED_ORIGINS`
-3. confirm the runtime service account has Secret Manager access
-4. confirm `cash-lens-clerk-jwt-key` exists and matches the Clerk instance used by Vercel
-
-### Problem: Plaid Link opens but connect fails
-
-Usually means:
-
-- wrong Plaid keys
-- wrong Plaid environment
-- missing or wrong webhook URL
-
-What to do:
-
-1. confirm `PLAID_ENV`
-2. confirm the secret values in Secret Manager
-3. confirm the Plaid dashboard webhook URL
-
-### Problem: sign-in works in the frontend but backend requests return 401
-
-Usually means:
-
-- Vercel and Cloud Run are using different Clerk instances
-- `cash-lens-clerk-jwt-key` does not match the Clerk keys on the frontend
-- the Clerk production domain setup is incomplete
-
-What to do:
-
-1. confirm the Vercel production env vars use the intended Clerk keys
-2. confirm Secret Manager `cash-lens-clerk-jwt-key` came from that same Clerk instance
-3. rerun the backend deploy workflow after updating the secret
-4. redeploy Vercel if you changed frontend Clerk keys
-
-### Problem: Clerk sign-in works locally but not in production
-
-Usually means:
-
-- Clerk allowed URLs do not include the Vercel domain
-- Vercel env vars were added after deploy and the site was not redeployed
-
-What to do:
-
-1. re-check Clerk allowed URLs
-2. re-check Vercel env vars
-3. trigger a Vercel redeploy
-
-## 24. Safe first-launch sequence
-
-If you want the least stressful path, do it in this order:
-
-1. local test
-2. backend GitHub deploy
-3. frontend Vercel deploy
-4. Clerk production sign-in test
-5. Plaid sandbox test
-6. one real end-to-end smoke test
-7. only then consider Plaid production
-
-## 25. Set up the docs site on Read the Docs
-
-This repo is now ready for a proper documentation site.
-
-The important repo files already exist:
+This repo is already prepared for Read the Docs with:
 
 - `.readthedocs.yaml`
 - `mkdocs.yml`
 - `docs/`
 
-### What this does
-
-Read the Docs can automatically build and host your documentation from GitHub.
-
-When docs change in the repo, Read the Docs can rebuild the docs site for you.
-
-### Test docs locally first
-
-Open Terminal:
+### 20A. Test docs locally first
 
 ```bash
 cd /Users/yajvanravan/cashlens
 make docs-build
 ```
 
-If you want a local preview site:
+If you want a local preview:
 
 ```bash
 cd /Users/yajvanravan/cashlens
@@ -844,44 +806,18 @@ Then open:
 
 - [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
-### Create the Read the Docs project
+### 20B. Create the Read the Docs project
 
 1. Go to [https://readthedocs.com](https://readthedocs.com)
 2. Sign in with GitHub
-3. Import a project from GitHub
-4. Choose the `cashlens` repo
-5. Finish the import flow
+3. Import the `cashlens` repo
+4. Finish the import flow
 
-Read the Docs should automatically detect the top-level `.readthedocs.yaml` file.
+Read the Docs should automatically detect the repo’s top-level `.readthedocs.yaml`.
 
-### What Read the Docs will use
+## 21. Changelog and versioning
 
-- Python `3.12`
-- `docs/requirements.txt`
-- `mkdocs.yml`
-
-### After the import
-
-1. Open the project in Read the Docs
-2. Wait for the first build
-3. Open the generated docs URL
-4. Confirm the docs homepage loads
-
-If the build fails, the first thing to check is whether `make docs-build` already works locally.
-
-### Optional later improvements
-
-After the docs site is live, you can later:
-
-- connect a custom docs domain
-- expose tagged versions of docs
-- rely on the docs CI check before releases
-
-## 26. How changelog and versioning now work
-
-This repo now has a built-in versioning and release-note system.
-
-### The important files
+The files that matter are:
 
 - `VERSION`
 - `CHANGELOG.md`
@@ -890,42 +826,94 @@ This repo now has a built-in versioning and release-note system.
 - `apps/web/package.json`
 - `packages/api-types/package.json`
 
-### What each one means
+The rule is:
 
-- `VERSION` is the repo-wide product version
-- `CHANGELOG.md` is the release history
-- the repo workspace package, backend package, frontend package, and shared type package versions should stay aligned with `VERSION`
+- keep all version files aligned
+- put new work in the `Unreleased` section of `CHANGELOG.md`
 
-### Normal day-to-day behavior
+When cutting a release:
 
-Put new notable work into the `Unreleased` section of `CHANGELOG.md`.
-
-### When you want to cut a release
-
-1. pick the new version number
-2. update `VERSION`
-3. update the root workspace version in `package.json`
-4. update the backend version in `apps/api/pyproject.toml`
-5. update the frontend version in `apps/web/package.json`
-6. update the shared type package version in `packages/api-types/package.json`
-7. move the shipped items from `Unreleased` into a new dated release section in `CHANGELOG.md`
-8. run:
+1. choose the new version number
+2. update all version files
+3. move shipped notes from `Unreleased` into a dated release section
+4. run:
 
 ```bash
 cd /Users/yajvanravan/cashlens
 make docs-build
 ```
 
-That command now checks:
+That verifies:
 
-- the version numbers agree
-- the changelog still has an `Unreleased` section
-- the docs still build correctly
+- version alignment
+- changelog structure
+- docs build health
 
-### Easy version-number rule
+## 22. Troubleshooting
 
-- patch: small fixes
-- minor: new features without a big break
-- major: breaking changes
+### Local: Clerk sign-in works badly or hangs
 
-If you are not sure, use a minor version.
+Usually means:
+
+- you used `127.0.0.1` instead of `localhost`
+- `CLERK_JWT_KEY` is missing in the backend
+- frontend and backend are not using matching Clerk development credentials
+
+### Local: backend returns 401 during Clerk testing
+
+Usually means:
+
+- `CLERK_JWT_KEY` is missing or wrong in `apps/api/.env`
+
+### GitHub Actions: backend deploy fails
+
+Usually means:
+
+- Workload Identity provider value is wrong
+- deployer service account email is wrong
+- IAM permissions have not propagated yet
+
+### GitHub Actions: “caller does not have permission to act as service account”
+
+Usually means:
+
+- the GitHub deployer can start the deploy
+- but it cannot act as the current build service account or runtime service account
+
+Re-check:
+
+- `gcloud builds get-default-service-account --project "$PROJECT_ID"`
+- `roles/run.builder`
+- `roles/iam.serviceAccountUser`
+
+### Vercel preview works, but it feels unsafe for testing real flows
+
+That is expected.
+
+Preview is not a separate backend environment in this repo today.
+
+### Production frontend works, but backend requests return 401
+
+Usually means:
+
+- Vercel and Cloud Run are using different Clerk instances
+- `cash-lens-clerk-jwt-key` does not match the frontend Clerk keys
+
+### Plaid Link opens but account connection fails
+
+Usually means:
+
+- wrong Plaid keys
+- wrong `PLAID_ENV`
+- wrong webhook URL
+
+## 23. The shortest safe operating loop
+
+If you want the simplest ongoing workflow, use this:
+
+1. build and test locally
+2. do Plaid sandbox testing locally
+3. use Vercel previews only for frontend review
+4. merge to `main`
+5. let Cloud Run and Vercel handle production deploys
+6. only use production for the real app

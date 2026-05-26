@@ -33,6 +33,10 @@ This is the repo-specific operations skill for Cash Lens.
 - Backend package manager: `uv`
 - Local and hosted setup guide: `deployment instructions.md`
 - Historical context: `implementation logs/`
+- Current environment model:
+  - local = development and Plaid sandbox
+  - preview = frontend review only, not a true hosted staging backend
+  - production = the real hosted environment
 
 ## Common workflows
 

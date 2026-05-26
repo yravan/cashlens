@@ -1,31 +1,38 @@
 # Deployment Overview
 
-Cash Lens has two production deployment targets:
+Cash Lens currently uses a simple environment model:
+
+- **Local**: day-to-day development and Plaid sandbox testing
+- **Preview**: Vercel PR previews for UI review only
+- **Production**: Vercel frontend plus Cloud Run backend
+
+## Important operational truth
+
+There is currently **one hosted backend**.
+
+That means:
+
+- local is where development and sandbox testing should happen
+- preview is useful, but not a true hosted staging environment
+- production is the only hosted backend environment
+
+## Hosted production targets
 
 - **Frontend**: Vercel
 - **Backend**: Google Cloud Run via GitHub Actions
 
 ## Source-of-truth guide
 
-The detailed non-technical deployment walkthrough lives in the repository file below:
+The full non-technical walkthrough lives here:
 
 - [`deployment instructions.md`](https://github.com/yravan/cashlens/blob/main/deployment%20instructions.md)
 
-That guide covers:
+That guide now covers:
 
-- GitHub setup
-- Neon database setup
-- Clerk setup
-- Plaid setup
-- Google Cloud and Cloud Run setup
-- Vercel deployment
-- frontend and backend environment variables
-- production smoke testing
-- Read the Docs setup for documentation hosting
-
-## Operational expectation
-
-- `main` should stay deployable.
-- Backend deploys are triggered from GitHub, not from an individual laptop.
-- Frontend deploys come from Vercel’s Git integration.
-- Documentation builds should stay green in CI before enabling Read the Docs on the repo.
+- the local / preview / production environment model
+- local setup for demo mode and full sandbox mode
+- Cloud Run backend setup
+- Vercel production setup
+- Clerk and Plaid production cutover
+- Read the Docs setup
+- changelog and versioning basics
