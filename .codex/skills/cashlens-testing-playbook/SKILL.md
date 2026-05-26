@@ -18,6 +18,7 @@ This skill keeps tests stable while the product keeps evolving.
 - Prefer roles, labels, and business-visible copy.
 - Use a small number of stable `data-testid` attributes only for high-value controls whose wording may evolve.
 - Never assert layout dimensions, DOM depth, Tailwind class names, or animation details unless the bug is explicitly visual.
+- For Playwright, assert user outcomes like counts, saved values, navigation, and visible states instead of exact duplicated labels or card ordering.
 
 ## Backend test rules
 
@@ -30,3 +31,4 @@ This skill keeps tests stable while the product keeps evolving.
 - Database and migration work should add upgrade and re-run safety coverage.
 - Dedup and backfill work should prove “no double-application” behavior.
 - LLM features should test structure and guardrails instead of exact generated wording.
+- End-to-end tests must boot against isolated state. Do not point Playwright at a shared local database or a long-lived manually started server when deterministic app-owned web servers are practical.

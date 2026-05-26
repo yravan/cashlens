@@ -11,11 +11,12 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: ".venv/bin/python -m uvicorn cash_lens_api.main:app --host 127.0.0.1 --port 8100",
+      command:
+        "sh -c 'rm -f /private/tmp/cashlens-e2e.db /private/tmp/cashlens-e2e.db-shm /private/tmp/cashlens-e2e.db-wal && exec .venv/bin/python -m uvicorn cash_lens_api.main:app --host 127.0.0.1 --port 8100'",
       cwd: "../api",
       url: "http://127.0.0.1:8100/health",
       timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       env: {
         APP_BASE_URL: "http://127.0.0.1:3100",
         ALLOWED_ORIGINS: "http://127.0.0.1:3100",
@@ -33,7 +34,7 @@ export default defineConfig({
       cwd: ".",
       url: "http://127.0.0.1:3100/dashboard",
       timeout: 120_000,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       env: {
         API_BASE_URL: "http://127.0.0.1:8100",
         ENABLE_CLERK: "false",

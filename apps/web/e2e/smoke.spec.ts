@@ -9,8 +9,11 @@ test("demo workspace loads and can add a demo institution from settings", async 
   await page.getByRole("link", { name: /settings/i }).click();
   await expect(page.getByRole("heading", { name: "Workspace settings" })).toBeVisible();
 
+  const syncButtons = page.getByTestId("manual-sync-button");
+  const initialInstitutionCount = await syncButtons.count();
+
   await page.getByTestId("plaid-connect-button").click();
-  await expect(page.getByText("Demo Sandbox Bank", { exact: true })).toBeVisible();
+  await expect(syncButtons).toHaveCount(initialInstitutionCount + 1);
 });
 
 test("transaction review saves using labels instead of brittle selectors", async ({ page }) => {

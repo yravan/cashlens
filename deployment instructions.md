@@ -245,7 +245,7 @@ Open a second Terminal window:
 
 ```bash
 cd /Users/yajvanravan/cashlens/apps/web
-pnpm install
+pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
 pnpm exec next dev --webpack --hostname localhost --port 3000
 ```
 

@@ -44,7 +44,7 @@ uv run uvicorn cash_lens_api.main:app --host 127.0.0.1 --port 8000
 
 ```bash
 cd /Users/yajvanravan/cashlens/apps/web
-pnpm install --frozen-lockfile --trust-lockfile
+pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
 pnpm exec next dev --webpack --hostname 127.0.0.1 --port 3000
 ```
 
