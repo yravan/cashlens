@@ -14,6 +14,7 @@ This repo uses pull-request-first development and keeps repeated workflows in re
 - Backend: `make api-test`
 - Frontend unit/type/lint: `make web-test`
 - Browser smoke: `make e2e`
+- Docs and version sync: `make docs-build`
 - Full stack before merge when touching cross-app flows: `make ci`
 
 ## Testing philosophy
@@ -27,3 +28,4 @@ This repo uses pull-request-first development and keeps repeated workflows in re
 - Backend package management stays on `uv`.
 - New CI checks should map cleanly to branch-protection required checks.
 - Production auth and secret handling must stay server-verified; do not reintroduce spoofable header-based identity.
+- Release work should update `VERSION`, `CHANGELOG.md`, and any surfaced app package versions together.

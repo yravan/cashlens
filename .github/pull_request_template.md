@@ -8,6 +8,7 @@
 - [ ] `make api-test`
 - [ ] `make web-test`
 - [ ] `make e2e` when user-facing or full-stack behavior changed
+- [ ] `make docs-build` when docs, versioning, release, or workflow files changed
 - [ ] I updated docs, implementation logs, or skills if the workflow changed
 
 ## Risk check

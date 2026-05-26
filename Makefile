@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 UV_CACHE_DIR ?= /private/tmp/uv-cache
 
-.PHONY: bootstrap api-bootstrap api-test web-install web-test web-browsers e2e ci
+.PHONY: bootstrap api-bootstrap api-test web-install web-test web-browsers e2e docs-build docs-serve ci
 
 bootstrap: api-bootstrap web-install
 
@@ -27,4 +27,11 @@ web-browsers: web-install
 e2e: api-bootstrap web-install web-browsers
 	cd apps/web && pnpm e2e
 
-ci: api-test web-test e2e
+docs-build:
+	bash ./scripts/check-version-sync.sh
+	uv run --with-requirements docs/requirements.txt mkdocs build --strict
+
+docs-serve:
+	uv run --with-requirements docs/requirements.txt mkdocs serve
+
+ci: api-test web-test e2e docs-build

@@ -8,6 +8,8 @@ Cash Lens is a ledger-first personal finance MVP with:
 - `spec history`: frozen spec snapshots from the planning docs
 - `implementation logs`: technical build notes for each major implementation step
 - `.codex/skills`: repo-native agent skills for repeated development workflows
+- `docs`: MkDocs-based documentation source for local builds and Read the Docs hosting
+- `CHANGELOG.md` and `VERSION`: release-history and versioning source of truth
 
 ## What is implemented
 
@@ -25,6 +27,7 @@ Cash Lens is a ledger-first personal finance MVP with:
 - Required GitHub checks live in `.github/workflows/ci.yml`.
 - Backend CD remains in `.github/workflows/deploy-api.yml`.
 - Vercel continues to handle frontend CD from `main`.
+- Documentation is built from `docs/` with MkDocs and can be hosted on Read the Docs using `.readthedocs.yaml`.
 - Agent workflow conventions live in [AGENTS.md](/Users/yajvanravan/cashlens/AGENTS.md) and the repo skills under [/.codex/skills](/Users/yajvanravan/cashlens/.codex/skills).
 
 ## Local development
@@ -52,6 +55,7 @@ cd /Users/yajvanravan/cashlens
 make api-test
 make web-test
 make e2e
+make docs-build
 ```
 
 ## Verification
@@ -59,7 +63,8 @@ make e2e
 - `make api-test` runs `ruff` and `pytest` for the FastAPI app.
 - `make web-test` runs lint, typecheck, Vitest, and the production Next build.
 - `make e2e` runs Playwright smoke coverage against local backend and frontend servers in demo mode.
-- Pull requests must satisfy the GitHub `api`, `web`, and `e2e` checks before merge.
+- `make docs-build` validates the MkDocs documentation and version sync rules.
+- Pull requests must satisfy the GitHub `api`, `web`, `e2e`, and `docs` checks before merge.
 
 - Backend imports and endpoint smoke tests passed with `fastapi.testclient`
 - Frontend lint passed with `pnpm lint`
@@ -76,3 +81,4 @@ See the engineering guides for long-term development conventions:
 
 - [Testing strategy](/Users/yajvanravan/cashlens/docs/engineering/testing-strategy.md)
 - [Pull request workflow](/Users/yajvanravan/cashlens/docs/engineering/pull-request-workflow.md)
+- [Versioning and releases](/Users/yajvanravan/cashlens/docs/versioning.md)

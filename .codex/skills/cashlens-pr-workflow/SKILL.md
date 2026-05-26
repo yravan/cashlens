@@ -21,7 +21,7 @@ Use this skill whenever work in Cash Lens is headed toward a merge.
 
 ## Repo-specific expectations
 
-- Required GitHub checks are `api`, `web`, and `e2e`.
+- Required GitHub checks are `api`, `web`, `e2e`, and `docs`.
 - The PR template is part of the workflow; fill in validation and risk notes.
 - Do not bypass failing checks by weakening assertions without documenting why.
 

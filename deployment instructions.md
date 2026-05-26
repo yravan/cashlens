@@ -798,3 +798,121 @@ If you want the least stressful path, do it in this order:
 5. Plaid sandbox test
 6. one real end-to-end smoke test
 7. only then consider Plaid production
+
+## 25. Set up the docs site on Read the Docs
+
+This repo is now ready for a proper documentation site.
+
+The important repo files already exist:
+
+- `.readthedocs.yaml`
+- `mkdocs.yml`
+- `docs/`
+
+### What this does
+
+Read the Docs can automatically build and host your documentation from GitHub.
+
+When docs change in the repo, Read the Docs can rebuild the docs site for you.
+
+### Test docs locally first
+
+Open Terminal:
+
+```bash
+cd /Users/yajvanravan/cashlens
+make docs-build
+```
+
+If you want a local preview site:
+
+```bash
+cd /Users/yajvanravan/cashlens
+make docs-serve
+```
+
+Then open:
+
+- [http://127.0.0.1:8000](http://127.0.0.1:8000)
+
+### Create the Read the Docs project
+
+1. Go to [https://readthedocs.com](https://readthedocs.com)
+2. Sign in with GitHub
+3. Import a project from GitHub
+4. Choose the `cashlens` repo
+5. Finish the import flow
+
+Read the Docs should automatically detect the top-level `.readthedocs.yaml` file.
+
+### What Read the Docs will use
+
+- Python `3.12`
+- `docs/requirements.txt`
+- `mkdocs.yml`
+
+### After the import
+
+1. Open the project in Read the Docs
+2. Wait for the first build
+3. Open the generated docs URL
+4. Confirm the docs homepage loads
+
+If the build fails, the first thing to check is whether `make docs-build` already works locally.
+
+### Optional later improvements
+
+After the docs site is live, you can later:
+
+- connect a custom docs domain
+- expose tagged versions of docs
+- rely on the docs CI check before releases
+
+## 26. How changelog and versioning now work
+
+This repo now has a built-in versioning and release-note system.
+
+### The important files
+
+- `VERSION`
+- `CHANGELOG.md`
+- `apps/api/pyproject.toml`
+- `apps/web/package.json`
+
+### What each one means
+
+- `VERSION` is the repo-wide product version
+- `CHANGELOG.md` is the release history
+- the backend and frontend package versions should stay aligned with `VERSION`
+
+### Normal day-to-day behavior
+
+Put new notable work into the `Unreleased` section of `CHANGELOG.md`.
+
+### When you want to cut a release
+
+1. pick the new version number
+2. update `VERSION`
+3. update the backend version in `apps/api/pyproject.toml`
+4. update the frontend version in `apps/web/package.json`
+5. move the shipped items from `Unreleased` into a new dated release section in `CHANGELOG.md`
+6. run:
+
+```bash
+cd /Users/yajvanravan/cashlens
+make docs-build
+```
+
+That command now checks:
+
+- the version numbers agree
+- the changelog still has an `Unreleased` section
+- the docs still build correctly
+
+### Easy version-number rule
+
+- patch: small fixes
+- minor: new features without a big break
+- major: breaking changes
+
+If you are not sure, use a minor version.

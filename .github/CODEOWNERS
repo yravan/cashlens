@@ -4,5 +4,9 @@
 /apps/web/ @yravan
 /.github/ @yravan
 /.codex/skills/ @yravan
-/docs/engineering/ @yravan
+/docs/ @yravan
+/mkdocs.yml @yravan
+/.readthedocs.yaml @yravan
+/CHANGELOG.md @yravan
+/VERSION @yravan
 /deployment instructions.md @yravan

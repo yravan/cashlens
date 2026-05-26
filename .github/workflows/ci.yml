@@ -136,3 +136,25 @@ jobs:
           path: |
             apps/web/playwright-report
             apps/web/test-results
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Check version sync
+        run: bash ./scripts/check-version-sync.sh
+
+      - name: Build docs
+        run: uv run --with-requirements docs/requirements.txt mkdocs build --strict
