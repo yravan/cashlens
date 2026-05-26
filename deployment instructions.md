@@ -604,6 +604,12 @@ apps/web
 This is still correct even though the repo is now a monorepo.
 Vercel should deploy the frontend from `apps/web` while using the repo-root `pnpm-lock.yaml`.
 
+Also set the Install Command to:
+
+```txt
+pnpm install --frozen-lockfile --trust-lockfile --ignore-scripts
+```
+
 5. Add these Vercel environment variables:
 
 - `API_BASE_URL` = your Cloud Run backend URL
