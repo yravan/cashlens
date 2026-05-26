@@ -1,7 +1,7 @@
 {
   "name": "@cashlens/api-types",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.0",
   "type": "module",
   "sideEffects": false,
   "types": "./src/index.ts",

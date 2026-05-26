@@ -6,7 +6,7 @@ The canonical changelog lives in the repository root:
 
 ## Current release status
 
-- Current repo version: `0.1.0`
+- Current repo version: `0.0.0`
 - Active changelog section: `Unreleased`
 
 ## How to use it
