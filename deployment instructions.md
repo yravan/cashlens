@@ -268,12 +268,27 @@ Run:
 export PROJECT_ID="YOUR_GCP_PROJECT_ID"
 export PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
 export GITHUB_REPO="yravan/cashlens"
+export BUILD_SERVICE_ACCOUNT="$(gcloud builds get-default-service-account --project "$PROJECT_ID")"
 echo "$PROJECT_ID"
 echo "$PROJECT_NUMBER"
 echo "$GITHUB_REPO"
+echo "$BUILD_SERVICE_ACCOUNT"
 ```
 
 If your GitHub repo is under a different owner or has a different name, replace `yravan/cashlens`.
+
+`BUILD_SERVICE_ACCOUNT` is important because Google Cloud does not always use the same default build account shape.
+In many projects it will be the Compute Engine default service account:
+
+```txt
+PROJECT_NUMBER-compute@developer.gserviceaccount.com
+```
+
+but some projects still use the legacy Cloud Build service account:
+
+```txt
+PROJECT_NUMBER@cloudbuild.gserviceaccount.com
+```
 
 ### 12B. Enable the Google Cloud APIs
 
@@ -341,8 +356,44 @@ gcloud iam service-accounts add-iam-policy-binding \
   --role="roles/iam.serviceAccountUser"
 
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --member="serviceAccount:${BUILD_SERVICE_ACCOUNT}" \
   --role="roles/run.builder"
+```
+
+If `BUILD_SERVICE_ACCOUNT` is a user-managed service account such as:
+
+```txt
+PROJECT_NUMBER-compute@developer.gserviceaccount.com
+```
+
+also run:
+
+```bash
+gcloud iam service-accounts add-iam-policy-binding \
+  "${BUILD_SERVICE_ACCOUNT}" \
+  --project "$PROJECT_ID" \
+  --member="serviceAccount:cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+```
+
+If `BUILD_SERVICE_ACCOUNT` is the legacy Google-managed Cloud Build account:
+
+```txt
+PROJECT_NUMBER@cloudbuild.gserviceaccount.com
+```
+
+skip that last command.
+
+Why this matters:
+
+- Cloud Run source deploys use a build service account behind the scenes
+- that build account needs `roles/run.builder`
+- if the build account is user-managed, your GitHub deployer also needs permission to act as it
+
+Without that extra `act as service account` permission, the deploy can fail with:
+
+```txt
+caller does not have permission to act as service account
 ```
 
 ### 12E. Create Workload Identity for GitHub Actions
@@ -644,6 +695,22 @@ What to do:
 1. re-check the three GitHub repository secrets
 2. wait 5 minutes
 3. rerun the workflow
+
+### Problem: GitHub Actions says "caller does not have permission to act as service account"
+
+Usually means:
+
+- the GitHub deployer can start the deploy
+- but it cannot act as the build service account used by Cloud Run source deploys
+
+What to do:
+
+1. run `gcloud builds get-default-service-account --project "$PROJECT_ID"` and note the result
+2. confirm that build service account has `roles/run.builder` on the project
+3. if that build service account is user-managed, confirm `cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com` has `roles/iam.serviceAccountUser` on it
+4. confirm `cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com` also has `roles/iam.serviceAccountUser` on `cash-lens-runtime@$PROJECT_ID.iam.gserviceaccount.com`
+5. wait a few minutes for IAM propagation
+6. rerun the workflow
 
 ### Problem: backend deploy works but the site cannot read data
 
