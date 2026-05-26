@@ -11,8 +11,10 @@ Use this skill when release metadata changes, even if no code ships.
 
 - `VERSION`
 - `CHANGELOG.md`
+- `package.json`
 - `apps/api/pyproject.toml`
 - `apps/web/package.json`
+- `packages/api-types/package.json`
 
 ## Default workflow
 
@@ -25,4 +27,5 @@ Use this skill when release metadata changes, even if no code ships.
 ## Notes
 
 - Do not bump only one app version unless the repo intentionally moves away from a single product version.
+- In the monorepo, the root workspace package and shared TypeScript package are part of the same product version contract.
 - Prefer small, readable changelog entries over commit-message dumps.
