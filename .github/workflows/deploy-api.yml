@@ -51,10 +51,12 @@ jobs:
             PLAID_WEBHOOK_URL=${{ vars.PLAID_WEBHOOK_URL }}
             DEMO_MODE=false
             SEED_DEMO_DATA=false
+            VERIFY_PLAID_WEBHOOKS=true
           secrets_update_strategy: overwrite
           secrets: |
             DATABASE_URL=cash-lens-database-url:latest
             APP_ENCRYPTION_KEY=cash-lens-app-encryption-key:latest
+            CLERK_JWT_KEY=cash-lens-clerk-jwt-key:latest
             PLAID_CLIENT_ID=cash-lens-plaid-client-id:latest
             PLAID_SECRET=cash-lens-plaid-secret:latest
           flags: >-

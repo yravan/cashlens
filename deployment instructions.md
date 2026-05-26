@@ -450,17 +450,20 @@ Copy that value somewhere safe.
 
 ### 12G. Create the runtime secrets in Secret Manager
 
-In Google Cloud Secret Manager, create these four secrets:
+In Google Cloud Secret Manager, create these five secrets:
 
 1. `cash-lens-database-url`
 2. `cash-lens-app-encryption-key`
-3. `cash-lens-plaid-client-id`
-4. `cash-lens-plaid-secret`
+3. `cash-lens-clerk-jwt-key`
+4. `cash-lens-plaid-client-id`
+5. `cash-lens-plaid-secret`
 
 Use these values:
 
 - `cash-lens-database-url` = your Neon pooled URL
 - `cash-lens-app-encryption-key` = your long random encryption key
+- `cash-lens-clerk-jwt-key` = the Clerk JWKS / JWT verification key for the same Clerk instance your frontend will use
+  - the CLI path is `clerk api /jwks`
 - `cash-lens-plaid-client-id` = your Plaid client ID
 - `cash-lens-plaid-secret` = your Plaid secret
 
@@ -472,6 +475,7 @@ Run:
 for SECRET_NAME in \
   cash-lens-database-url \
   cash-lens-app-encryption-key \
+  cash-lens-clerk-jwt-key \
   cash-lens-plaid-client-id \
   cash-lens-plaid-secret
 do
@@ -605,6 +609,12 @@ apps/web
 - `CLERK_SECRET_KEY` = your Clerk secret key
 - `ENABLE_CLERK` = `true`
 
+Important:
+
+- for Vercel `Development` and `Preview`, Clerk development keys are fine
+- for Vercel `Production`, use Clerk production keys once you create the Clerk production instance
+- the backend Secret Manager value `cash-lens-clerk-jwt-key` must always match the same Clerk instance as the frontend keys
+
 6. Click Deploy
 
 When Vercel finishes, copy the site URL.
@@ -628,9 +638,10 @@ Then rerun the backend GitHub Actions workflow once so Cloud Run gets the new va
 In Clerk:
 
 1. Open your application
-2. Find the URLs / redirect / domains section
-3. Add your Vercel production URL
-4. Add your local URL:
+2. If you are still on the Clerk `Development` instance, keep using it for local and preview testing
+3. Before real production launch, create or switch to the Clerk `Production` instance
+4. In the Clerk production instance, add your Vercel production URL in the domains / allowed URL area
+5. Keep your local development URL available for local testing:
    - `http://localhost:3000`
 
 This matters because Clerk sign-in can fail if the deployed domain is not allowed.
@@ -664,12 +675,19 @@ The GitHub repo becomes the deployment source of truth.
 
 Only do this after sandbox testing feels stable.
 
+Before you do this, make sure the auth side is also production-ready:
+
+- the Vercel `Production` environment is using Clerk production keys
+- Secret Manager `cash-lens-clerk-jwt-key` has the Clerk JWT verification key for that same production instance
+- the Clerk production instance has your real Vercel domain configured
+
 Change:
 
 - the GitHub repository variable `PLAID_ENV` from `sandbox` to `production`
 
 Update the Secret Manager secret values for:
 
+- `cash-lens-clerk-jwt-key` if you are switching the backend from Clerk development to Clerk production
 - `cash-lens-plaid-client-id`
 - `cash-lens-plaid-secret`
 
@@ -725,6 +743,7 @@ What to do:
 1. open the Cloud Run URL and check `/health`
 2. confirm `ALLOWED_ORIGINS`
 3. confirm the runtime service account has Secret Manager access
+4. confirm `cash-lens-clerk-jwt-key` exists and matches the Clerk instance used by Vercel
 
 ### Problem: Plaid Link opens but connect fails
 
@@ -739,6 +758,21 @@ What to do:
 1. confirm `PLAID_ENV`
 2. confirm the secret values in Secret Manager
 3. confirm the Plaid dashboard webhook URL
+
+### Problem: sign-in works in the frontend but backend requests return 401
+
+Usually means:
+
+- Vercel and Cloud Run are using different Clerk instances
+- `cash-lens-clerk-jwt-key` does not match the Clerk keys on the frontend
+- the Clerk production domain setup is incomplete
+
+What to do:
+
+1. confirm the Vercel production env vars use the intended Clerk keys
+2. confirm Secret Manager `cash-lens-clerk-jwt-key` came from that same Clerk instance
+3. rerun the backend deploy workflow after updating the secret
+4. redeploy Vercel if you changed frontend Clerk keys
 
 ### Problem: Clerk sign-in works locally but not in production
 

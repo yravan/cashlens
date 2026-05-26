@@ -13,6 +13,7 @@ dependencies = [
     "fastapi>=0.136.3",
     "httpx>=0.28.1",
     "plaid-python>=39.2.0",
+    "pyjwt>=2.10.1",
     "psycopg2-binary>=2.9.11",
     "pydantic-settings>=2.14.1",
     "python-dateutil>=2.9.0.post0",

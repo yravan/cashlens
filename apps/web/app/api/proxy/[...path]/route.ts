@@ -19,8 +19,11 @@ async function handleProxy(request: Request) {
     if (!session.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    headers.set("x-external-auth-user-id", session.userId);
-    headers.set("x-user-email", `${session.userId}@cashlens.local`);
+    const token = await session.getToken();
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    headers.set("authorization", `Bearer ${token}`);
   } else {
     headers.set("x-demo-user-email", DEMO_USER_EMAIL);
   }

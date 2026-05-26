@@ -1,6 +1,8 @@
 import "server-only";
 
-import { API_BASE_URL } from "@/lib/runtime";
+import { auth } from "@clerk/nextjs/server";
+
+import { API_BASE_URL, DEMO_USER_EMAIL, clerkEnabled } from "@/lib/runtime";
 import { getAppSession } from "@/lib/session";
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -9,10 +11,17 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   headers.set("accept", "application/json");
 
   if (session.mode === "demo") {
-    headers.set("x-demo-user-email", session.email);
+    headers.set("x-demo-user-email", DEMO_USER_EMAIL);
   } else {
-    headers.set("x-external-auth-user-id", session.userId);
-    headers.set("x-user-email", session.email);
+    if (!clerkEnabled) {
+      throw new Error("Clerk is not enabled for this environment.");
+    }
+    const authState = await auth();
+    const token = await authState.getToken();
+    if (!token) {
+      throw new Error("Clerk session token was not available for the backend request.");
+    }
+    headers.set("authorization", `Bearer ${token}`);
   }
 
   if (init?.body && !headers.has("content-type")) {

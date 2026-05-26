@@ -1,11 +1,12 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cash_lens_api.core.auth import get_current_user
 from cash_lens_api.core.config import Settings, get_settings
+from cash_lens_api.core.security import verify_plaid_webhook
 from cash_lens_api.db import get_db
 from cash_lens_api.models import PlaidItem, User
 from cash_lens_api.schemas import ExchangePublicTokenRequest, ExchangePublicTokenResponse, LinkTokenResponse, MessageResponse, SyncResponse, WebhookPayload
@@ -40,11 +41,14 @@ def exchange_plaid_public_token(
 
 
 @router.post("/plaid/webhook", response_model=MessageResponse)
-def plaid_webhook(
-    payload: WebhookPayload,
+async def plaid_webhook(
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> MessageResponse:
+    raw_body = await request.body()
+    verify_plaid_webhook(raw_body, request.headers.get("plaid-verification"), settings)
+    payload = WebhookPayload.model_validate_json(raw_body)
     handle_webhook(db, payload, settings)
     return MessageResponse(status="ok", message="Webhook processed.")
 
