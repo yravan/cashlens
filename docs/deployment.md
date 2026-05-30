@@ -1,33 +1,32 @@
 # Deployment Overview
 
-Cash Lens should now be thought about as four environments:
+Cash Lens now documents deployment as a **two-stage hosted rollout**:
+
+1. **First deployment** = staging
+2. **Second deployment** = production
+
+The supporting environments are:
 
 - **Local**: day-to-day development and Plaid sandbox testing
 - **Preview**: Vercel PR previews for quick frontend review
-- **Staging**: the current hosted deployment you already have
-- **Production**: a second, separate hardened deployment for real financial data
+- **Staging**: the first hosted deployment
+- **Production**: the second, separate hardened deployment
 
-## Important operational truth
+## Core idea
 
-The repo currently has one hosted deploy path in `.github/workflows/deploy-api.yml`.
+The first hosted deployment should be safe for:
 
-For now, treat that hosted path as **staging**.
+- sandbox Plaid testing
+- hosted QA
+- deployment validation
 
-The production environment in this model is **not** “the same deployment with flipped secrets.” It should become:
+The second hosted deployment should be the environment for:
 
-- a second Cloud Run service
-- a second Vercel project
-- a second database
-- a second secret set
 - Clerk production
 - Plaid production
+- real personal financial data
 
-## Safe environment usage
-
-- use **local** for implementation work
-- use **preview** for UI review
-- use **staging** for hosted non-production testing
-- use **production** only after it is fully separated and hardened
+Those two hosted environments should not share secrets or a database.
 
 ## Source-of-truth guide
 
@@ -35,10 +34,9 @@ The full walkthrough lives here:
 
 - [`deployment instructions.md`](https://github.com/yravan/cashlens/blob/main/deployment%20instructions.md)
 
-That guide now covers:
+That guide now walks through:
 
-- local / preview / staging / production
-- how to reinterpret the existing deployment as staging
-- what must be separate before production holds personal data
-- the second-deployment production rollout path
+- Stage 0 local setup
+- Stage 1 first deployment as staging
+- Stage 2 second deployment as production
 - docs hosting, versioning, and troubleshooting

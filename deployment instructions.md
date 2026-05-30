@@ -1,199 +1,76 @@
-# Cash Lens Staging and Production Deployment Guide
-
-This guide assumes:
-
-- you already have **one hosted deployment**
-- that current hosted deployment should now be treated as **staging**
-- you want to add a **second, separate production deployment** before putting personal financial data into the app
+# Cash Lens Zero-to-One Deployment Guide
 
 This guide is written for a non-technical Mac user.
 
-## 1. The short answer
+It assumes you want to build Cash Lens in **two hosted stages**:
 
-You do **not** need to throw away your current deployment.
+1. make the **first deployment**
+   - this becomes your **staging** environment
+   - safe for sandbox testing and hosted QA
+2. make the **second deployment**
+   - this becomes your **production** environment
+   - this is the hardened environment for your real personal financial data
 
-Instead:
+That is the safest way to go from zero to one.
 
-- keep your current hosted app as **staging**
-- keep using Vercel branch and pull-request URLs as **preview**
-- create a **second, separate production stack** for real data
+## 1. The short version
 
-That second production stack should have its **own**:
+You are building four environments over time:
 
-- frontend deployment
-- backend service
+| Environment | Purpose | Use real personal data? |
+| --- | --- | --- |
+| `local` | coding and debugging on your Mac | `No` |
+| `preview` | temporary Vercel branch / PR links | `No` |
+| `staging` | first hosted deployment | `No` |
+| `production` | second hosted deployment | `Yes` |
+
+The order is:
+
+1. set up local development
+2. create the first hosted deployment
+3. treat that first hosted deployment as staging
+4. create a second, separate production deployment
+
+## 2. The security rule that matters most
+
+When you reach production, staging and production should **not** share:
+
 - database
-- secrets
-- Clerk production instance
-- Plaid production credentials
+- encryption key
+- Plaid secrets
+- Clerk verification key
+- Cloud Run service
+- Vercel project
 
-That separation is the important security boundary.
+That separation is what protects you when production starts holding your real data.
 
-## 2. The environment model
+## 3. What the repo supports today
 
-Cash Lens should now be thought about in four environments:
+Today the repo already has:
 
-| Environment | What it is for | Where it runs | Auth | Plaid | Database | Real personal data? |
-| --- | --- | --- | --- | --- | --- | --- |
-| `local` | day-to-day development and debugging | your Mac | Clerk development or demo mode | Sandbox | local SQLite or optional Neon dev URL | `No` |
-| `preview` | temporary branch / PR review links | Vercel preview URLs | same frontend wiring as staging unless you build something fancier later | do not rely on it for Plaid testing | should be treated as non-isolated | `No` |
-| `staging` | your current hosted app | Vercel + Cloud Run | non-production / test auth setup | Sandbox | staging database | `No` |
-| `production` | real live app | second Vercel project + second Cloud Run service | Clerk production | Plaid production | production database | `Yes` |
+- one frontend app in `apps/web`
+- one backend app in `apps/api`
+- one backend deploy workflow in `.github/workflows/deploy-api.yml`
 
-## 3. What you already have
+That existing backend deploy path should be treated as the basis for the **first hosted deployment**, which becomes staging.
 
-Today, the repo already supports a **single hosted backend deployment workflow**:
+## 4. Stage 0: local setup
 
-- backend deploy workflow: `.github/workflows/deploy-api.yml`
-- frontend deploy target: Vercel project for `apps/web`
+Do this once before any hosted deployment.
 
-For this guide, treat that existing hosted deployment as **staging**.
+### 4A. Accounts you need
 
-That means:
+Make sure you have accounts for:
 
-- the current Cloud Run service is your staging backend
-- the current Vercel production URL is your staging frontend
-- any current sandbox or development credentials belong to staging
+1. GitHub
+2. Vercel
+3. Neon
+4. Clerk
+5. Plaid
+6. Google Cloud
+7. Read the Docs
 
-## 4. What production means in this guide
-
-Production does **not** mean:
-
-- the same deployment with a few environment variables flipped
-
-Production **does** mean:
-
-- a second backend service
-- a second frontend deployment target
-- a second secret set
-- a second database
-- production auth and production Plaid credentials
-
-If you are going to store your own financial data, do **not** share the staging database or staging secrets with production.
-
-## 5. The most important rule
-
-Your current hosted deployment is now a **testing environment**, not the final destination.
-
-Use the environments like this:
-
-- `local`: real implementation work, debugging, and most Plaid sandbox testing
-- `preview`: quick UI review only
-- `staging`: full hosted testing with non-production credentials
-- `production`: real personal use
-
-## 6. Current architecture and what needs to change
-
-### What exists now
-
-- one GitHub Actions backend deploy workflow
-- one Cloud Run service target
-- one runtime service account pattern
-- one Vercel hosted app
-- one set of GitHub deployment variables
-- one set of Secret Manager secret names
-
-### What needs to exist before real production use
-
-- one **staging** backend service
-- one **production** backend service
-- one **staging** frontend deployment
-- one **production** frontend deployment
-- one **staging** database
-- one **production** database
-- one **staging** secret set
-- one **production** secret set
-
-## 7. Recommended naming
-
-You do not have to use these exact names, but it will make life much easier if you do.
-
-### Backend services
-
-- staging Cloud Run service: `cash-lens-api`
-- production Cloud Run service: `cash-lens-api-prod`
-
-### Runtime service accounts
-
-- staging runtime service account: `cash-lens-runtime`
-- production runtime service account: `cash-lens-runtime-prod`
-
-### GitHub deployer service accounts
-
-- staging deployer: `cash-lens-github-deployer`
-- production deployer: `cash-lens-github-deployer-prod`
-
-### Secret names
-
-Staging:
-
-- `cash-lens-database-url`
-- `cash-lens-app-encryption-key`
-- `cash-lens-clerk-jwt-key`
-- `cash-lens-plaid-client-id`
-- `cash-lens-plaid-secret`
-
-Production:
-
-- `cash-lens-prod-database-url`
-- `cash-lens-prod-app-encryption-key`
-- `cash-lens-prod-clerk-jwt-key`
-- `cash-lens-prod-plaid-client-id`
-- `cash-lens-prod-plaid-secret`
-
-### Vercel projects
-
-- staging frontend project: keep your existing Vercel project
-- production frontend project: create a second Vercel project, for example `cashlens-prod`
-
-### Databases
-
-- staging database: your existing Neon database or branch
-- production database: a second Neon database or a clearly separate production project / branch
-
-## 8. Preview vs staging
-
-These are not the same thing.
-
-### Preview
-
-Preview means:
-
-- temporary Vercel links created from branches or pull requests
-- useful for layout, copy, and basic click-through review
-
-Preview should **not** be trusted for:
-
-- Plaid test flows
-- real auth confidence
-- data isolation assumptions
-
-### Staging
-
-Staging means:
-
-- one stable, hosted environment
-- a real Cloud Run backend
-- a real Vercel frontend
-- safe test credentials and safe test data
-
-That is what your current hosted deployment should become conceptually.
-
-## 9. Local development still matters
-
-Even after you have staging and production, the safest day-to-day workflow is still:
-
-1. build locally
-2. test locally
-3. use previews for quick frontend review
-4. use staging for hosted integration testing
-5. use production only for the real app
-
-## 10. Local setup
-
-You still need local development for daily work.
-
-### 10A. Tool install on Mac
+### 4B. Install tools on your Mac
 
 If you do not have Homebrew:
 
@@ -218,9 +95,23 @@ gcloud --version
 uv --version
 ```
 
-### 10B. Fast local demo mode
+### 4C. GitHub repo check
 
-Create `/Users/yajvanravan/cashlens/apps/web/.env.local`:
+Go to the project:
+
+```bash
+cd /Users/yajvanravan/cashlens
+```
+
+Log into GitHub CLI if needed:
+
+```bash
+gh auth login
+```
+
+### 4D. Local demo mode
+
+For the fastest local startup, create `/Users/yajvanravan/cashlens/apps/web/.env.local`:
 
 ```env
 API_BASE_URL=http://localhost:8000
@@ -228,7 +119,9 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ENABLE_CLERK=false
 ```
 
-### 10C. Full local sandbox mode
+### 4E. Local full sandbox mode
+
+This is the realistic local development setup.
 
 Create `/Users/yajvanravan/cashlens/apps/api/.env`:
 
@@ -254,9 +147,9 @@ CLERK_SECRET_KEY=YOUR_CLERK_SECRET_KEY
 ENABLE_CLERK=true
 ```
 
-Use `localhost`, not `127.0.0.1`, when testing Clerk locally.
+Use `localhost`, not `127.0.0.1`, for Clerk locally.
 
-### 10D. Run locally
+### 4F. Run locally
 
 Backend:
 
@@ -278,7 +171,7 @@ Open:
 
 - [http://localhost:3000](http://localhost:3000)
 
-### 10E. Local validation
+### 4G. Validate locally
 
 ```bash
 cd /Users/yajvanravan/cashlens
@@ -288,110 +181,492 @@ make e2e
 make docs-build
 ```
 
-## 11. How to treat the deployment you already have
+## 5. Stage 1: first hosted deployment
 
-Your current hosted deployment should be renamed in your head to **staging**.
+This first hosted deployment becomes **staging**.
+
+Do not put your real personal financial data in it.
+
+Its job is:
+
+- hosted integration testing
+- sandbox Plaid testing
+- auth and deployment validation
+- safe QA before real production exists
+
+### 5A. What Stage 1 should use
+
+Stage 1 should use:
+
+- Vercel for the frontend
+- Cloud Run for the backend
+- Neon for a staging database
+- Clerk non-production setup
+- Plaid `sandbox`
+- fake or test data only
+
+### 5B. Staging naming recommendation
+
+Use these names for the first deployment:
+
+- Cloud Run service: `cash-lens-api`
+- runtime service account: `cash-lens-runtime`
+- deployer service account: `cash-lens-github-deployer`
+- Neon database: your staging database
+- Vercel project: your existing `cashlens` frontend deployment
+
+### 5C. Create the staging database in Neon
+
+1. Go to [https://neon.tech](https://neon.tech)
+2. Create a project or branch for staging
+3. Copy the pooled connection string
+
+This value becomes the staging `DATABASE_URL`.
+
+### 5D. Create the staging Clerk app / instance
+
+For the first hosted deployment, use a non-production Clerk setup.
 
 That means:
 
-- keep it on safe test credentials
-- keep Plaid on `sandbox`
-- keep it off your real personal data
-- use it for hosted integration testing
+- Clerk development instance is acceptable for early staging
+- or a dedicated non-production Clerk app if you prefer cleaner separation
 
-If your current staging app still uses mixed dev settings, that is okay for now.
+You need:
 
-The important thing is:
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+- Clerk JWKS / verification key for the backend
 
-- do **not** promote that same exact secret set into real personal-data production
-- instead, build a separate production stack
+### 5E. Create the staging Plaid app
 
-## 12. What a true staging environment should contain
+In Plaid:
 
-Staging should use:
+1. create or use a Sandbox app
+2. enable the `transactions` product
+3. copy:
+   - `PLAID_CLIENT_ID`
+   - `PLAID_SECRET`
 
-- a staging Vercel project or your current existing Vercel deployment
-- the current Cloud Run service
-- a staging database
-- non-production Clerk configuration
-- Plaid `sandbox`
-- safe fake or test data only
+### 5F. Create the Google Cloud project for staging
 
-Staging should never contain:
+1. Go to [https://console.cloud.google.com](https://console.cloud.google.com)
+2. Create a project
+3. Enable billing
 
-- your real Plaid production credentials
-- your real production Clerk setup
-- your real personal financial data
+Then log in locally:
 
-## 13. What a true production environment should contain
+```bash
+gcloud auth login
+gcloud auth application-default login
+gcloud config set project YOUR_GCP_PROJECT_ID
+gcloud auth application-default set-quota-project YOUR_GCP_PROJECT_ID
+```
 
-Production should use:
+### 5G. Enable Google Cloud APIs
 
-- a second Vercel project
-- a second Cloud Run service
-- a second database
-- a separate production secret set
-- Clerk production
-- Plaid production
-- your real domain
+```bash
+export PROJECT_ID="YOUR_GCP_PROJECT_ID"
+export PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
+export GITHUB_REPO="yravan/cashlens"
+export BUILD_SERVICE_ACCOUNT="$(gcloud builds get-default-service-account --project "$PROJECT_ID")"
 
-Production should not share:
+gcloud services enable \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  secretmanager.googleapis.com \
+  iam.googleapis.com \
+  iamcredentials.googleapis.com \
+  sts.googleapis.com \
+  --project "$PROJECT_ID"
+```
 
-- the staging database
-- the staging Plaid credentials
-- the staging Clerk verification key
-- the staging encryption key
+### 5H. Create the staging service accounts
 
-## 14. Production setup overview
+```bash
+gcloud iam service-accounts create cash-lens-runtime \
+  --project "$PROJECT_ID" \
+  --display-name "Cash Lens staging runtime"
 
-The safest path is:
+gcloud iam service-accounts create cash-lens-github-deployer \
+  --project "$PROJECT_ID" \
+  --display-name "Cash Lens staging GitHub deployer"
+```
 
-1. keep existing hosted app as staging
-2. create a second database for production
-3. create a second Cloud Run service for production
-4. create a second Vercel project for production
-5. create a second set of production secrets
-6. switch production auth to Clerk production
-7. switch production Plaid to Plaid production
-8. test production with a minimal real rollout
+### 5I. Grant staging IAM permissions
 
-## 15. Production backend: one-time setup
+```bash
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/run.admin"
 
-These steps create the second backend deployment.
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/run.sourceDeveloper"
 
-### 15A. Google Cloud project choice
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/serviceusage.serviceUsageConsumer"
 
-You have two valid options:
+gcloud iam service-accounts add-iam-policy-binding \
+  "cash-lens-runtime@$PROJECT_ID.iam.gserviceaccount.com" \
+  --project "$PROJECT_ID" \
+  --member="serviceAccount:cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
 
-1. use the **same GCP project** as staging, but create a second Cloud Run service and second secret set
-2. use a **separate GCP project** for production
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${BUILD_SERVICE_ACCOUNT}" \
+  --role="roles/run.builder"
+```
 
-For strongest separation, a separate GCP project is cleaner.
+If `BUILD_SERVICE_ACCOUNT` is a user-managed service account such as `PROJECT_NUMBER-compute@developer.gserviceaccount.com`, also run:
 
-For simplicity, many small teams keep both in one GCP project and separate them by:
+```bash
+gcloud iam service-accounts add-iam-policy-binding \
+  "${BUILD_SERVICE_ACCOUNT}" \
+  --project "$PROJECT_ID" \
+  --member="serviceAccount:cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+```
 
-- service names
-- service accounts
-- secret names
+### 5J. Create Workload Identity for the staging deploy
 
-This guide assumes the simpler path:
+```bash
+gcloud iam workload-identity-pools create "github" \
+  --project="$PROJECT_ID" \
+  --location="global" \
+  --display-name="GitHub Actions Pool"
 
-- same GCP project
-- separate staging and production resources inside it
+gcloud iam workload-identity-pools providers create-oidc "cash-lens" \
+  --project="$PROJECT_ID" \
+  --location="global" \
+  --workload-identity-pool="github" \
+  --display-name="Cash Lens GitHub Provider" \
+  --issuer-uri="https://token.actions.githubusercontent.com" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
+  --attribute-condition="assertion.repository=='${GITHUB_REPO}'"
 
-### 15B. Production backend resources you need
+gcloud iam service-accounts add-iam-policy-binding \
+  "cash-lens-github-deployer@$PROJECT_ID.iam.gserviceaccount.com" \
+  --project "$PROJECT_ID" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github/attribute.repository/${GITHUB_REPO}"
+```
+
+Get the provider name:
+
+```bash
+gcloud iam workload-identity-pools providers describe "cash-lens" \
+  --project="$PROJECT_ID" \
+  --location="global" \
+  --workload-identity-pool="github" \
+  --format="value(name)"
+```
+
+### 5K. Create staging secrets in Secret Manager
+
+Create these secrets:
+
+1. `cash-lens-database-url`
+2. `cash-lens-app-encryption-key`
+3. `cash-lens-clerk-jwt-key`
+4. `cash-lens-plaid-client-id`
+5. `cash-lens-plaid-secret`
+
+Use:
+
+- staging Neon pooled URL
+- staging encryption key
+- staging Clerk verification key
+- Plaid sandbox client ID
+- Plaid sandbox secret
+
+### 5L. Give the staging runtime service account access to secrets
+
+```bash
+for SECRET_NAME in \
+  cash-lens-database-url \
+  cash-lens-app-encryption-key \
+  cash-lens-clerk-jwt-key \
+  cash-lens-plaid-client-id \
+  cash-lens-plaid-secret
+do
+  gcloud secrets add-iam-policy-binding "$SECRET_NAME" \
+    --project "$PROJECT_ID" \
+    --member="serviceAccount:cash-lens-runtime@$PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor"
+done
+```
+
+### 5M. Add GitHub Actions secrets for staging
+
+Open:
+
+- [https://github.com/yravan/cashlens/settings/secrets/actions](https://github.com/yravan/cashlens/settings/secrets/actions)
 
 Create:
+
+1. `GCP_PROJECT_ID`
+2. `GCP_WORKLOAD_IDENTITY_PROVIDER`
+3. `GCP_SERVICE_ACCOUNT`
+
+Use:
+
+- `GCP_PROJECT_ID` = your staging GCP project ID
+- `GCP_WORKLOAD_IDENTITY_PROVIDER` = the full provider name from Stage 1
+- `GCP_SERVICE_ACCOUNT` = `cash-lens-github-deployer@YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com`
+
+### 5N. Add GitHub Actions variables for staging
+
+Open:
+
+- [https://github.com/yravan/cashlens/settings/variables/actions](https://github.com/yravan/cashlens/settings/variables/actions)
+
+Create:
+
+1. `APP_BASE_URL`
+2. `ALLOWED_ORIGINS`
+3. `PLAID_ENV`
+4. `PLAID_WEBHOOK_URL`
+
+Start with:
+
+- `APP_BASE_URL` = temporary staging frontend URL or `http://localhost:3000`
+- `ALLOWED_ORIGINS` = `http://localhost:3000`
+- `PLAID_ENV` = `sandbox`
+- `PLAID_WEBHOOK_URL` = blank for now
+
+### 5O. Deploy the staging backend
+
+The repo already has the backend workflow:
+
+- `.github/workflows/deploy-api.yml`
+
+For this guide, treat it as the **staging backend workflow**.
+
+Merge to `main` or run the workflow manually from GitHub Actions.
+
+When it succeeds, copy the Cloud Run URL.
+
+It will look like:
+
+```txt
+https://cash-lens-api-xxxxx-uc.a.run.app
+```
+
+This becomes your **staging backend URL**.
+
+### 5P. Create the staging frontend in Vercel
+
+In Vercel:
+
+1. create or import a project from the GitHub repo
+2. set **Root Directory** to:
+
+```txt
+apps/web
+```
+
+3. use the install command:
+
+```txt
+pnpm install --frozen-lockfile --ignore-scripts
+```
+
+The repo also already includes:
+
+- `apps/web/vercel.json`
+
+### 5Q. Add staging frontend environment variables in Vercel
+
+Add:
+
+- `API_BASE_URL` = staging Cloud Run URL
+- `NEXT_PUBLIC_API_BASE_URL` = staging Cloud Run URL
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` = staging Clerk publishable key
+- `CLERK_SECRET_KEY` = staging Clerk secret key
+- `ENABLE_CLERK` = `true`
+
+### 5R. Finish staging wiring
+
+After the staging frontend deploys:
+
+1. copy the staging Vercel URL
+2. update GitHub repo variables:
+   - `APP_BASE_URL`
+   - `ALLOWED_ORIGINS`
+3. set:
+   - `PLAID_WEBHOOK_URL` = `https://YOUR-STAGING-CLOUD-RUN-URL/plaid/webhook`
+4. rerun the staging backend workflow once
+
+### 5S. What preview means after Stage 1
+
+After the first deployment exists:
+
+- Vercel branch / PR URLs are just **preview**
+- your stable hosted environment is **staging**
+
+Use preview for:
+
+- frontend review
+- checking if a branch builds
+
+Use staging for:
+
+- hosted QA
+- sandbox Plaid testing
+- testing auth and backend integration
+
+### 5T. Staging smoke test
+
+After Stage 1 is complete:
+
+1. open the staging Vercel URL
+2. sign in
+3. go to Settings
+4. connect a Plaid sandbox institution
+5. open Dashboard, Accounts, and Transactions
+6. click manual sync
+7. edit a transaction
+
+If that works, your first deployment is complete and you now have staging.
+
+## 6. Stage 2: second hosted deployment
+
+This second hosted deployment becomes **production**.
+
+This is the environment that should eventually hold your real personal financial data.
+
+### 6A. The goal of Stage 2
+
+You are not “upgrading staging.”
+
+You are creating a **second deployment** that is deliberately separate from staging.
+
+### 6B. What Stage 2 must have separately
+
+Production needs its own:
+
+- Cloud Run service
+- runtime service account
+- deployer service account
+- Secret Manager secret set
+- Neon database
+- Vercel project
+- Clerk production instance
+- Plaid production credentials
+
+### 6C. Recommended production names
+
+Use:
 
 - Cloud Run service: `cash-lens-api-prod`
 - runtime service account: `cash-lens-runtime-prod`
 - deployer service account: `cash-lens-github-deployer-prod`
+- Vercel project: `cashlens-prod`
+- secret names:
+  - `cash-lens-prod-database-url`
+  - `cash-lens-prod-app-encryption-key`
+  - `cash-lens-prod-clerk-jwt-key`
+  - `cash-lens-prod-plaid-client-id`
+  - `cash-lens-prod-plaid-secret`
 
-You can reuse the same Workload Identity pool if you want.
+### 6D. Create the production database in Neon
 
-### 15C. Production secrets you need
+Create a separate production database target.
 
-Create these secrets in Google Secret Manager:
+Best practice:
+
+- separate Neon project for production
+
+Acceptable simpler option:
+
+- clearly separate production branch or database
+
+Copy the production pooled connection string.
+
+### 6E. Create the Clerk production instance
+
+In Clerk:
+
+1. create or switch to the production instance
+2. copy:
+   - production publishable key
+   - production secret key
+3. get the production JWKS / backend verification key
+
+Production backend must verify the production Clerk instance only.
+
+### 6F. Create the Plaid production app / credentials
+
+In Plaid:
+
+1. make sure you have production access
+2. enable the `transactions` product for production
+3. copy:
+   - production `PLAID_CLIENT_ID`
+   - production `PLAID_SECRET`
+
+### 6G. Create production Google Cloud resources
+
+You have two good options:
+
+1. same GCP project as staging, but separate services and secrets
+2. separate GCP project for production
+
+Strongest separation:
+
+- separate GCP project
+
+Simpler setup:
+
+- same GCP project, separate resource names
+
+This guide assumes the simpler route:
+
+- same GCP project
+- separate production resource names
+
+### 6H. Create production service accounts
+
+```bash
+gcloud iam service-accounts create cash-lens-runtime-prod \
+  --project "$PROJECT_ID" \
+  --display-name "Cash Lens production runtime"
+
+gcloud iam service-accounts create cash-lens-github-deployer-prod \
+  --project "$PROJECT_ID" \
+  --display-name "Cash Lens production GitHub deployer"
+```
+
+### 6I. Grant production IAM permissions
+
+```bash
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:cash-lens-github-deployer-prod@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/run.admin"
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:cash-lens-github-deployer-prod@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/run.sourceDeveloper"
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:cash-lens-github-deployer-prod@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/serviceusage.serviceUsageConsumer"
+
+gcloud iam service-accounts add-iam-policy-binding \
+  "cash-lens-runtime-prod@$PROJECT_ID.iam.gserviceaccount.com" \
+  --project "$PROJECT_ID" \
+  --member="serviceAccount:cash-lens-github-deployer-prod@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+```
+
+If needed, also grant production deployer `roles/iam.serviceAccountUser` on the active build service account, using the same pattern as staging.
+
+### 6J. Create production secrets in Secret Manager
+
+Create:
 
 1. `cash-lens-prod-database-url`
 2. `cash-lens-prod-app-encryption-key`
@@ -399,60 +674,75 @@ Create these secrets in Google Secret Manager:
 4. `cash-lens-prod-plaid-client-id`
 5. `cash-lens-prod-plaid-secret`
 
-Use these values:
+Use:
 
-- production Neon database URL
-- a new production encryption key
-- Clerk production JWT verification key
-- Plaid production client ID
-- Plaid production secret
+- production Neon pooled URL
+- a **new** production encryption key
+- production Clerk verification key
+- production Plaid client ID
+- production Plaid secret
 
 Do **not** reuse the staging encryption key.
 
-### 15D. Production database
+### 6K. Give the production runtime account access to production secrets
 
-In Neon, create a separate production database target.
+```bash
+for SECRET_NAME in \
+  cash-lens-prod-database-url \
+  cash-lens-prod-app-encryption-key \
+  cash-lens-prod-clerk-jwt-key \
+  cash-lens-prod-plaid-client-id \
+  cash-lens-prod-plaid-secret
+do
+  gcloud secrets add-iam-policy-binding "$SECRET_NAME" \
+    --project "$PROJECT_ID" \
+    --member="serviceAccount:cash-lens-runtime-prod@$PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor"
+done
+```
 
-That can be:
+### 6L. Create the production backend deploy path
 
-- a second Neon project
-- or a clearly separate production branch / database setup
+The repo currently has one deploy workflow:
 
-For personal financial data, a separate production project is cleaner.
+- `.github/workflows/deploy-api.yml`
 
-### 15E. Production Clerk
+That should remain your **staging** backend workflow.
 
-Create or activate the Clerk **production instance**.
+For production, you should create a **second workflow** that points at:
 
-Production backend should verify that production instance only.
+- Cloud Run service `cash-lens-api-prod`
+- runtime service account `cash-lens-runtime-prod`
+- production secret names
+- production environment values
 
-### 15F. Production Plaid
+The simplest mental model is:
 
-Production must use:
+- current workflow = staging
+- second workflow = production
 
-- Plaid production credentials
-- Plaid production webhook configuration
+### 6M. Create production GitHub secrets and variables
 
-Do not reuse staging Plaid sandbox credentials.
+For the production workflow, you will need production equivalents of:
 
-## 16. Production frontend: one-time setup
+- GCP project ID or environment binding
+- workload identity provider
+- deployer service account
+- production app base URL
+- production allowed origins
+- production Plaid environment
+- production Plaid webhook URL
 
-Create a second Vercel project for production.
+If you keep both in one repo, the cleanest setup is:
 
-### 16A. Why a second Vercel project
+- separate GitHub environment for production
+- separate secret / variable names for production
 
-This gives you clear separation between:
-
-- the staging hosted app you already have
-- the real production hosted app
-
-That is much less error-prone than trying to make one Vercel project behave as both.
-
-### 16B. Production Vercel setup
+### 6N. Create the production Vercel project
 
 In Vercel:
 
-1. create a new project
+1. create a **second** project
 2. import the same GitHub repo
 3. set **Root Directory** to:
 
@@ -460,96 +750,47 @@ In Vercel:
 apps/web
 ```
 
-4. use the install command:
+4. use install command:
 
 ```txt
 pnpm install --frozen-lockfile --ignore-scripts
 ```
 
-The repo already includes:
+### 6O. Add production frontend environment variables in Vercel
 
-- `apps/web/vercel.json`
-
-### 16C. Production frontend environment variables
-
-For the production Vercel project, add:
+For the second Vercel project, add:
 
 - `API_BASE_URL` = production Cloud Run URL
 - `NEXT_PUBLIC_API_BASE_URL` = production Cloud Run URL
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` = Clerk production publishable key
-- `CLERK_SECRET_KEY` = Clerk production secret key
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` = production Clerk publishable key
+- `CLERK_SECRET_KEY` = production Clerk secret key
 - `ENABLE_CLERK` = `true`
 
-## 17. How to handle preview after this rewrite
+### 6P. Set the production Plaid webhook
 
-Preview should hang off **staging**, not production.
+When the production Cloud Run service is live, set:
 
-That means:
+- Plaid webhook URL = `https://YOUR-PRODUCTION-CLOUD-RUN-URL/plaid/webhook`
 
-- branch and PR Vercel previews should stay harmless
-- do not wire them to real production secrets
-- do not use them for real financial testing
+Put that in:
 
-The safest mental model is:
+1. the Plaid dashboard
+2. the production backend environment configuration
 
-- preview is a convenience layer on top of staging-style frontend review
+### 6Q. Production smoke test
 
-## 18. The current GitHub backend workflow
+Before using real accounts broadly:
 
-Right now the repo contains one backend deploy workflow:
+1. open the production Vercel URL
+2. sign in with production auth
+3. verify the backend is live
+4. verify dashboard pages load
+5. verify Plaid Link opens
+6. do the smallest safe real-world test you are comfortable with
 
-- `.github/workflows/deploy-api.yml`
+### 6R. Production security checklist
 
-For this rewritten guide, treat that workflow as the **staging backend workflow**.
-
-That means it conceptually belongs to staging, even if the file still says “production” in some places.
-
-Before true production rollout, you should add a second production backend deploy path.
-
-That can be done in one of two ways:
-
-1. duplicate the workflow with production-specific names and secrets
-2. replace it with a parameterized staging/production deployment system
-
-For most teams, the simpler path is:
-
-- keep the current workflow for staging
-- add a second workflow for production later
-
-## 19. Production GitHub configuration you will need
-
-When you create the second backend deploy path, production should have its own:
-
-- service account
-- secret names
-- Cloud Run service name
-- backend URL values
-- Plaid webhook URL value
-
-If you keep both staging and production in one repo, the cleanest GitHub setup is:
-
-- one staging deploy workflow
-- one production deploy workflow
-- separate GitHub environments or separate secret / variable names
-
-## 20. Production deployment sequence
-
-When you are ready to create the second deployment, do it in this order:
-
-1. create the production Neon database
-2. create the production Clerk instance and collect keys
-3. create the production Plaid credentials
-4. create production Secret Manager secrets
-5. create the production Cloud Run service and runtime service account
-6. create the production Vercel project
-7. point the production frontend to the production backend URL
-8. set the production Plaid webhook URL
-9. smoke test the production app with controlled checks
-10. only then consider connecting real accounts
-
-## 21. Production security checklist
-
-Before you use real personal data, all of these should be true:
+Before trusting production with real personal data, all of these should be true:
 
 1. staging and production do not share a database
 2. staging and production do not share an encryption key
@@ -560,21 +801,18 @@ Before you use real personal data, all of these should be true:
 7. production webhook verification is enabled
 8. demo mode is disabled in production
 9. seed demo data is disabled in production
-10. staging remains safe for testing only
+10. staging remains sandbox-only
 
-## 22. How to use the environments day to day
+## 7. How to use the environments after both stages exist
 
-Use this as your default loop:
+Once both stages are complete:
 
-1. build locally
-2. test locally
-3. use preview for quick frontend review
-4. use staging for hosted integration testing
-5. merge
-6. deploy staging updates
-7. deploy production separately only when you intentionally want to promote a known-good change
+1. do day-to-day work locally
+2. use preview for frontend review
+3. use staging for hosted testing
+4. deploy to production separately and intentionally
 
-## 23. Read the Docs setup
+## 8. Read the Docs setup
 
 If you want to use the Read the Docs community service, the GitHub repo must be **public**.
 
@@ -584,14 +822,14 @@ This repo is already prepared with:
 - `mkdocs.yml`
 - `docs/`
 
-### 23A. Test docs locally
+### 8A. Test docs locally
 
 ```bash
 cd /Users/yajvanravan/cashlens
 make docs-build
 ```
 
-### 23B. Local docs preview
+### 8B. Local docs preview
 
 ```bash
 cd /Users/yajvanravan/cashlens
@@ -602,13 +840,13 @@ Then open:
 
 - [http://127.0.0.1:8000](http://127.0.0.1:8000)
 
-### 23C. Import on Read the Docs
+### 8C. Import on Read the Docs
 
 1. Go to [https://readthedocs.com](https://readthedocs.com)
 2. Sign in with GitHub
 3. Import the `cashlens` repo
 
-## 24. Changelog and versioning
+## 9. Changelog and versioning
 
 The version files that must stay aligned are:
 
@@ -633,34 +871,36 @@ cd /Users/yajvanravan/cashlens
 make docs-build
 ```
 
-## 25. Troubleshooting
+## 10. Troubleshooting
 
-### Preview feels weird
+### I only have the first deployment
+
+That is fine.
+
+In this guide:
+
+- first deployment = staging
+- second deployment = production
+
+### Preview feels strange
 
 That is expected.
 
-Preview is not meant to be the authoritative integration-test environment.
+Preview is not your stable hosted test environment.
 
-### Staging works, but production does not exist yet
+That role belongs to staging.
 
-That is also expected if you have only completed the first hosted deployment so far.
+### Production would share staging secrets
 
-This guide assumes:
+Stop and fix it first.
 
-- current deployment = staging
-- second deployment still needs to be created for production
+That is the exact situation this two-stage rollout is meant to avoid.
 
-### Production would be sharing staging secrets
+## 11. The simplest safe operating loop
 
-Stop there and fix it first.
-
-That is exactly what this guide is trying to prevent.
-
-## 26. The shortest safe operating loop
-
-If you want the simplest safe mental model, use this:
+Use this mental model:
 
 1. local for building
 2. preview for quick review
-3. staging for hosted testing
-4. production as a separate, hardened deployment
+3. first deployment for staging
+4. second deployment for production
