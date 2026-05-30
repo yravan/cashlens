@@ -6,6 +6,10 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ## [Unreleased]
 
+### Added
+
+- A new `spec history/codex feature tree iteration` package with a canonical Cash Lens feature tree and eight whole-tree refinement passes.
+
 ### Changed
 
 - Deployment guidance now assumes the existing hosted app is staging and that real production should be a second, separate hardened deployment.
