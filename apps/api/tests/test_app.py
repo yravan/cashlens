@@ -34,3 +34,17 @@ def test_create_app_hides_docs_in_production(monkeypatch):
 
     monkeypatch.setenv("ENVIRONMENT", "development")
     get_settings.cache_clear()
+
+
+def test_create_app_keeps_docs_in_staging(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "staging")
+    get_settings.cache_clear()
+
+    app = create_app()
+
+    assert app.docs_url == "/docs"
+    assert app.redoc_url == "/redoc"
+    assert app.openapi_url == "/openapi.json"
+
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    get_settings.cache_clear()

@@ -17,6 +17,7 @@ apps/web/.next/
 node_modules/
 apps/web/node_modules/
 apps/web/.vercel/
+.neon
 .pnpm-store/
 apps/web/playwright-report/
 apps/web/test-results/
