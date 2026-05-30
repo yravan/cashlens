@@ -35,8 +35,9 @@ This is the repo-specific operations skill for Cash Lens.
 - Historical context: `implementation logs/`
 - Current environment model:
   - local = development and Plaid sandbox
-  - preview = frontend review only, not a true hosted staging backend
-  - production = the real hosted environment
+  - preview = temporary Vercel review URLs
+  - staging = the current hosted deployment with non-production credentials
+  - production = a second, separate hardened deployment for real data
 
 ## Common workflows
 
@@ -44,6 +45,7 @@ This is the repo-specific operations skill for Cash Lens.
 
 - Check `gh run list --workflow deploy-api.yml --limit 5`
 - Inspect the failing run with `gh run view <run-id> --log-failed`
+- Until the repo grows a second deploy workflow, treat `.github/workflows/deploy-api.yml` as the staging backend workflow.
 - For Cloud Run source deploy permission issues, verify the current default build service account with:
   - `gcloud builds get-default-service-account --project "$PROJECT_ID"`
 

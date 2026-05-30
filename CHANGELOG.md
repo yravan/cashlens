@@ -6,6 +6,11 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ## [Unreleased]
 
+### Changed
+
+- Deployment guidance now assumes the existing hosted app is staging and that real production should be a second, separate hardened deployment.
+
+
 ## [0.0.0] - 2026-05-25
 
 ### Added

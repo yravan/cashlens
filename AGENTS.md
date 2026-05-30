@@ -35,4 +35,5 @@ This repo uses pull-request-first development and keeps repeated workflows in re
 - Backend package management stays on `uv`.
 - New CI checks should map cleanly to branch-protection required checks.
 - Production auth and secret handling must stay server-verified; do not reintroduce spoofable header-based identity.
+- Once a true production environment exists, staging and production must stay separate at the service, database, and secret level.
 - Release work should update `VERSION`, `CHANGELOG.md`, and any surfaced app package versions together.

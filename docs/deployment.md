@@ -1,38 +1,44 @@
 # Deployment Overview
 
-Cash Lens currently uses a simple environment model:
+Cash Lens should now be thought about as four environments:
 
 - **Local**: day-to-day development and Plaid sandbox testing
-- **Preview**: Vercel PR previews for UI review only
-- **Production**: Vercel frontend plus Cloud Run backend
+- **Preview**: Vercel PR previews for quick frontend review
+- **Staging**: the current hosted deployment you already have
+- **Production**: a second, separate hardened deployment for real financial data
 
 ## Important operational truth
 
-There is currently **one hosted backend**.
+The repo currently has one hosted deploy path in `.github/workflows/deploy-api.yml`.
 
-That means:
+For now, treat that hosted path as **staging**.
 
-- local is where development and sandbox testing should happen
-- preview is useful, but not a true hosted staging environment
-- production is the only hosted backend environment
+The production environment in this model is **not** “the same deployment with flipped secrets.” It should become:
 
-## Hosted production targets
+- a second Cloud Run service
+- a second Vercel project
+- a second database
+- a second secret set
+- Clerk production
+- Plaid production
 
-- **Frontend**: Vercel
-- **Backend**: Google Cloud Run via GitHub Actions
+## Safe environment usage
+
+- use **local** for implementation work
+- use **preview** for UI review
+- use **staging** for hosted non-production testing
+- use **production** only after it is fully separated and hardened
 
 ## Source-of-truth guide
 
-The full non-technical walkthrough lives here:
+The full walkthrough lives here:
 
 - [`deployment instructions.md`](https://github.com/yravan/cashlens/blob/main/deployment%20instructions.md)
 
 That guide now covers:
 
-- the local / preview / production environment model
-- local setup for demo mode and full sandbox mode
-- Cloud Run backend setup
-- Vercel production setup
-- Clerk and Plaid production cutover
-- Read the Docs setup
-- changelog and versioning basics
+- local / preview / staging / production
+- how to reinterpret the existing deployment as staging
+- what must be separate before production holds personal data
+- the second-deployment production rollout path
+- docs hosting, versioning, and troubleshooting
