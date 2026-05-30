@@ -403,9 +403,9 @@ done
 
 Open:
 
-- [https://github.com/yravan/cashlens/settings/secrets/actions](https://github.com/yravan/cashlens/settings/secrets/actions)
+- [https://github.com/yravan/cashlens/settings/environments](https://github.com/yravan/cashlens/settings/environments)
 
-Create:
+Create or open the `staging` environment, then under `Environment secrets` create:
 
 1. `GCP_PROJECT_ID`
 2. `GCP_WORKLOAD_IDENTITY_PROVIDER`
@@ -421,9 +421,9 @@ Use:
 
 Open:
 
-- [https://github.com/yravan/cashlens/settings/variables/actions](https://github.com/yravan/cashlens/settings/variables/actions)
+- [https://github.com/yravan/cashlens/settings/environments](https://github.com/yravan/cashlens/settings/environments)
 
-Create:
+Open the `staging` environment, then under `Environment variables` create:
 
 1. `APP_BASE_URL`
 2. `ALLOWED_ORIGINS`
@@ -493,7 +493,7 @@ Add:
 After the staging frontend deploys:
 
 1. copy the staging Vercel URL
-2. update GitHub repo variables:
+2. update the GitHub `staging` environment variables:
    - `APP_BASE_URL`
    - `ALLOWED_ORIGINS`
 3. set:
@@ -703,81 +703,249 @@ done
 
 ### 6L. Create the production backend deploy path
 
-The repo currently has one deploy workflow:
+The repo now has two production workflows:
+
+- `.github/workflows/deploy-api-production.yml`
+- `.github/workflows/deploy-web-production.yml`
+
+The old workflow stays as staging:
 
 - `.github/workflows/deploy-api.yml`
 
-That should remain your **staging** backend workflow.
-
-For production, you should create a **second workflow** that points at:
+The new production backend workflow is already wired to expect:
 
 - Cloud Run service `cash-lens-api-prod`
 - runtime service account `cash-lens-runtime-prod`
-- production secret names
-- production environment values
+- production secret names in Secret Manager
+- production environment values from a GitHub environment named `production`
 
-The simplest mental model is:
+The new production frontend workflow is already wired to expect:
 
-- current workflow = staging
-- second workflow = production
+- a second Vercel project
+- a Vercel access token
+- that second project's `orgId`
+- that second project's `projectId`
+
+That means you do **not** need to give production frontend secrets to GitHub Actions. Those stay in Vercel.
 
 ### 6M. Create production GitHub secrets and variables
 
-For the production workflow, you will need production equivalents of:
+In GitHub, create a separate environment named `production`.
 
-- GCP project ID or environment binding
-- workload identity provider
-- deployer service account
-- production app base URL
-- production allowed origins
-- production Plaid environment
-- production Plaid webhook URL
+Open:
 
-If you keep both in one repo, the cleanest setup is:
+- [https://github.com/yravan/cashlens/settings/environments](https://github.com/yravan/cashlens/settings/environments)
 
-- separate GitHub environment for production
-- separate secret / variable names for production
+Then:
 
-### 6N. Create the production Vercel project
+1. click `New environment`
+2. name it `production`
+3. open that environment
+4. add the secrets and variables below
+
+Use **environment-level** values, not repo-level values. GitHub's docs for environment secrets and variables are here:
+
+- [Managing environments for deployment](https://docs.github.com/en/actions/reference/environments)
+- [Secrets in GitHub Actions](https://docs.github.com/en/actions/concepts/security/about-secrets)
+
+### 6N. Put these exact values into Google Secret Manager
+
+Create these five production secrets in Google Secret Manager:
+
+1. `cash-lens-prod-database-url`
+2. `cash-lens-prod-app-encryption-key`
+3. `cash-lens-prod-clerk-jwt-key`
+4. `cash-lens-prod-plaid-client-id`
+5. `cash-lens-prod-plaid-secret`
+
+Where to get each one:
+
+| Secret Manager secret name | What value goes inside it | Where to get it |
+| --- | --- | --- |
+| `cash-lens-prod-database-url` | your production Postgres connection string | In Neon, open your **production** project or branch, click `Connect`, and copy the **pooled** connection string. Neon recommends pooled connections for app workloads. See [Neon connection details](https://neon.com/docs/get-started-with-neon/connect-neon) and [Neon connection pooling](https://neon.com/docs/connect/connection-pooling). |
+| `cash-lens-prod-app-encryption-key` | a brand-new random string | Generate it yourself on your Mac: `openssl rand -hex 32` |
+| `cash-lens-prod-clerk-jwt-key` | the full JWKS JSON for your Clerk production instance | In Clerk, switch to the **Production** instance, confirm the production domain, then open `https://YOUR_CLERK_DOMAIN/.well-known/jwks.json` in your browser and copy the full JSON. Clerk's manual verification docs use a JWKS public key for token verification. See [Deploy your Clerk app to production](https://clerk.com/docs/deployments/overview) and [Manual JWT verification](https://clerk.com/docs/reference/node/networkless-token-verification). |
+| `cash-lens-prod-plaid-client-id` | your Plaid production `client_id` | In the Plaid Dashboard, use the production app / production keys area and copy the live `client_id`. Plaid says live `client_id` and `secret` are provided in the Dashboard once access is granted. See [Plaid API overview](https://plaid.com/docs/api/) and [Production access](https://plaid.com/core-exchange/docs/production-access/). |
+| `cash-lens-prod-plaid-secret` | your Plaid production `secret` | Same place as above in the Plaid Dashboard production keys area. |
+
+Do **not** reuse the staging encryption key.
+
+### 6O. Create the second Vercel project for production
 
 In Vercel:
 
 1. create a **second** project
-2. import the same GitHub repo
+2. name it something obvious, for example `cashlens-prod`
 3. set **Root Directory** to:
 
 ```txt
 apps/web
 ```
 
-4. use install command:
+4. set install command to:
 
 ```txt
 pnpm install --frozen-lockfile --ignore-scripts
 ```
 
-### 6O. Add production frontend environment variables in Vercel
+5. after the project exists, open `Settings -> Git`
+6. click `Disconnect` under the connected Git repository
 
-For the second Vercel project, add:
+Disconnecting the Git repo is the safest option here because it ensures this second Vercel project only deploys when you manually run the production workflow. Vercel documents the disconnect flow here:
 
-- `API_BASE_URL` = production Cloud Run URL
-- `NEXT_PUBLIC_API_BASE_URL` = production Cloud Run URL
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` = production Clerk publishable key
-- `CLERK_SECRET_KEY` = production Clerk secret key
+- [Vercel Git settings](https://vercel.com/docs/project-configuration/git-settings)
+
+### 6P. Add production frontend environment variables in Vercel
+
+Open the second Vercel project, then go to:
+
+- `Settings -> Environment Variables`
+
+Create:
+
+1. `API_BASE_URL`
+2. `NEXT_PUBLIC_API_BASE_URL`
+3. `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+4. `CLERK_SECRET_KEY`
+5. `ENABLE_CLERK`
+
+Use:
+
+- `API_BASE_URL` = your production Cloud Run URL from the production backend workflow
+- `NEXT_PUBLIC_API_BASE_URL` = the same production Cloud Run URL
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` = your Clerk **production** publishable key (`pk_live_...`)
+- `CLERK_SECRET_KEY` = your Clerk **production** secret key (`sk_live_...`)
 - `ENABLE_CLERK` = `true`
 
-### 6P. Set the production Plaid webhook
+Where to get the Clerk keys:
 
-When the production Cloud Run service is live, set:
+- In Clerk, switch to the **Production** instance
+- open the API keys page
+- copy the publishable key and secret key
 
-- Plaid webhook URL = `https://YOUR-PRODUCTION-CLOUD-RUN-URL/plaid/webhook`
+Clerk's current env var docs for Next.js are here:
 
-Put that in:
+- [Clerk Publishable and Secret Keys](https://clerk.com/docs/upgrade-guides/api-keys)
 
-1. the Plaid dashboard
-2. the production backend environment configuration
+### 6Q. Add production GitHub environment secrets
 
-### 6Q. Production smoke test
+Open:
+
+- [https://github.com/yravan/cashlens/settings/environments](https://github.com/yravan/cashlens/settings/environments)
+
+Select the `production` environment, then under `Environment secrets`, add:
+
+1. `GCP_PROJECT_ID`
+2. `GCP_WORKLOAD_IDENTITY_PROVIDER`
+3. `GCP_SERVICE_ACCOUNT`
+4. `VERCEL_TOKEN`
+
+Use:
+
+- `GCP_PROJECT_ID` = your production Google Cloud project ID
+- `GCP_WORKLOAD_IDENTITY_PROVIDER` = the full provider name returned by:
+
+```bash
+gcloud iam workload-identity-pools providers describe "cash-lens" \
+  --project="$PROJECT_ID" \
+  --location="global" \
+  --workload-identity-pool="github" \
+  --format="value(name)"
+```
+
+- `GCP_SERVICE_ACCOUNT` = `cash-lens-github-deployer-prod@YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com`
+- `VERCEL_TOKEN` = a Vercel access token created from `Personal Account -> Settings -> Tokens -> Create`
+
+Vercel's token docs are here:
+
+- [How do I use a Vercel API Access Token?](https://vercel.com/kb/guide/how-do-i-use-a-vercel-api-access-token)
+
+### 6R. Add production GitHub environment variables
+
+In the same GitHub `production` environment, under `Environment variables`, add:
+
+1. `APP_BASE_URL`
+2. `ALLOWED_ORIGINS`
+3. `PLAID_ENV`
+4. `PLAID_WEBHOOK_URL`
+5. `VERCEL_ORG_ID`
+6. `VERCEL_PROJECT_ID`
+
+Use:
+
+- `APP_BASE_URL` = if you already know the final production frontend URL, use it; otherwise temporarily use `https://placeholder.invalid`
+- `ALLOWED_ORIGINS` = match `APP_BASE_URL`; if you are using the placeholder, set `https://placeholder.invalid`
+- `PLAID_ENV` = `production`
+- `PLAID_WEBHOOK_URL` = leave blank until the production backend exists, then fill `https://YOUR-PRODUCTION-CLOUD-RUN-URL/plaid/webhook`
+- `VERCEL_ORG_ID` = the `orgId` for your second Vercel project
+- `VERCEL_PROJECT_ID` = the `projectId` for your second Vercel project
+
+The easiest exact way to get `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` is:
+
+```bash
+cd /Users/yajvanravan/cashlens/apps/web
+vercel link --yes --project cashlens-prod --scope YOUR_VERCEL_SCOPE
+```
+
+Then open:
+
+- `/Users/yajvanravan/cashlens/apps/web/.vercel/project.json`
+
+Copy:
+
+- `orgId` -> GitHub variable `VERCEL_ORG_ID`
+- `projectId` -> GitHub variable `VERCEL_PROJECT_ID`
+
+Vercel documents this CLI linking flow here:
+
+- [vercel link](https://vercel.com/docs/cli/link)
+- [Vercel CLI global options](https://vercel.com/docs/cli/global-options)
+
+### 6S. Run the production backend workflow
+
+Open GitHub Actions and manually run:
+
+- `.github/workflows/deploy-api-production.yml`
+
+Use:
+
+- `git_ref = main`
+
+That creates the second Cloud Run service:
+
+- `cash-lens-api-prod`
+
+When it succeeds, copy the Cloud Run URL.
+
+### 6T. Update Vercel production env vars, then run the production frontend workflow
+
+Now that you have the production backend URL:
+
+1. go back to the second Vercel project
+2. set:
+   - `API_BASE_URL`
+   - `NEXT_PUBLIC_API_BASE_URL`
+3. redeploy through GitHub Actions by manually running:
+   - `.github/workflows/deploy-web-production.yml`
+4. use:
+   - `git_ref = main`
+
+That creates the second frontend production deployment without relying on Vercel Git auto-deploy.
+
+### 6U. Finish the webhook and rerun the production backend workflow once
+
+After the second Vercel project is live:
+
+1. copy the real production frontend URL
+2. update GitHub `production` environment variables:
+   - `APP_BASE_URL`
+   - `ALLOWED_ORIGINS`
+3. update:
+   - `PLAID_WEBHOOK_URL` = `https://YOUR-PRODUCTION-CLOUD-RUN-URL/plaid/webhook`
+4. paste that same webhook URL into the Plaid Dashboard
+5. rerun `.github/workflows/deploy-api-production.yml`
+
+### 6V. Production smoke test
 
 Before using real accounts broadly:
 
@@ -788,7 +956,7 @@ Before using real accounts broadly:
 5. verify Plaid Link opens
 6. do the smallest safe real-world test you are comfortable with
 
-### 6R. Production security checklist
+### 6W. Production security checklist
 
 Before trusting production with real personal data, all of these should be true:
 

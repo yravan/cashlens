@@ -1,0 +1,73 @@
+name: Deploy Production API to Cloud Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: Git ref to deploy to production
+        required: false
+        default: main
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_REGION: us-central1
+  CLOUD_RUN_SERVICE: cash-lens-api-prod
+  CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT: cash-lens-runtime-prod@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - id: auth
+        name: Authenticate to Google Cloud for production
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - id: deploy
+        name: Deploy production backend to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ env.CLOUD_RUN_SERVICE }}
+          region: ${{ env.GCP_REGION }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          source: ./apps/api
+          env_vars_update_strategy: overwrite
+          env_vars: |
+            ENVIRONMENT=production
+            APP_BASE_URL=${{ vars.APP_BASE_URL }}
+            ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
+            PLAID_ENV=${{ vars.PLAID_ENV }}
+            PLAID_WEBHOOK_URL=${{ vars.PLAID_WEBHOOK_URL }}
+            DEMO_MODE=false
+            SEED_DEMO_DATA=false
+            VERIFY_PLAID_WEBHOOKS=true
+          secrets_update_strategy: overwrite
+          secrets: |
+            DATABASE_URL=cash-lens-prod-database-url:latest
+            APP_ENCRYPTION_KEY=cash-lens-prod-app-encryption-key:latest
+            CLERK_JWT_KEY=cash-lens-prod-clerk-jwt-key:latest
+            PLAID_CLIENT_ID=cash-lens-prod-plaid-client-id:latest
+            PLAID_SECRET=cash-lens-prod-plaid-secret:latest
+          flags: >-
+            --allow-unauthenticated
+            --service-account=${{ env.CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT }}
+
+      - name: Print production URL
+        run: |
+          echo "Production Cloud Run service URL: ${{ steps.deploy.outputs.url }}"

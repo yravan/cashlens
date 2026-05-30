@@ -9,7 +9,7 @@ This is the repo-specific operations skill for Cash Lens.
 
 ## Start here
 
-1. Run `scripts/check-access.sh`.
+1. Run `scripts/check-access.sh`, unless the user explicitly asks you to avoid inspecting live credentials or secrets.
 2. Read [references/current-state.md](references/current-state.md) for the current repo and platform map.
 3. Read [references/platform-playbooks.md](references/platform-playbooks.md) for the service you are touching.
 
@@ -27,7 +27,9 @@ This is the repo-specific operations skill for Cash Lens.
 
 ## Repo-specific priorities
 
-- Backend deploy source of truth: `.github/workflows/deploy-api.yml`
+- Staging backend deploy source of truth: `.github/workflows/deploy-api.yml`
+- Production backend deploy source of truth: `.github/workflows/deploy-api-production.yml`
+- Production frontend deploy source of truth: `.github/workflows/deploy-web-production.yml`
 - Frontend deploy source of truth: Vercel project for `apps/web`
 - Backend runtime: Cloud Run
 - Backend package manager: `uv`
@@ -44,10 +46,20 @@ This is the repo-specific operations skill for Cash Lens.
 ### Deploy triage
 
 - Check `gh run list --workflow deploy-api.yml --limit 5`
+- Check `gh run list --workflow deploy-api-production.yml --limit 5` for production backend runs
+- Check `gh run list --workflow deploy-web-production.yml --limit 5` for production frontend runs
 - Inspect the failing run with `gh run view <run-id> --log-failed`
-- Until the repo grows a second deploy workflow, treat `.github/workflows/deploy-api.yml` as the staging backend workflow.
 - For Cloud Run source deploy permission issues, verify the current default build service account with:
   - `gcloud builds get-default-service-account --project "$PROJECT_ID"`
+
+### Secret-handoff mode
+
+- If the user says to treat the session as insecure, do not inspect live secrets, local secret files, or hosted environment-variable values.
+- In that mode, limit yourself to repo code, workflow files, and official documentation.
+- Give the user an explicit table of:
+  - the exact value name
+  - where they should get it
+  - where they should paste it
 
 ### Frontend deploy triage
 

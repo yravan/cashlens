@@ -39,4 +39,6 @@ That guide now walks through:
 - Stage 0 local setup
 - Stage 1 first deployment as staging
 - Stage 2 second deployment as production
+- the manual production backend workflow in `.github/workflows/deploy-api-production.yml`
+- the manual production frontend workflow in `.github/workflows/deploy-web-production.yml`
 - docs hosting, versioning, and troubleshooting

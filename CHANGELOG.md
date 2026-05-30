@@ -10,6 +10,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 - Deployment guidance now assumes the existing hosted app is staging and that real production should be a second, separate hardened deployment.
 - The current backend deploy workflow is now explicitly staged as the Stage 1 staging deployment path.
+- The repo now includes separate manual production backend and frontend deploy workflows so the second hosted environment can be promoted without exposing secrets in chat.
 
 
 
