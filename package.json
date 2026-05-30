@@ -1,0 +1,16 @@
+{
+  "name": "cashlens",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@11.3.0",
+  "scripts": {
+    "install:js": "pnpm install --frozen-lockfile --ignore-scripts",
+    "dev:web": "pnpm --filter @cashlens/web dev",
+    "lint:web": "pnpm --filter @cashlens/web lint",
+    "typecheck:web": "pnpm --filter @cashlens/web typecheck",
+    "test:web": "pnpm --filter @cashlens/web test",
+    "build:web": "pnpm --filter @cashlens/web build",
+    "playwright:install": "pnpm --filter @cashlens/web exec playwright install --with-deps chromium",
+    "e2e:web": "pnpm --filter @cashlens/web e2e"
+  }
+}

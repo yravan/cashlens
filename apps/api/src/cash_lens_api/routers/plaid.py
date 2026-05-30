@@ -9,9 +9,15 @@ from cash_lens_api.core.config import Settings, get_settings
 from cash_lens_api.core.security import verify_plaid_webhook
 from cash_lens_api.db import get_db
 from cash_lens_api.models import PlaidItem, User
-from cash_lens_api.schemas import ExchangePublicTokenRequest, ExchangePublicTokenResponse, LinkTokenResponse, MessageResponse, SyncResponse, WebhookPayload
+from cash_lens_api.schemas import (
+    ExchangePublicTokenRequest,
+    ExchangePublicTokenResponse,
+    LinkTokenResponse,
+    MessageResponse,
+    SyncResponse,
+    WebhookPayload,
+)
 from cash_lens_api.services.plaid import create_link_token, exchange_public_token, handle_webhook, manual_sync
-
 
 router = APIRouter(tags=["plaid"])
 

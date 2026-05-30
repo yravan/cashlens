@@ -22,7 +22,13 @@ from sqlalchemy.orm import Session
 from cash_lens_api.core.config import Settings
 from cash_lens_api.db import utc_now
 from cash_lens_api.models import FinancialAccount, NotificationEvent, PlaidItem, RawTransaction, SyncRun, User
-from cash_lens_api.schemas import ExchangePublicTokenResponse, LinkTokenResponse, PlaidItemRead, SyncResponse, WebhookPayload
+from cash_lens_api.schemas import (
+    ExchangePublicTokenResponse,
+    LinkTokenResponse,
+    PlaidItemRead,
+    SyncResponse,
+    WebhookPayload,
+)
 from cash_lens_api.services.demo_seed import create_ledger_event, create_transaction
 
 SANDBOX_RETURNING_USER_PHONE = "+14155550010"

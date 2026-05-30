@@ -9,7 +9,6 @@ from cash_lens_api.db import get_db
 from cash_lens_api.models import FinancialAccount, User
 from cash_lens_api.schemas import AccountRead
 
-
 router = APIRouter(tags=["accounts"])
 
 

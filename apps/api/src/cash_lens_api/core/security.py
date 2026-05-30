@@ -125,9 +125,9 @@ def _plaid_verification_key(
     plaid_env: str,
 ) -> dict:
     import plaid
-    from plaid.model.webhook_verification_key_get_request import WebhookVerificationKeyGetRequest
     from plaid.api import plaid_api
     from plaid.configuration import Environment
+    from plaid.model.webhook_verification_key_get_request import WebhookVerificationKeyGetRequest
 
     configuration = plaid.Configuration(
         host=Environment.Sandbox if plaid_env == "sandbox" else Environment.Production,

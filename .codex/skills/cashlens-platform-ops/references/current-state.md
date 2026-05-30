@@ -4,6 +4,7 @@
 
 - GitHub repo: `yravan/cashlens`
 - Primary branch: `main`
+- GitHub Actions environment for Stage 1 hosted deploys: `staging`
 - Backend app root: `apps/api`
 - Frontend app root: `apps/web`
 - Shared deploy workflow: `.github/workflows/deploy-api.yml`
@@ -12,11 +13,11 @@
 
 - Backend platform: Google Cloud Run
 - Frontend platform: Vercel
-- Backend service name: `cash-lens-api`
+- Current staging backend service name: `cash-lens-api`
 - Backend region: `us-central1`
 - Latest known GCP project: `cashlens-492517`
-- Latest known Vercel project: `cashlens`
-- Latest known Vercel production URL: `https://cashlens-pied.vercel.app`
+- Current staging Vercel project: `cashlens`
+- Current staging frontend URL: `https://cashlens-pied.vercel.app`
 
 ## Important local files
 
@@ -35,7 +36,7 @@
 
 ## Verified local CLI access
 
-Last verified on `2026-05-25`:
+Last verified on `2026-05-29`:
 
 - `gh`
   - authenticated as `yravan`
@@ -46,10 +47,12 @@ Last verified on `2026-05-25`:
 - `vercel`
   - authenticated as `yravan`
   - accessible project `cashlens`
-  - latest known production URL `https://cashlens-pied.vercel.app`
+  - latest known staged frontend URL `https://cashlens-pied.vercel.app`
 - `neon`
   - CLI installed
   - authenticated as `yajvanravan@gmail.com`
+  - default org context saved in repo-local `.neon`
+  - current project `cash-lens` (`steep-mud-19438224`)
 - `clerk`
   - CLI installed
   - authenticated
@@ -66,3 +69,4 @@ Do not assume these are stable. Check them at runtime:
 - current default build service account
 - whether Vercel production is using Clerk development or production keys
 - whether the logged-in Vercel, Neon, and Clerk accounts are still the same
+- whether the current hosted stack is still correctly treated as staging

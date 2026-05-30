@@ -14,7 +14,6 @@ from cash_lens_api.models import (
     User,
 )
 
-
 DEMO_TRANSACTIONS = [
     {
         "txn_id": "txn-demo-payroll",

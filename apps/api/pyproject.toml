@@ -1,6 +1,6 @@
 [project]
 name = "cash-lens-api"
-version = "0.1.0"
+version = "0.0.0"
 description = "Cash Lens FastAPI backend"
 readme = "README.md"
 authors = [
@@ -21,9 +21,30 @@ dependencies = [
     "uvicorn[standard]>=0.48.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "ruff>=0.14.3",
+]
+
 [project.scripts]
 cash-lens-api = "cash_lens_api.main:main"
 
 [build-system]
 requires = ["uv_build>=0.9.5,<0.10.0"]
 build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/conftest.py" = ["E402"]

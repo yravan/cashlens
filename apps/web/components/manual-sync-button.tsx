@@ -27,6 +27,7 @@ export function ManualSyncButton({ plaidItemId }: ManualSyncButtonProps) {
       type="button"
       onClick={handleClick}
       disabled={pending}
+      data-testid="manual-sync-button"
       className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold text-[var(--foreground)] transition hover:border-[var(--accent)] hover:text-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}

@@ -9,7 +9,6 @@ from cash_lens_api.models import User
 from cash_lens_api.schemas import DashboardRead
 from cash_lens_api.services.dashboard import build_dashboard
 
-
 router = APIRouter(tags=["dashboard"])
 
 
