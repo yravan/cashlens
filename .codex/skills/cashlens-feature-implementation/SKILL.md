@@ -41,10 +41,12 @@ The backlog lives at `spec history/claude feature tree iteration/feature-tree.md
 
 ## Domain skills to pull in
 
-Web UI → `frontend-design`, `vercel:shadcn`, `vercel:nextjs`, `vercel:react-best-practices`.
-LLM/categorization/receipts → `vercel:ai-sdk`, `vercel:ai-gateway`. Auth → `clerk-cli`,
-`vercel:auth`. Blob/storage → `vercel:vercel-storage`. Deploy/env → `cashlens-platform-ops`,
-`vercel:deployments-cicd`, `vercel:env-vars`.
+- **Web UI** → `frontend-design`, `vercel:shadcn`, `vercel:nextjs`, `vercel:react-best-practices`.
+- **LLM / categorization / receipts** → `vercel:ai-sdk`, `vercel:ai-gateway`.
+- **Auth** → `clerk-cli`, `vercel:auth`.
+- **Data / schema / migrations** → `cashlens-db-evolution`, `cashlens-neon-ops` (Neon project/branch/connection-string + `DATABASE_URL` checks, validating migrations against the real DB).
+- **Infra / jobs / secrets / deploy** → `cashlens-gcloud-ops` (Cloud Run, IAM, Secret Manager, runtime debugging), `cashlens-platform-ops`, `vercel:deployments-cicd`, `vercel:env-vars`.
+- **Blob / file storage** → `vercel:vercel-storage`.
 
 ## Code style — clean and minimal
 
