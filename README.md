@@ -33,6 +33,29 @@ Cash Lens is a ledger-first personal finance MVP with:
 
 ## Local development
 
+### One-command local stack
+
+Bring up api + web + Postgres in demo mode with a single command (requires a
+running Docker daemon for Postgres):
+
+```bash
+cd /Users/yajvanravan/cashlens
+make dev
+```
+
+This starts Postgres via `docker-compose.yml`, the FastAPI backend on
+`http://127.0.0.1:8000`, and the Next.js dev server on `http://127.0.0.1:3000`,
+and tears them all down on `Ctrl-C`. In a second terminal, verify the backend is
+healthy:
+
+```bash
+make dev-smoke   # polls /health until green, fails after 60s
+```
+
+See [docs/local-stack.md](/Users/yajvanravan/cashlens/docs/local-stack.md) for
+configuration and the Docker requirement. The individual backend and frontend
+run patterns below remain available for running a single service.
+
 ### Backend
 
 ```bash

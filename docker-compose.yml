@@ -1,0 +1,30 @@
+# Local development stack for Cash Lens.
+#
+# This file currently provisions only the Postgres dependency that the
+# FastAPI backend talks to. The api and web processes are started by the
+# `make dev` target so the existing `uv` and `pnpm` run patterns stay the
+# single source of truth (see README "Local development").
+#
+# The credentials and database name below MUST match the DATABASE_URL that
+# `make dev` exports for the backend:
+#   postgresql+psycopg2://cashlens:cashlens@127.0.0.1:5432/cashlens
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cashlens-postgres
+    environment:
+      POSTGRES_USER: cashlens
+      POSTGRES_PASSWORD: cashlens
+      POSTGRES_DB: cashlens
+    ports:
+      - "5432:5432"
+    volumes:
+      - cashlens-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cashlens -d cashlens"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  cashlens-postgres-data:
