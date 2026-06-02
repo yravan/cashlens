@@ -79,9 +79,19 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - api-tests
+    # `if: always()` forces the gate to run even when a matrix leg fails;
+    # without it the gate is skipped, and branch protection treats a skipped
+    # required check as satisfied. `needs.api-tests.result` is `success` only
+    # when every matrix leg (sqlite + postgres) succeeds.
+    if: always()
     steps:
       - name: Confirm API test matrix passed
-        run: echo "All api-tests legs passed."
+        run: |
+          if [ "${{ needs.api-tests.result }}" != "success" ]; then
+            echo "api-tests matrix did not succeed: ${{ needs.api-tests.result }}"
+            exit 1
+          fi
+          echo "All api-tests legs passed."
 
   web:
     name: web
