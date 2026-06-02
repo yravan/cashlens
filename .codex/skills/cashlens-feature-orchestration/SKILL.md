@@ -33,6 +33,7 @@ review is the whole safeguard. An agent grading its own homework is not a gate.
 - Treat every agent claim ("tests pass") as a claim to verify. CI required checks are the hard backstop; your `gh pr checks` confirmation is the soft one.
 - Never push to `main`; everything lands via PR (`cashlens-pr-workflow`).
 - Keep the orchestrating session alive — it holds the loop state. Use background agents + completion notifications when the user is away.
+- **Dispatch implementer/reviewer with `model: claude-opus-4-8` at max reasoning effort.** This is enforced durably by `.claude/settings.local.json` env (`CLAUDE_CODE_SUBAGENT_MODEL=claude-opus-4-8`, `CLAUDE_CODE_EFFORT_LEVEL=max`), which applies on the next session launch; until a restart picks that up, pass `model: claude-opus-4-8` explicitly on each dispatch.
 
 ## Quick reference
 

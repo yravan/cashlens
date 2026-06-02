@@ -30,3 +30,6 @@ apps/web/test-results/
 !**/.env.example
 !**/.env.sample
 gha-creds-*.json
+
+# Personal Claude Code local settings (machine-specific)
+.claude/settings.local.json
