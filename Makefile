@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 UV_CACHE_DIR ?= /private/tmp/uv-cache
 
-.PHONY: bootstrap api-bootstrap api-test web-install web-test web-browsers e2e docs-build docs-serve ci dev dev-down dev-smoke dev-stack-test
+.PHONY: bootstrap api-bootstrap api-test api-test-postgres web-install web-test web-browsers e2e docs-build docs-serve ci dev dev-down dev-smoke dev-stack-test
 
 bootstrap: api-bootstrap web-install
 
@@ -34,6 +34,12 @@ api-bootstrap:
 api-test: api-bootstrap
 	cd apps/api && uv run ruff check src tests
 	cd apps/api && uv run pytest
+
+# Run the backend suite against a Postgres 16 container (matches Neon's major
+# version), reusing the docker-compose `postgres` service. Mirrors the
+# Postgres leg of the CI api-tests matrix. Requires Docker. See README.
+api-test-postgres: api-bootstrap
+	bash ./scripts/api-test-postgres.sh
 
 web-install:
 	pnpm install --frozen-lockfile --ignore-scripts

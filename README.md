@@ -88,9 +88,33 @@ make e2e
 make docs-build
 ```
 
+### Backend tests against Postgres
+
+By default `make api-test` runs the backend suite against SQLite (fast). To run
+the same suite against **Postgres 16** (matching Neon's major version), reuse the
+`docker-compose.yml` Postgres service:
+
+```bash
+cd /Users/yajvanravan/cashlens
+make api-test-postgres   # brings up Postgres 16, runs pytest, tears it down
+```
+
+This requires Docker and picks the next free host port if `5432` is already in
+use. The suite selects its backend from `DATABASE_URL`, so you can also point it
+at any reachable Postgres directly:
+
+```bash
+cd /Users/yajvanravan/cashlens/apps/api
+DATABASE_URL="postgresql+psycopg2://cashlens:cashlens@127.0.0.1:5432/cashlens" uv run pytest
+```
+
+CI runs both backends automatically (see the `api-tests` matrix in
+[.github/workflows/ci.yml](/Users/yajvanravan/cashlens/.github/workflows/ci.yml)).
+
 ## Verification
 
-- `make api-test` runs `ruff` and `pytest` for the FastAPI app.
+- `make api-test` runs `ruff` and `pytest` for the FastAPI app (SQLite).
+- `make api-test-postgres` runs the same suite against a Postgres 16 container.
 - `make web-test` runs lint, typecheck, Vitest, and the production Next build.
 - `make e2e` runs Playwright smoke coverage against local backend and frontend servers in demo mode.
 - `make docs-build` validates the MkDocs documentation and version sync rules.

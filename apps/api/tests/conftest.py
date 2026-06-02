@@ -4,8 +4,12 @@ import os
 import tempfile
 from pathlib import Path
 
-_TEMP_DIR = tempfile.mkdtemp(prefix="cashlens-api-tests-")
-os.environ.setdefault("DATABASE_URL", f"sqlite:///{Path(_TEMP_DIR) / 'cashlens-test.db'}")
+# DATABASE_URL selects the backend the suite targets. When it is unset or empty
+# (e.g. the SQLite leg of the CI matrix exports DATABASE_URL="") fall back to a
+# throwaway SQLite file. Set it to a Postgres URL to run against Postgres 16.
+if not os.environ.get("DATABASE_URL"):
+    _TEMP_DIR = tempfile.mkdtemp(prefix="cashlens-api-tests-")
+    os.environ["DATABASE_URL"] = f"sqlite:///{Path(_TEMP_DIR) / 'cashlens-test.db'}"
 os.environ.setdefault("DEMO_MODE", "true")
 os.environ.setdefault("SEED_DEMO_DATA", "true")
 os.environ.setdefault("VERIFY_PLAID_WEBHOOKS", "false")
