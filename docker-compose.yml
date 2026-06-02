@@ -16,8 +16,11 @@ services:
       POSTGRES_USER: cashlens
       POSTGRES_PASSWORD: cashlens
       POSTGRES_DB: cashlens
+    # Host port is configurable so `make dev` can fall back to the next free
+    # port when 5432 is already held by another Postgres (e.g. Homebrew).
+    # The container always listens on 5432 internally.
     ports:
-      - "5432:5432"
+      - "${CASHLENS_PG_HOST_PORT:-5432}:5432"
     volumes:
       - cashlens-postgres-data:/var/lib/postgresql/data
     healthcheck:

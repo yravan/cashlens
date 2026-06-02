@@ -16,7 +16,30 @@
 # environments without Docker. The default mode does not require Docker at all.
 set -euo pipefail
 
-HEALTH_URL="${CASHLENS_HEALTH_URL:-http://127.0.0.1:8000/health}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUNTIME_FILE="${CASHLENS_RUNTIME_FILE:-$REPO_ROOT/.dev-stack.runtime}"
+
+# Resolve the health URL in priority order:
+#   1. explicit CASHLENS_HEALTH_URL
+#   2. the actual api port `make dev` recorded in the runtime file
+#   3. the 8000 default
+resolve_health_url() {
+  if [ -n "${CASHLENS_HEALTH_URL:-}" ]; then
+    printf '%s\n' "$CASHLENS_HEALTH_URL"
+    return
+  fi
+  if [ -f "$RUNTIME_FILE" ]; then
+    local url
+    url="$(sed -nE 's/^HEALTH_URL=(.*)$/\1/p' "$RUNTIME_FILE" | head -1)"
+    if [ -n "$url" ]; then
+      printf '%s\n' "$url"
+      return
+    fi
+  fi
+  printf 'http://127.0.0.1:8000/health\n'
+}
+
+HEALTH_URL="$(resolve_health_url)"
 TIMEOUT_SECONDS="${CASHLENS_SMOKE_TIMEOUT:-60}"
 POLL_INTERVAL_SECONDS="${CASHLENS_SMOKE_INTERVAL:-2}"
 MANAGE_STACK="${CASHLENS_SMOKE_MANAGE_STACK:-0}"
@@ -59,10 +82,23 @@ STACK_PID=""
 cleanup() {
   if [[ -n "$STACK_PID" ]]; then
     log "stopping managed stack (pid ${STACK_PID})"
-    kill "$STACK_PID" >/dev/null 2>&1 || true
+    # Stop the whole `make dev` process group so uvicorn/next don't leak, then
+    # remove the container (managed mode owns the full lifecycle).
+    kill -- "-${STACK_PID}" >/dev/null 2>&1 || kill "$STACK_PID" >/dev/null 2>&1 || true
     wait "$STACK_PID" 2>/dev/null || true
-    docker compose down >/dev/null 2>&1 || true
+    bash "$REPO_ROOT/scripts/dev-down.sh" >/dev/null 2>&1 || true
   fi
+}
+
+# Wait until `make dev` has written its runtime file (or the deadline passes),
+# then re-resolve HEALTH_URL to the actual api port it chose.
+wait_for_runtime_file() {
+  local deadline
+  deadline=$(( $(date +%s) + 30 ))
+  while [[ ! -f "$RUNTIME_FILE" ]] && (( $(date +%s) < deadline )); do
+    sleep 1
+  done
+  HEALTH_URL="$(resolve_health_url)"
 }
 
 main() {
@@ -80,8 +116,12 @@ main() {
     fi
     trap cleanup EXIT
     log "bringing up full stack via 'make dev'"
+    set -m
     make dev >/tmp/cashlens-dev.log 2>&1 &
     STACK_PID=$!
+    set +m
+    wait_for_runtime_file
+    log "targeting health URL: ${HEALTH_URL}"
   fi
 
   if poll_health; then

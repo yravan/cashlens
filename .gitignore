@@ -30,3 +30,4 @@ apps/web/test-results/
 !**/.env.example
 !**/.env.sample
 gha-creds-*.json
+.dev-stack.runtime

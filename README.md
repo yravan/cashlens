@@ -35,21 +35,27 @@ Cash Lens is a ledger-first personal finance MVP with:
 
 ### One-command local stack
 
-Bring up api + web + Postgres in demo mode with a single command (requires a
-running Docker daemon for Postgres):
+Bring up api + web + Postgres in demo mode with a single command:
 
 ```bash
 cd /Users/yajvanravan/cashlens
 make dev
 ```
 
-This starts Postgres via `docker-compose.yml`, the FastAPI backend on
-`http://127.0.0.1:8000`, and the Next.js dev server on `http://127.0.0.1:3000`,
-and tears them all down on `Ctrl-C`. In a second terminal, verify the backend is
-healthy:
+This reuses a cashlens-usable Postgres if one is already reachable, otherwise
+runs Postgres in a `docker-compose.yml` container (requires Docker). It then
+starts the FastAPI backend (default `http://127.0.0.1:8000`) and the Next.js dev
+server (default `http://127.0.0.1:3000`), falling back to the next free port and
+printing the actual ports if a default is busy. If `5432` is held by another
+Postgres (e.g. Homebrew), the cashlens container comes up on the next free port
+instead of aborting.
+
+On `Ctrl-C` only api/web stop — **Postgres stays warm** between runs. Use
+`make dev-down` to remove the Postgres container for a clean slate. In a second
+terminal, verify the backend is healthy:
 
 ```bash
-make dev-smoke   # polls /health until green, fails after 60s
+make dev-smoke   # polls the actual /health port until green, fails after 60s
 ```
 
 See [docs/local-stack.md](/Users/yajvanravan/cashlens/docs/local-stack.md) for
