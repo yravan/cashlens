@@ -11,6 +11,6 @@ Product direction:
 
 Code (see CLAUDE.md for stack, commands, and binding rules):
 
-- `apps/web` — the Next.js web app (Clerk-managed Google sign-in). Quickstart: `pnpm install`, copy `apps/web/.env.example` to `apps/web/.env.local` and fill keys, then `pnpm dev`.
+- `apps/web` — the Next.js web app (Clerk-managed Google sign-in, Postgres + Drizzle data layer). Quickstart: `pnpm install`, copy `apps/web/.env.example` to `apps/web/.env.local` and fill keys, then `pnpm db:up && pnpm db:setup` and `pnpm dev`.
 
 Every leaf in the feature tree is sized for one agent: 1–3 PRs, roughly ≤500 lines, reviewable in one sitting. Build in MVP-path order.
