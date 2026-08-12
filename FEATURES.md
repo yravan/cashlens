@@ -21,8 +21,8 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 3. **1.2.1** App shell & navigation
 4. **3.1.1** Ledger data model
 5. **1.3** Production deployment
-6. **2.1.1** Plaid connect flow
-7. **2.1.2** Connection credential storage
+6. **2.1.2** Connection credential storage
+7. **2.1.1** Plaid connect flow
 8. **2.1.3** Initial history backfill
 9. **2.1.4** Continuous sync
 10. **2.1.5** Connection management
@@ -47,11 +47,11 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
   - **1.1.2 User identity & data scoping** `[MVP]` — First sign-in creates the user record. Every piece of financial data belongs to exactly one user and is invisible to everyone else.
   - **1.1.3 Account deletion** `[P2]` — Permanently delete an account: all financial data erased, all provider access revoked.
 - **1.2 Web app shell** `[MVP]`
-  - **1.2.1 App shell & navigation** `[MVP]` — Signed-in layout with navigation between Dashboard, Transactions, Accounts, and Settings. Responsive enough to use from a phone browser.
+  - **1.2.1 App shell & navigation** `[MVP]` — Signed-in layout with navigation between Dashboard, Transactions, and Accounts, plus sign-out. Responsive enough to use from a phone browser.
   - **1.2.2 Settings & profile page** `[P1]` — See who you are, sign out, manage preferences, and jump to connection management.
   - **1.2.3 Onboarding flow** `[P1]` — First-run walkthrough: connect a first account and watch data appear. Sets expectations while backfill runs.
   - **1.2.4 Empty, loading & error states** `[P2]` — Every page communicates clearly when data is missing, loading, or failed.
-- **1.3 Production deployment** `[MVP]` — The app and its database run at a stable public URL. Merging to main ships automatically.
+- **1.3 Production deployment** `[MVP]` — The app and its database run at a stable public URL; changes ship to it automatically.
 
 ## 2. Account Connections
 
@@ -72,7 +72,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
   - **2.3.1 Gmail connect** `[P1]` — Authorize read access to the inbox, scoped to finding financial mail; disconnectable like any other source.
   - **2.3.2 Receipt & invoice detection** `[P1]` — Continuously identify emails that are receipts, invoices, bills, or payment confirmations, and store them as documents with merchant, date, and amount.
   - **2.3.3 Receipt parsing & line items** `[P1]` — Extract structured line items from receipt emails: products, prices, tax, tip.
-  - **2.3.4 Inbox backfill** `[P2]` — Scan historical email for past receipts and invoices.
+  - **2.3.4 Inbox backfill** `[P1]` — Scan historical email for past receipts and invoices, so old transactions get explained too.
   - **2.3.5 Invoice & bill tracking** `[P2]` — Invoices found in email become trackable obligations: due date, amount, paid or unpaid, matched to the eventual payment.
 - **2.4 Peer-to-peer platforms** `[P1]`
   - **2.4.1 Venmo activity** `[P1]` — Bring Venmo payments and receipts — with notes and counterparties — into the ledger for matching against bank entries.
@@ -90,7 +90,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 - **3.2 Transaction lifecycle** `[P1]`
   - **3.2.1 Pending-to-posted reconciliation** `[P1]` — A pending charge and its posted version resolve to one transaction, never duplicates.
   - **3.2.2 Edits & annotations** `[P1]` — Rename merchants, add notes, hide or ignore transactions; user edits survive re-syncs.
-  - **3.2.3 Document attachments** `[P2]` — Receipts and other documents attach to transactions and appear on the detail view.
+  - **3.2.3 Document attachments** `[P2]` — Any file — a photo, a PDF — can be attached to a transaction by hand and appears on its detail view.
 - **3.3 Deduplication & matching** `[MVP]`
 
   *One real-world event appears exactly once, enriched by every source that saw it.*
@@ -98,7 +98,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
   - **3.3.2 Cross-source duplicate merge** `[P1]` — The same purchase seen by two sources (bank and Venmo, two feeds) merges into one enriched transaction.
   - **3.3.3 Receipt-to-transaction matching** `[P1]` — Parsed receipts attach to the card transaction they explain, by amount, date, and merchant similarity; itemization travels with the match.
 - **3.4 Shared money & true spend** `[P1]`
-  - **3.4.1 Transaction splitting** `[P1]` — Split one transaction into parts with independent categories and amounts — one payment covering rent plus utilities, or a group dinner.
+  - **3.4.1 Transaction splitting** `[P1]` — Split one transaction into parts with independent categories and amounts — one payment covering rent plus utilities, a group dinner, or a receipt's individual items. The ledger's decomposition primitive.
   - **3.4.2 Reimbursement tracking** `[P1]` — Mark amounts others owe you; incoming Venmo or payments settle them; spending totals reflect only your true share.
   - **3.4.3 Returns tracking** `[P1]` — Flag purchases you intend to return, match the refund when it lands, and surface refunds that never arrive.
   - **3.4.4 Owed-money view** `[P2]` — A standing answer to "who owes me what, and what am I expecting back?"
@@ -124,7 +124,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
   - **4.2.3 Learning from corrections** `[P1]` — Corrections become durable knowledge: the same merchant never needs correcting twice.
   - **4.2.4 Re-categorization runs** `[P2]` — Re-run categorization over history after taxonomy or rule changes, with a preview of what would change.
 - **4.3 Line-item categorization** `[P1]` — Receipt line items get their own categories, so one Costco run truthfully splits into groceries versus household. Aggregations use items when present.
-- **4.4 Merchant enrichment** `[P2]` — Cryptic bank strings resolve to clean merchant names and logos, shared across a merchant's transactions — so "BILL PAY" and processor prefixes finally say who was paid.
+- **4.4 Merchant enrichment** `[P1]` — Cryptic bank strings resolve to clean merchant names and logos, shared across a merchant's transactions — so "BILL PAY" and processor prefixes finally say who was paid.
 
 ## 5. Review & Data Quality
 
@@ -190,8 +190,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 *It keeps working, and you can tell.*
 
 - **9.1 Sync reliability** `[P2]` — Failed syncs retry themselves; persistent failures surface to the user instead of rotting silently.
-- **9.2 Edit history & undo** `[P3]` — Every change to a transaction is inspectable and reversible.
-- **9.3 Data correctness audits** `[P3]` — Periodic self-checks that balances and flows reconcile against sources, with discrepancies flagged.
+- **9.2 Data correctness audits** `[P3]` — Periodic self-checks that balances and flows reconcile against sources, with discrepancies flagged.
 
 ---
 
@@ -201,5 +200,6 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 - **Notifications are P1, not MVP** — Phase 0 listed them, but the stated MVP (expenses, transactions, recurring, upcoming, cash flow) doesn't include them. The in-app feed leads the P1 wave; push (web and iOS) stays P2.
 - **Internal transfer matching is MVP** — it took notifications' slot in the 19-leaf budget: cash flow that double-counts card payments and transfers isn't cash flow.
 - **iOS is a P2 branch** — "website and iOS app" is the vision, but the web alone delivers the MVP.
-- **The wedge features are all P1** — manual entry, Gmail receipts, Venmo, splits, reimbursements, returns, the review queue, learning from corrections, line-item categories, and anomaly detection: the first wave after MVP, in roughly the order listed.
+- **The wedge features are all P1** — manual entry, Gmail receipts (including inbox backfill), Venmo, splits, reimbursements, returns, the review queue, learning from corrections, line-item categories, merchant enrichment, and anomaly detection: the first wave after MVP, in roughly the order listed.
+- **Merchant enrichment is P1, not P2** — "understand what my bill pay is" is an explicit vision goal, and it lives or dies on decoding cryptic bank strings.
 - Naming Plaid, Gmail, Venmo, and Google is treated as product scope, not implementation detail.
