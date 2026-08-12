@@ -1,0 +1,19 @@
+/node_modules
+/.next/
+
+.DS_Store
+*.pem
+.pnpm-debug.log*
+
+# the example stays tracked, real keys never do
+.env*
+!.env.example
+
+# Playwright artifacts — .clerk holds credential-grade session state
+/test-results/
+/playwright-report/
+/playwright/.clerk/
+
+.vercel
+*.tsbuildinfo
+next-env.d.ts

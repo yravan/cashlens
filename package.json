@@ -1,0 +1,14 @@
+{
+  "name": "cashlens",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "start": "pnpm --filter web start",
+    "lint": "pnpm --filter web lint",
+    "typecheck": "pnpm --filter web typecheck",
+    "test:e2e": "pnpm --filter web test:e2e"
+  },
+  "packageManager": "pnpm@10.32.1"
+}

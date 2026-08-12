@@ -28,12 +28,11 @@ One person's complete financial life lives in this system. Every leaf is built l
 
 ## Stack & commands
 
-Not chosen yet — the first foundation leaves decide it. YOU MUST keep this section current as the stack lands: exact dev-server, test, lint, and typecheck commands, per app, as used in CI.
+Chosen in leaf 1.1.1 (survey in that PR): **pnpm workspace** (root scripts delegate to apps); **apps/web** is **Next.js 16** (App Router, TypeScript, Tailwind v4, ESLint 9 flat config) with **Clerk** as the managed auth provider (Google-only sign-in). E2E tests are **Playwright** against a production build on port 3100 and the real Clerk development instance. YOU MUST keep this section current as the stack lands: exact dev-server, test, lint, and typecheck commands, per app, as used in CI.
 
-<!-- Fill in, e.g.:
-- web: `pnpm dev` · `pnpm test` · `pnpm lint` · `pnpm typecheck`
-- api: `<run>` · `<test>` · `<lint>` · `<typecheck>`
--->
+- web (run from repo root, or inside `apps/web` without the filter): `pnpm dev` · `pnpm test:e2e` · `pnpm lint` · `pnpm typecheck` · `pnpm build`
+- Env: copy `apps/web/.env.example` to `apps/web/.env.local` and fill the Clerk dev keys (`npx clerk@latest env pull` — the CLI is linked to the "Cash Lens" Clerk app). E2E tests need them.
+- The middleware file is `proxy.ts` (Next 16 renamed `middleware.ts`); it is an optimistic gate only — every protected page and route handler re-checks `auth()` itself (CVE-2025-29927 lesson).
 
 ## Testing policy (non-negotiable)
 
