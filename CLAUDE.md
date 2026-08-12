@@ -61,6 +61,7 @@ Tests exist to catch regressions in behavior users care about — not to demonst
 
 ## Repository etiquette
 
+- NEVER merge a PR. The founder personally reviews and merges every PR. Open it, report it, stop — even if all checks are green.
 - Branch per leaf: `leaf/<node-id>-short-name` (e.g. `leaf/2.1.3-initial-backfill`).
 - PR title starts with the node ID. Body: what the node promises, what shipped, evidence (test output), anything deferred.
 - Never commit secrets. Env files stay untracked; `.gitignore` already covers them.
