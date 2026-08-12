@@ -1,11 +1,12 @@
 import { UserButton } from "@clerk/nextjs";
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { currentUser } from "@clerk/nextjs/server";
+
+import { requireUser } from "@/lib/data/users";
 
 export default async function Home() {
-  // The proxy is only an optimistic gate (CVE-2025-29927) — re-check here.
-  const { isAuthenticated } = await auth();
-  if (!isAuthenticated) redirect("/sign-in");
+  // The proxy is only an optimistic gate (CVE-2025-29927) — requireUser
+  // re-checks auth() and provisions the user record on first contact.
+  await requireUser();
 
   const user = await currentUser();
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
