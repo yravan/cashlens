@@ -5,7 +5,7 @@ Ledger-first personal finance app. Read `specs/vision.md` for the product thesis
 ## Working model
 
 - The unit of work is ONE leaf node from FEATURES.md. Stay inside it: 1–3 PRs, roughly ≤500 changed lines, reviewable in one sitting.
-- Research before building: every leaf starts with a survey of how production systems and open-source projects solve the same problem. Prefer assembling proven libraries and patterns over custom code; write custom code only where this product's wedge demands it. Open the PR with a short prior-art note: what you found, adopted, and rejected.
+- Research before building: every leaf starts with a survey of how production systems and open-source projects solve the same problem — at least 10 sources for a simple leaf, up to 50 for a complex one (implementations, libraries, docs, post-mortems). Prefer assembling proven libraries and patterns over custom code; write custom code only where this product's wedge demands it. Open the PR with a prior-art note: what you found, adopted, and rejected.
 - Before coding, restate the leaf's scope. Anything beyond the node's description is scope creep — note it in the PR instead of building it.
 - Don't refactor neighboring code or touch other leaves' territory in the same PR.
 - If implementation reveals the tree is wrong (bad split, missing dependency), update FEATURES.md in its own small commit and say so in the PR.
