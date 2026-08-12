@@ -10,6 +10,10 @@ Ledger-first personal finance app. Read `specs/vision.md` for the product thesis
 - Don't refactor neighboring code or touch other leaves' territory in the same PR.
 - If implementation reveals the tree is wrong (bad split, missing dependency), update FEATURES.md in its own small commit and say so in the PR.
 
+## Code style
+
+- Comments, docstrings, and prose in code: minimum, ideally zero. Code explains itself through names and structure; comment only a constraint the code can't express. Never narrate what a line does or restate it in English.
+
 ## Security — the defining tenet
 
 One person's complete financial life lives in this system. Every leaf is built like that's true, because it is.
