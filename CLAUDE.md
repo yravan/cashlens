@@ -9,6 +9,7 @@ Ledger-first personal finance app. Read `specs/vision.md` for the product thesis
 - Before coding, restate the leaf's scope. Anything beyond the node's description is scope creep — note it in the PR instead of building it.
 - Don't refactor neighboring code or touch other leaves' territory in the same PR.
 - If implementation reveals the tree is wrong (bad split, missing dependency), update FEATURES.md in its own small commit and say so in the PR.
+- After the leaf PR is opened, an independent simplification pass reviews it with fresh eyes (no builder context): condense and aggressively simplify the diff — same behavior, same tests, fewer lines — pushed to the same PR before founder review.
 
 ## Code style
 
