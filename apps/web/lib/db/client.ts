@@ -1,18 +1,27 @@
 import "server-only";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 import * as schema from "./schema";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is not set — copy .env.example to .env.local first");
+export type Db = NodePgDatabase<typeof schema>;
+
+// Created on first use, not at import: `next build` (and deploy previews,
+// until leaf 1.3 wires a hosted database) must succeed without DATABASE_URL.
+// One instance per process, surviving dev-server hot reloads.
+const globalForDb = globalThis as unknown as { cashlensDb?: Db };
+
+export function getDb(): Db {
+  if (!globalForDb.cashlensDb) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error(
+        "DATABASE_URL is not set — copy .env.example to .env.local first",
+      );
+    }
+    globalForDb.cashlensDb = drizzle({
+      client: new Pool({ connectionString: process.env.DATABASE_URL, max: 5 }),
+      schema,
+    });
+  }
+  return globalForDb.cashlensDb;
 }
-
-// Reuse the pool across dev-server hot reloads (one pool per process).
-const globalForDb = globalThis as unknown as { cashlensPool?: Pool };
-const pool =
-  globalForDb.cashlensPool ??
-  new Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
-if (process.env.NODE_ENV !== "production") globalForDb.cashlensPool = pool;
-
-export const db = drizzle({ client: pool, schema });
