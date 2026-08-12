@@ -4,22 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 
+import { withRequestScope, type ScopedTx } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
-import { withRequestScope, type ScopedTx } from "@/lib/db/scope";
-
-export type CurrentUser = {
-  id: string;
-  clerkUserId: string;
-  createdAt: Date;
-};
-
-function toCurrentUser(row: typeof users.$inferSelect): CurrentUser {
-  return {
-    id: row.id,
-    clerkUserId: row.clerkUserId,
-    createdAt: row.createdAt,
-  };
-}
 
 async function findUser(tx: ScopedTx, clerkUserId: string) {
   const rows = await tx
@@ -29,29 +15,23 @@ async function findUser(tx: ScopedTx, clerkUserId: string) {
   return rows[0];
 }
 
-// Idempotent first-contact provisioning: steady state is a pure read; the
-// unique constraint plus ON CONFLICT DO NOTHING make concurrent first
-// requests converge on one row.
-async function ensureUser(clerkUserId: string): Promise<CurrentUser> {
-  return withRequestScope(clerkUserId, async (tx) => {
-    const found = await findUser(tx, clerkUserId);
-    if (found) return toCurrentUser(found);
+export const requireUser = cache(async () => {
+  const { isAuthenticated, userId } = await auth();
+  if (!isAuthenticated) redirect("/sign-in");
+
+  return withRequestScope(userId, async (tx) => {
+    const found = await findUser(tx, userId);
+    if (found) return found;
 
     const inserted = await tx
       .insert(users)
-      .values({ clerkUserId })
+      .values({ clerkUserId: userId })
       .onConflictDoNothing({ target: users.clerkUserId })
       .returning();
-    if (inserted[0]) return toCurrentUser(inserted[0]);
+    if (inserted[0]) return inserted[0];
 
-    const raced = await findUser(tx, clerkUserId);
+    const raced = await findUser(tx, userId);
     if (!raced) throw new Error("user provisioning raced and lost the row");
-    return toCurrentUser(raced);
+    return raced;
   });
-}
-
-export const requireUser = cache(async (): Promise<CurrentUser> => {
-  const { isAuthenticated, userId } = await auth();
-  if (!isAuthenticated) redirect("/sign-in");
-  return ensureUser(userId);
 });

@@ -10,9 +10,6 @@ import {
 
 export const appRole = pgRole("cashlens_app").existing();
 
-// Every user-owned table gets RLS policies scoped to the request's verified
-// Clerk user id (set per transaction by withRequestScope); tables added
-// without them fail the RLS coverage test in e2e/isolation.signed-in.spec.ts.
 export const users = pgTable(
   "users",
   {

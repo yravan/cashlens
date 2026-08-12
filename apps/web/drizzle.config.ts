@@ -12,6 +12,4 @@ export default defineConfig({
   schema: "./lib/db/schema.ts",
   out: "./db/migrations",
   dbCredentials: { url: process.env.DATABASE_URL_OWNER },
-  strict: true,
-  verbose: true,
 });

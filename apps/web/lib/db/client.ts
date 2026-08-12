@@ -1,17 +1,17 @@
 import "server-only";
+import { sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 import * as schema from "./schema";
 
-export type Db = NodePgDatabase<typeof schema>;
+type Db = NodePgDatabase<typeof schema>;
+export type ScopedTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-// Created on first use, not at import: `next build` (and deploy previews,
-// until leaf 1.3 wires a hosted database) must succeed without DATABASE_URL.
-// One instance per process, surviving dev-server hot reloads.
+// Lazy: `next build` and previews must succeed without DATABASE_URL. Global: one pool across dev reloads.
 const globalForDb = globalThis as unknown as { cashlensDb?: Db };
 
-export function getDb(): Db {
+function getDb(): Db {
   if (!globalForDb.cashlensDb) {
     if (!process.env.DATABASE_URL) {
       throw new Error(
@@ -24,4 +24,16 @@ export function getDb(): Db {
     });
   }
   return globalForDb.cashlensDb;
+}
+
+export async function withRequestScope<T>(
+  clerkUserId: string,
+  fn: (tx: ScopedTx) => Promise<T>,
+): Promise<T> {
+  return getDb().transaction(async (tx) => {
+    await tx.execute(
+      sql`select set_config('app.clerk_user_id', ${clerkUserId}, true)`,
+    );
+    return fn(tx);
+  });
 }

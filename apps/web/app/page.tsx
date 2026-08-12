@@ -4,8 +4,6 @@ import { currentUser } from "@clerk/nextjs/server";
 import { requireUser } from "@/lib/data/users";
 
 export default async function Home() {
-  // The proxy is only an optimistic gate (CVE-2025-29927) — requireUser
-  // re-checks auth() and provisions the user record on first contact.
   await requireUser();
 
   const user = await currentUser();
