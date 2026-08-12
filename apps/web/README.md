@@ -1,36 +1,27 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cash Lens — web
 
-## Getting Started
+Next.js 16 (App Router, TypeScript, Tailwind v4) with [Clerk](https://clerk.com) managed auth. Sign-in is Google-only; every route except `/sign-in` and `/sign-up` requires a session.
 
-First, run the development server:
+## Run
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```sh
+pnpm install                 # from the repo root
+cp .env.example .env.local   # then fill in the Clerk development keys
+npx clerk@latest env pull    # easiest way — the CLI is linked to the "Cash Lens" app
+pnpm dev                     # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Checks
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```sh
+pnpm lint        # ESLint 9 (flat config)
+pnpm typecheck   # next typegen && tsc --noEmit
+pnpm test:e2e    # Playwright: builds and serves on :3100, tests against the
+                 # real Clerk development instance (needs .env.local keys)
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Auth layout
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `proxy.ts` — Clerk middleware; redirects signed-out requests to `/sign-in`. Optimistic gate only: pages and route handlers re-check `auth()` themselves (CVE-2025-29927 lesson).
+- `app/sign-in/[[...sign-in]]/page.tsx`, `app/sign-up/[[...sign-up]]/page.tsx` — Clerk components; the instance has only Google enabled.
+- Keys: `.env.example` documents everything. `pk_test_`/`sk_test_` keys are development-instance only — production gets its own instance and Google OAuth client (leaf 1.3).
