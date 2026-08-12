@@ -4,6 +4,8 @@
 
 **The wedge** (why this beats a prettier Monarch): true spend, reimbursements, returns, receipts, a review queue, and learning from corrections.
 
+**The tenet: security.** This is one person's entire financial life. Baseline rules bind every leaf (see CLAUDE.md); branch 9 carries the hardening work beyond them.
+
 ## How to read this tree
 
 - Every node is an idea in under 50 words — no implementation details.
@@ -37,7 +39,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 18. **6.4.1** Recurring charge detection
 19. **6.4.2** Upcoming expenses view
 
-**Engineering spine** (branch 10, outside the product budget): **10.1** CI and **10.2** the API test harness land right after leaf 4; **10.4** seeded data immediately after (tests assert against it); **10.3** the browser harness once leaf 11 gives it a page to drive.
+**Engineering spine** (branch 10, outside the product budget): **10.1** continuous verification and **10.2** the backend test harness land right after leaf 4; **10.4** seeded data immediately after (tests assert against it); **10.3** the browser harness once leaf 11 gives it a page to drive; **10.7** security scanning turns on with 10.1.
 
 ---
 
@@ -188,23 +190,26 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 - **8.4 Push notifications** `[P2]` — Device registration and delivery for chosen alerts.
 - **8.5 Store release** `[P3]` — Ship via TestFlight, then the App Store.
 
-## 9. Trust & Operations
+## 9. Security & Trust
 
-*It keeps working, and you can tell.*
+*One person's complete financial life lives here — protected by default, and it keeps working visibly. Baseline security binds every leaf via CLAUDE.md; these nodes are the hardening beyond it.*
 
-- **9.1 Sync reliability** `[P2]` — Failed syncs retry themselves; persistent failures surface to the user instead of rotting silently.
-- **9.2 Data correctness audits** `[P3]` — Periodic self-checks that balances and flows reconcile against sources, with discrepancies flagged.
+- **9.1 Account & session security** `[P1]` — Sessions expire sensibly, sign-in resists takeover, and destructive actions ask before they act.
+- **9.2 Data protection & minimization** `[P1]` — Sensitive data is protected at rest and in transit; only what features need is kept; deletion actually deletes everywhere.
+- **9.3 Sync reliability** `[P2]` — Failed syncs retry themselves; persistent failures surface to the user instead of rotting silently.
+- **9.4 Data correctness audits** `[P3]` — Periodic self-checks that balances and flows reconcile against sources, with discrepancies flagged.
 
 ## 10. Engineering Foundation
 
 *Scaffolding that keeps dozens of agent-built leaves honest: every feature verifiable, every regression caught before merge. Meta-scope — CLAUDE.md carries the testing policy these harnesses enforce.*
 
-- **10.1 Continuous integration** `[MVP]` — Every push runs linting, type checks, and the whole test suite; red blocks merge. The enforcement arm of "done."
-- **10.2 API test harness** `[MVP]` — Backend tests exercise real endpoints against a real local database, with per-test isolation and factories ready for every later leaf.
-- **10.3 Browser test harness** `[MVP]` — Real-browser end-to-end tests drive the running app through the money paths — sign in, connect, transactions visible, cash flow right — as each lands.
-- **10.4 Seeded test & demo data** `[MVP]` — One deterministic dataset — users, accounts, transactions with known totals — so tests assert exact numbers and the app demos without real credentials.
-- **10.5 Developer documentation** `[P1]` — A quickstart that takes a fresh machine to a running app and green tests in minutes; updated as the stack evolves.
-- **10.6 Preview deployments** `[P1]` — Every PR gets a throwaway URL, so agent-built changes are reviewed in a real browser before merge.
+- **10.1 Continuous verification** `[MVP]` — Every change is verified automatically before it can merge; a failing check blocks it. The enforcement arm of "done."
+- **10.2 Backend test harness** `[MVP]` — Tests exercise the backend exactly the way clients do, against real infrastructure, isolated per test — the harness every later leaf builds on.
+- **10.3 Browser test harness** `[MVP]` — End-to-end tests drive the real app in a real browser through the money paths: sign in, connect, see transactions, trust the numbers.
+- **10.4 Seeded test & demo data** `[MVP]` — One deterministic dataset with known totals, so tests assert exact numbers and the app runs and demos without real credentials.
+- **10.5 Developer documentation** `[P1]` — A quickstart that takes a fresh machine to a running app and green tests in minutes; updated as the project evolves.
+- **10.6 Preview deployments** `[P1]` — Every proposed change can be seen running at its own temporary address before it merges — reviewed in the browser, not just the diff.
+- **10.7 Security scanning** `[MVP]` — Every change is automatically checked for leaked secrets, vulnerable dependencies, and known risky patterns; findings block merge.
 
 ---
 

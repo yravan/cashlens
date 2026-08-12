@@ -42,6 +42,10 @@ Gmail (receipts, invoices) · text messages (receipts) · Plaid (banks, cards) �
 
 Not "prettier Monarch." The differentiators: true spend, reimbursements, returns, receipts, the review queue, and learn-from-corrections behavior.
 
+## Security — a defining tenet
+
+This system holds one person's entire financial life, so security is a tenet, not a feature: least data, least privilege, provider secrets never exposed, and per-user isolation proven by tests — on every feature, from the first commit.
+
 ## Platforms & experience
 
 Website first, then an iOS app. Sign in with Google (managed auth, e.g. Clerk). Push notifications. A fast, tinder-style review flow for categorizing, correcting, and annotating. Proper user registration and onboarding.

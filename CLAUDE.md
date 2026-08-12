@@ -5,9 +5,21 @@ Ledger-first personal finance app. Read `specs/vision.md` for the product thesis
 ## Working model
 
 - The unit of work is ONE leaf node from FEATURES.md. Stay inside it: 1–3 PRs, roughly ≤500 changed lines, reviewable in one sitting.
+- Research before building: every leaf starts with a survey of how production systems and open-source projects solve the same problem. Prefer assembling proven libraries and patterns over custom code; write custom code only where this product's wedge demands it. Open the PR with a short prior-art note: what you found, adopted, and rejected.
 - Before coding, restate the leaf's scope. Anything beyond the node's description is scope creep — note it in the PR instead of building it.
 - Don't refactor neighboring code or touch other leaves' territory in the same PR.
 - If implementation reveals the tree is wrong (bad split, missing dependency), update FEATURES.md in its own small commit and say so in the PR.
+
+## Security — the defining tenet
+
+One person's complete financial life lives in this system. Every leaf is built like that's true, because it is.
+
+- Least data, least privilege: store only what the feature needs; request the narrowest provider scopes that work.
+- Secrets and provider tokens are encrypted at rest and never appear in the browser, logs, fixtures, or test output.
+- Any surface touching user data ships with a cross-user isolation test: user B can never read user A's anything.
+- All input is validated at the boundary; queries and commands are never assembled from raw input.
+- A new dependency is a security decision — prefer maintained, widely used ones, and keep scanning green.
+- If a leaf introduces new risk surface (uploads, webhooks, background jobs), name it in the PR with its mitigation.
 
 ## Stack & commands
 
@@ -44,7 +56,8 @@ Tests exist to catch regressions in behavior users care about — not to demonst
 1. Lint, typecheck, and the FULL test suite pass locally — paste the output, don't assert it.
 2. Run the actual app and exercise the feature once as a user would.
 3. New behavior has tests per the policy above. If you had to edit existing assertions, explain why in the PR.
-4. CI is green on the PR.
+4. Security rules hold — including the isolation test wherever user data is touched.
+5. CI is green on the PR.
 
 ## Repository etiquette
 
