@@ -50,9 +50,9 @@ Website first, then an iOS app. Sign in with Google (managed auth, e.g. Clerk). 
 
 An app that tracks expenses, transactions, recurring expenses, upcoming expenses, and cash flow. Nothing more. The 19-leaf path is in [FEATURES.md](../FEATURES.md).
 
-## Phase guidance (from the original roadmap)
+## Phase guidance
 
-- **Phase 0** — product skeleton and schema
+- **Phase 0** — product skeleton and schema *(the only phase the original roadmap spells out; later phases are derived)*
 - **Phase 1** — Plaid sandbox → real sync
 - **Phase 2** — manual categorization and rules
 - **Phase 3** — reimbursements, returns, and true spend
