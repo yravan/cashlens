@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+.pnpm-store/
+.venv/
+__pycache__/
+
+# secrets & local config
+.env
+.env.*
+!.env.example
+.neon
+
+# builds & artifacts
+.next/
+dist/
+build/
+out/
+coverage/
+playwright-report/
+test-results/
+
+# local data
+*.db
+*.sqlite
+*.sqlite3
+
+# editors & OS
+.DS_Store
+.idea/
+.vscode/
