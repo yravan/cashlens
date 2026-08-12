@@ -3,8 +3,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
 export default async function Home() {
-  // Defense in depth: the proxy already gates this route, but middleware is
-  // never the authorization layer (CVE-2025-29927) — re-check at the resource.
+  // The proxy is only an optimistic gate (CVE-2025-29927) — re-check here.
   const { isAuthenticated } = await auth();
   if (!isAuthenticated) redirect("/sign-in");
 

@@ -8,26 +8,18 @@ export const STORAGE_STATE = path.join(
   __dirname,
   "playwright/.clerk/user.json",
 );
+export const E2E_USER_EMAIL = "cashlens-e2e@example.com";
 
 export default defineConfig({
   testDir: "./e2e",
-  // One worker: concurrent clerk.signIn calls are flaky
-  // (clerk/javascript#7891) and the suite is small.
-  workers: 1,
-  fullyParallel: false,
+  workers: 1, // parallel clerk.signIn is flaky (clerk/javascript#7891)
   forbidOnly: !!process.env.CI,
-  reporter: [["list"]],
   use: {
     baseURL: BASE_URL,
     trace: "retain-on-failure",
   },
   projects: [
-    {
-      // Signs a real user in against the Clerk development instance and
-      // saves the resulting browser state for the signed-in project.
-      name: "setup",
-      testMatch: /global\.setup\.ts/,
-    },
+    { name: "setup", testMatch: /global\.setup\.ts/ },
     {
       name: "signed-out",
       testMatch: /\.signed-out\.spec\.ts/,
@@ -41,9 +33,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // Production build for determinism (dev-mode lazy compilation causes
-    // first-hit timeouts). NEXT_PUBLIC_* vars are read from .env.local at
-    // build time.
+    // Production build: dev-mode lazy compilation makes first hits time out.
     command: `pnpm build && pnpm start --port ${PORT}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,

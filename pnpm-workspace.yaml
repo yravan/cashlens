@@ -1,7 +1,6 @@
 packages:
   - apps/*
 
-# create-next-app's default: skip build scripts of these transitive deps.
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver

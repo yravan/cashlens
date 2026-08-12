@@ -8,7 +8,6 @@
     "start": "pnpm --filter web start",
     "lint": "pnpm --filter web lint",
     "typecheck": "pnpm --filter web typecheck",
-    "test": "pnpm --filter web test:e2e",
     "test:e2e": "pnpm --filter web test:e2e"
   },
   "packageManager": "pnpm@10.32.1"
