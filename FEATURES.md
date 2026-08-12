@@ -11,6 +11,7 @@
 - Priorities: `[MVP]` build first · `[P1]` good to have — makes it a daily driver · `[P2]` nice to have · `[P3]` someday.
 - A branch's tag is the earliest tag inside it.
 - To extend: add leaves under the branch they belong to; keep them atomic.
+- Branch 10 is engineering scaffolding, not product: its leaves sit outside the <20-leaf MVP budget, but its `[MVP]`-tagged leaves are built interleaved with the first product leaves.
 
 ## MVP path — 19 leaves, in build order
 
@@ -35,6 +36,8 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 17. **6.2.1** Spending by category
 18. **6.4.1** Recurring charge detection
 19. **6.4.2** Upcoming expenses view
+
+**Engineering spine** (branch 10, outside the product budget): **10.1** CI and **10.2** the API test harness land right after leaf 4; **10.4** seeded data immediately after (tests assert against it); **10.3** the browser harness once leaf 11 gives it a page to drive.
 
 ---
 
@@ -192,6 +195,17 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 - **9.1 Sync reliability** `[P2]` — Failed syncs retry themselves; persistent failures surface to the user instead of rotting silently.
 - **9.2 Data correctness audits** `[P3]` — Periodic self-checks that balances and flows reconcile against sources, with discrepancies flagged.
 
+## 10. Engineering Foundation
+
+*Scaffolding that keeps dozens of agent-built leaves honest: every feature verifiable, every regression caught before merge. Meta-scope — CLAUDE.md carries the testing policy these harnesses enforce.*
+
+- **10.1 Continuous integration** `[MVP]` — Every push runs linting, type checks, and the whole test suite; red blocks merge. The enforcement arm of "done."
+- **10.2 API test harness** `[MVP]` — Backend tests exercise real endpoints against a real local database, with per-test isolation and factories ready for every later leaf.
+- **10.3 Browser test harness** `[MVP]` — Real-browser end-to-end tests drive the running app through the money paths — sign in, connect, transactions visible, cash flow right — as each lands.
+- **10.4 Seeded test & demo data** `[MVP]` — One deterministic dataset — users, accounts, transactions with known totals — so tests assert exact numbers and the app demos without real credentials.
+- **10.5 Developer documentation** `[P1]` — A quickstart that takes a fresh machine to a running app and green tests in minutes; updated as the stack evolves.
+- **10.6 Preview deployments** `[P1]` — Every PR gets a throwaway URL, so agent-built changes are reviewed in a real browser before merge.
+
 ---
 
 ## Assumptions made while organizing (flag anything wrong)
@@ -203,3 +217,4 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 - **The wedge features are all P1** — manual entry, Gmail receipts (including inbox backfill), Venmo, splits, reimbursements, returns, the review queue, learning from corrections, line-item categories, merchant enrichment, and anomaly detection: the first wave after MVP, in roughly the order listed.
 - **Merchant enrichment is P1, not P2** — "understand what my bill pay is" is an explicit vision goal, and it lives or dies on decoding cryptic bank strings.
 - Naming Plaid, Gmail, Venmo, and Google is treated as product scope, not implementation detail.
+- **Branch 10 added at founder request (2026-08-11)** — testing, CI, docs, and preview deploys are meta-scope the product vision never named; preview deployments return because every leaf ships as a hand-reviewed agent PR. The testing policy itself lives in CLAUDE.md.
