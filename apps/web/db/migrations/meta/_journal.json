@@ -15,6 +15,27 @@
       "when": 1786519727300,
       "tag": "0001_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786608097170,
+      "tag": "0002_app_current_user_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1786608120304,
+      "tag": "0003_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786608130668,
+      "tag": "0004_ledger_grants",
+      "breakpoints": true
     }
   ]
 }
