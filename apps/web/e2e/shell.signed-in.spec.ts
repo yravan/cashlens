@@ -9,11 +9,11 @@ const SECTIONS = [
   { label: "Dashboard", path: "/" },
 ] as const;
 
-async function walkSections(page: Page, baseURL: string) {
+async function walkSections(page: Page) {
   for (const { label, path } of SECTIONS) {
     await page.getByRole("link", { name: label }).click();
 
-    await expect(page).toHaveURL(`${baseURL}${path === "/" ? "/" : path}`);
+    await expect(page).toHaveURL(path);
     await expect(
       page.getByRole("heading", { level: 1, name: label }),
     ).toBeVisible();
@@ -26,23 +26,17 @@ async function walkSections(page: Page, baseURL: string) {
   }
 }
 
-test("the nav walks a signed-in user through every section", async ({
-  page,
-  baseURL,
-}) => {
+test("the nav walks a signed-in user through every section", async ({ page }) => {
   await page.goto("/");
-  await walkSections(page, baseURL!);
+  await walkSections(page);
 });
 
 test.describe("phone viewport", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-  test("the tab bar walks through every section on a phone", async ({
-    page,
-    baseURL,
-  }) => {
+  test("the tab bar walks through every section on a phone", async ({ page }) => {
     await page.goto("/");
-    await walkSections(page, baseURL!);
+    await walkSections(page);
   });
 });
 
@@ -51,17 +45,14 @@ test.describe("sign-out", () => {
   // storage state shared by the rest of the signed-in project.
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("signing out from the shell ends the session for real", async ({
-    page,
-    baseURL,
-  }) => {
+  test("signing out from the shell ends the session for real", async ({ page }) => {
     await clerkSetup();
     await page.goto("/sign-in");
     await clerk.loaded({ page });
     await clerk.signIn({ page, emailAddress: E2E_USER_A_EMAIL });
 
     await page.goto("/");
-    await expect(page).toHaveURL(`${baseURL}/`);
+    await expect(page).toHaveURL("/");
 
     await page.locator(".cl-userButtonTrigger").click();
     // Clerk's popover buttons expose no accessible name; the documented

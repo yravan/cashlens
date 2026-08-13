@@ -4,13 +4,9 @@ import Link from "next/link";
 
 import { PrimaryNav, TabBar } from "./nav";
 
-export default async function AppShellLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const user = await currentUser();
-  const email = user?.primaryEmailAddress?.emailAddress ?? "";
+export default async function AppShellLayout({ children }: LayoutProps<"/">) {
+  const email =
+    (await currentUser())?.primaryEmailAddress?.emailAddress ?? "";
 
   return (
     <>
