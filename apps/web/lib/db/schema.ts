@@ -63,6 +63,22 @@ export const transactionStatus = pgEnum("transaction_status", [
 
 const ownRow = sql`user_id = (select app_current_user_id())`;
 
+function ownRowPolicies(table: string) {
+  return [
+    pgPolicy(`${table}_select_own`, { for: "select", to: appRole, using: ownRow }),
+    pgPolicy(`${table}_insert_own`, { for: "insert", to: appRole, withCheck: ownRow }),
+  ];
+}
+
+const timestamps = {
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+};
+
 export const accounts = pgTable(
   "accounts",
   {
@@ -77,12 +93,7 @@ export const accounts = pgTable(
     currency: char("currency", { length: 3 }).notNull(),
     source: ledgerSource("source").notNull(),
     sourceId: text("source_id"),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    ...timestamps,
   },
   (t) => [
     unique("accounts_id_user_id_unique").on(t.id, t.userId),
@@ -91,16 +102,7 @@ export const accounts = pgTable(
       .where(sql`source_id is not null`),
     index("accounts_user_id_idx").on(t.userId),
     check("accounts_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
-    pgPolicy("accounts_select_own", {
-      for: "select",
-      to: appRole,
-      using: ownRow,
-    }),
-    pgPolicy("accounts_insert_own", {
-      for: "insert",
-      to: appRole,
-      withCheck: ownRow,
-    }),
+    ...ownRowPolicies("accounts"),
   ],
 );
 
@@ -118,12 +120,7 @@ export const transactions = pgTable(
     status: transactionStatus("status").notNull(),
     source: ledgerSource("source").notNull(),
     sourceId: text("source_id"),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    ...timestamps,
   },
   (t) => [
     // Composite FK: plain FKs bypass RLS, letting a row reference another user's account.
@@ -138,16 +135,7 @@ export const transactions = pgTable(
     index("transactions_user_date_idx").on(t.userId, t.date),
     index("transactions_account_date_idx").on(t.accountId, t.date),
     check("transactions_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
-    pgPolicy("transactions_select_own", {
-      for: "select",
-      to: appRole,
-      using: ownRow,
-    }),
-    pgPolicy("transactions_insert_own", {
-      for: "insert",
-      to: appRole,
-      withCheck: ownRow,
-    }),
+    ...ownRowPolicies("transactions"),
   ],
 );
 
@@ -160,9 +148,7 @@ export const accountBalances = pgTable(
     currentMinor: bigint("current_minor", { mode: "number" }),
     limitMinor: bigint("limit_minor", { mode: "number" }),
     asOf: timestamp("as_of", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamps.createdAt,
   },
   (t) => [
     foreignKey({
@@ -175,15 +161,6 @@ export const accountBalances = pgTable(
       "account_balances_reported_figure",
       sql`available_minor is not null or current_minor is not null`,
     ),
-    pgPolicy("account_balances_select_own", {
-      for: "select",
-      to: appRole,
-      using: ownRow,
-    }),
-    pgPolicy("account_balances_insert_own", {
-      for: "insert",
-      to: appRole,
-      withCheck: ownRow,
-    }),
+    ...ownRowPolicies("account_balances"),
   ],
 );

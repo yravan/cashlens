@@ -11,11 +11,29 @@ const INSERT_TXN = `insert into transactions
   (user_id, account_id, amount_minor, currency, date, description, merchant, status, source, source_id)
   values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`;
 
-function insertAccount(userId: string, name: string, sourceId: string | null) {
-  return adminQuery(
+async function insertAccount(
+  userId: string,
+  name: string,
+  sourceId: string | null,
+): Promise<string> {
+  const result = await adminQuery(
     `insert into accounts (user_id, name, type, subtype, mask, currency, source, source_id)
      values ($1, $2, 'depository', 'checking', '0001', 'USD', $3, $4) returning id`,
     [userId, name, sourceId ? "plaid" : "manual", sourceId],
+  );
+  return result.rows[0].id;
+}
+
+function insertBalance(
+  accountId: string,
+  userId: string,
+  available: number | null,
+  current: number,
+) {
+  return adminQuery(
+    `insert into account_balances (account_id, user_id, available_minor, current_minor, as_of)
+     values ($1, $2, $3, $4, '2026-01-02T03:04:05Z')`,
+    [accountId, userId, available, current],
   );
 }
 
@@ -23,41 +41,25 @@ test.describe("ledger row-level security backstop", () => {
   let a: { userId: string; accountId: string };
   let b: { userId: string; accountId: string };
 
+  async function seedProbe(clerkId: string, name: string, sourceId: string) {
+    const user = await adminQuery(
+      "insert into users (clerk_user_id) values ($1) returning id",
+      [clerkId],
+    );
+    const userId = user.rows[0].id;
+    return { userId, accountId: await insertAccount(userId, name, sourceId) };
+  }
+
   test.beforeAll(async () => {
     await adminQuery("delete from users where clerk_user_id in ($1, $2)", [
       PROBE_A,
       PROBE_B,
     ]);
-    const users = await adminQuery(
-      "insert into users (clerk_user_id) values ($1), ($2) returning id, clerk_user_id",
-      [PROBE_A, PROBE_B],
-    );
-    const userId = (clerk: string) =>
-      users.rows.find((row) => row.clerk_user_id === clerk).id;
+    a = await seedProbe(PROBE_A, "Probe Checking", "probe-acct-a");
+    b = await seedProbe(PROBE_B, "Probe Savings", "probe-acct-b");
 
-    const accountA = await insertAccount(
-      userId(PROBE_A),
-      "Probe Checking",
-      "probe-acct-a",
-    );
-    const accountB = await insertAccount(
-      userId(PROBE_B),
-      "Probe Savings",
-      "probe-acct-b",
-    );
-    a = { userId: userId(PROBE_A), accountId: accountA.rows[0].id };
-    b = { userId: userId(PROBE_B), accountId: accountB.rows[0].id };
-
-    await adminQuery(
-      `insert into account_balances (account_id, user_id, available_minor, current_minor, limit_minor, as_of)
-       values ($1, $2, 105000, 123456, null, '2026-01-02T03:04:05Z')`,
-      [a.accountId, a.userId],
-    );
-    await adminQuery(
-      `insert into account_balances (account_id, user_id, available_minor, current_minor, limit_minor, as_of)
-       values ($1, $2, null, 999999, null, '2026-01-02T03:04:05Z')`,
-      [b.accountId, b.userId],
-    );
+    await insertBalance(a.accountId, a.userId, 105000, 123456);
+    await insertBalance(b.accountId, b.userId, null, 999999);
 
     await adminQuery(INSERT_TXN, [
       a.userId, a.accountId, -1234, "USD", "2026-01-15",
@@ -229,10 +231,16 @@ test.describe("ledger row-level security backstop", () => {
 });
 
 test.describe("ledger read seam", () => {
-  const seededAccounts: string[] = [];
-
   function clerkIdOf(key: "a" | "b"): string {
     return JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8"))[key].clerkUserId;
+  }
+
+  async function userIdOf(key: "a" | "b"): Promise<string> {
+    const result = await adminQuery(
+      "select id from users where clerk_user_id = $1",
+      [clerkIdOf(key)],
+    );
+    return result.rows[0].id;
   }
 
   async function expectCounts(page: Page, accounts: string, transactions: string) {
@@ -243,11 +251,10 @@ test.describe("ledger read seam", () => {
   }
 
   test.afterAll(async () => {
-    if (seededAccounts.length) {
-      await adminQuery("delete from accounts where id = any($1::uuid[])", [
-        seededAccounts,
-      ]);
-    }
+    await adminQuery(
+      "delete from accounts where user_id in (select id from users where clerk_user_id in ($1, $2))",
+      [clerkIdOf("a"), clerkIdOf("b")],
+    );
   });
 
   test("pages show an empty ledger as zero counts", async ({ page, request }) => {
@@ -275,14 +282,8 @@ test.describe("ledger read seam", () => {
     await requestB.get("/api/me");
     await requestB.dispose();
 
-    const ids = await adminQuery(
-      "select id, clerk_user_id from users where clerk_user_id in ($1, $2)",
-      [clerkIdOf("a"), clerkIdOf("b")],
-    );
-    const userIdOf = (key: "a" | "b") =>
-      ids.rows.find((row) => row.clerk_user_id === clerkIdOf(key)).id;
-    const userA = userIdOf("a");
-    const userB = userIdOf("b");
+    const userA = await userIdOf("a");
+    const userB = await userIdOf("b");
 
     await adminQuery("delete from accounts where user_id in ($1, $2)", [
       userA,
@@ -292,32 +293,23 @@ test.describe("ledger read seam", () => {
     const accountA1 = await insertAccount(userA, "Seam Checking", "seam-acct-a1");
     const accountA2 = await insertAccount(userA, "Seam Card", null);
     const accountB1 = await insertAccount(userB, "Seam Savings", "seam-acct-b1");
-    seededAccounts.push(
-      accountA1.rows[0].id,
-      accountA2.rows[0].id,
-      accountB1.rows[0].id,
-    );
 
-    await adminQuery(
-      `insert into account_balances (account_id, user_id, available_minor, current_minor, limit_minor, as_of)
-       values ($1, $2, 50000, 50000, null, '2026-02-01T00:00:00Z')`,
-      [accountA1.rows[0].id, userA],
-    );
+    await insertBalance(accountA1, userA, 50000, 50000);
 
     await adminQuery(INSERT_TXN, [
-      userA, accountA1.rows[0].id, -1999, "USD", "2026-02-02",
+      userA, accountA1, -1999, "USD", "2026-02-02",
       "GROCERY MART", "Grocery Mart", "posted", "plaid", "seam-txn-a1",
     ]);
     await adminQuery(INSERT_TXN, [
-      userA, accountA1.rows[0].id, -750, "USD", "2026-02-03",
+      userA, accountA1, -750, "USD", "2026-02-03",
       "COFFEE", null, "pending", "plaid", "seam-txn-a2",
     ]);
     await adminQuery(INSERT_TXN, [
-      userA, accountA2.rows[0].id, -4500, "USD", "2026-02-03",
+      userA, accountA2, -4500, "USD", "2026-02-03",
       "CASH LUNCH", null, "posted", "manual", null,
     ]);
     await adminQuery(INSERT_TXN, [
-      userB, accountB1.rows[0].id, 100000, "USD", "2026-02-04",
+      userB, accountB1, 100000, "USD", "2026-02-04",
       "TRANSFER IN", null, "posted", "plaid", "seam-txn-b1",
     ]);
 
