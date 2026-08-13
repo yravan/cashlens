@@ -8,7 +8,10 @@
     "start": "pnpm --filter web start",
     "lint": "pnpm --filter web lint",
     "typecheck": "pnpm --filter web typecheck",
-    "test:e2e": "pnpm --filter web test:e2e"
+    "test:e2e": "pnpm --filter web test:e2e",
+    "db:up": "pnpm --filter web db:up",
+    "db:setup": "pnpm --filter web db:setup",
+    "db:migrate": "pnpm --filter web db:migrate"
   },
   "packageManager": "pnpm@10.32.1"
 }
