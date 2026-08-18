@@ -39,6 +39,8 @@ await run(env("DATABASE_URL_SUPERUSER"), async (client) => {
     const exists = await client.query("select 1 from pg_roles where rolname = $1", [role]);
     await client.query(`${exists.rowCount ? "alter" : "create"} role ${role} login password '${password}'`);
   }
+  await client.query(`alter role ${app.role} set statement_timeout = '15s'`);
+  await client.query(`alter role ${app.role} set idle_in_transaction_session_timeout = '30s'`);
   const dbExists = await client.query("select 1 from pg_database where datname = $1", [app.db]);
   if (!dbExists.rowCount) await client.query(`create database ${app.db} owner ${owner.role}`);
 });

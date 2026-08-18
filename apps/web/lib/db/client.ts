@@ -18,12 +18,24 @@ function getDb(): Db {
         "DATABASE_URL is not set — copy .env.example to .env.local first",
       );
     }
-    globalForDb.cashlensDb = drizzle({
-      client: new Pool({ connectionString: process.env.DATABASE_URL, max: 5 }),
-      schema,
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 5,
+      connectionTimeoutMillis: 5_000,
+      query_timeout: 20_000,
+      idleTimeoutMillis: 30_000,
     });
+    // Without a listener, an idle connection dropped by the server crashes the process.
+    pool.on("error", (error) => {
+      console.error("idle database connection error:", error.message);
+    });
+    globalForDb.cashlensDb = drizzle({ client: pool, schema });
   }
   return globalForDb.cashlensDb;
+}
+
+export async function pingDb(): Promise<void> {
+  await getDb().execute(sql`select 1`);
 }
 
 export async function withRequestScope<T>(
