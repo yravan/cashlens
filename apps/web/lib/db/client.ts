@@ -24,13 +24,12 @@ function getDb(): Db {
       max: 5,
       connectionTimeoutMillis: 5_000,
       query_timeout: 20_000,
-      idleTimeoutMillis: 10_000,
       keepAlive: true,
     });
-    // Without a listener, an idle connection dropped by the server crashes the process.
-    pool.on("error", (error) => {
-      console.error("idle database connection error:", error.message);
-    });
+    // Unhandled, a server-dropped idle connection crashes the process.
+    pool.on("error", (error) =>
+      console.error("idle database connection error:", error.message),
+    );
     attachDatabasePool(pool);
     globalForDb.cashlensDb = drizzle({ client: pool, schema });
   }

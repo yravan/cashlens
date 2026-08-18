@@ -19,9 +19,6 @@ nothing else does.
 The previous deployment keeps serving while migrations run, so migrations must be
 backward-compatible with the code still live (expand → migrate → contract).
 
-The future CI gate (leaf 10.1) is GitHub branch protection + required checks on `main`: it gates
-the merge, and Vercel only ever deploys merged commits — no Vercel-side change needed.
-
 ## Database model (identical to local)
 
 | role | used by | connection |
@@ -43,7 +40,8 @@ same, but pg@9 will not; `channel_binding` is ignored by node-postgres — leave
 
 ## Production environment variables (Vercel → Settings → Environment Variables)
 
-All scoped to **Production** only. Previews get nothing until leaf 10.6.
+All scoped to **Production** only unless the table says otherwise. Previews get nothing until
+leaf 10.6.
 
 | name | value | sensitive |
 | --- | --- | --- |
@@ -51,7 +49,7 @@ All scoped to **Production** only. Previews get nothing until leaf 10.6.
 | `CLERK_SECRET_KEY` | `sk_live_…` | yes |
 | `DATABASE_URL` | `postgresql://cashlens_app:<pw1>@<endpoint>-pooler.<region>.aws.neon.tech/neondb?sslmode=verify-full` | yes |
 | `DATABASE_URL_OWNER` | `postgresql://cashlens_owner:<pw2>@<endpoint>.<region>.aws.neon.tech/neondb?sslmode=verify-full` | yes |
-| `APP_ORIGIN` | `https://<app-domain>` | no |
+| `APP_ORIGIN` | `https://<app-domain>` — scheme + host, no trailing slash (Clerk compares it to the token origin verbatim) | no |
 | `ENABLE_EXPERIMENTAL_COREPACK` | `1` (all environments — honors the repo's pinned pnpm) | no |
 
 `DATABASE_URL_SUPERUSER` is never set on Vercel: the `neondb_owner` credential exists only on the
@@ -146,4 +144,5 @@ Prerequisite: a domain you own (`<domain>` below; the app can live at `<domain>`
 - **Content-Security-Policy** — needs the production Clerk Frontend API hostname
   (`clerk.<domain>`), which only exists after the domain is chosen. First task under branch 9.
 - **Preview deployments** — leaf 10.6 (remove `ignoreCommand`, add Preview-scoped env vars).
-- **CI gate before merge** — leaf 10.1 (branch protection + required checks).
+- **CI gate before merge** — leaf 10.1 (branch protection + required checks on `main`). It gates
+  the merge and Vercel only ever deploys merged commits, so no Vercel-side change is needed.

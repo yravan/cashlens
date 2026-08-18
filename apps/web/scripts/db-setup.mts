@@ -43,12 +43,8 @@ await run(env("DATABASE_URL_SUPERUSER"), async (client) => {
   await client.query(`alter role ${app.role} set idle_in_transaction_session_timeout = '30s'`);
   await client.query(`grant ${owner.role} to current_user`);
 
-  // Roles created through a managed provider's console can silently carry
-  // BYPASSRLS (neondatabase/neon#12926), which would void every policy.
-  const bypass = await client.query(
-    "select rolname from pg_roles where rolname in ($1, $2) and rolbypassrls",
-    [owner.role, app.role],
-  );
+  // Roles created in a managed provider's console silently carry BYPASSRLS (neondatabase/neon#12926), voiding every policy.
+  const bypass = await client.query("select rolname from pg_roles where rolname in ($1, $2) and rolbypassrls", [owner.role, app.role]);
   if (bypass.rowCount) {
     const names = bypass.rows.map((row) => row.rolname).join(", ");
     throw new Error(`${names} has BYPASSRLS — drop the role and re-run so it is created here, by SQL`);

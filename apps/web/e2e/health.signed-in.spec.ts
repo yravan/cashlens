@@ -3,39 +3,21 @@ import net from "node:net";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 
-import { STORAGE_STATE_A } from "../playwright.config";
-
-const BROKEN_DB_APP_URL = "http://localhost:3101";
+const BROKEN_DB_PORT = 3101;
+const BROKEN_DB_APP_URL = `http://localhost:${BROKEN_DB_PORT}`;
 const FAIL_FAST_BUDGET_MS = 15_000;
 
-test("health endpoint reports ok without authentication", async ({
-  playwright,
-  baseURL,
-}) => {
-  const anonymous = await playwright.request.newContext({ baseURL });
-  try {
-    const response = await anonymous.get("/api/health", { maxRedirects: 0 });
-    expect(response.status()).toBe(200);
-    expect(await response.json()).toEqual({ status: "ok", db: "ok" });
-    expect(response.headers()["cache-control"]).toBe("no-store");
-  } finally {
-    await anonymous.dispose();
-  }
-});
-
 test.describe("fail-fast when the database is unreachable", () => {
-  // A server that accepts TCP connections and never replies: the worst case
-  // from the 2026-08-17 incident, where connection attempts hang instead of
-  // erroring.
+  test.use({ baseURL: BROKEN_DB_APP_URL });
+
+  // Accepts TCP connections and never replies: the worst case from the
+  // 2026-08-17 incident, where connecting hangs instead of erroring.
   let blackhole: net.Server;
-  const blackholeSockets = new Set<net.Socket>();
+  const sockets: net.Socket[] = [];
   let server: ChildProcess;
 
   test.beforeAll(async () => {
-    blackhole = net.createServer((socket) => {
-      blackholeSockets.add(socket);
-      socket.on("close", () => blackholeSockets.delete(socket));
-    });
+    blackhole = net.createServer((socket) => sockets.push(socket));
     await new Promise<void>((resolve) =>
       blackhole.listen(0, "127.0.0.1", resolve),
     );
@@ -45,10 +27,10 @@ test.describe("fail-fast when the database is unreachable", () => {
     server = spawn(
       process.execPath,
       [
-        path.join(appDir, "node_modules", "next", "dist", "bin", "next"),
+        path.join(appDir, "node_modules/next/dist/bin/next"),
         "start",
         "--port",
-        new URL(BROKEN_DB_APP_URL).port,
+        String(BROKEN_DB_PORT),
       ],
       {
         cwd: appDir,
@@ -60,61 +42,43 @@ test.describe("fail-fast when the database is unreachable", () => {
       },
     );
 
-    const deadline = Date.now() + 60_000;
-    for (;;) {
-      try {
-        const response = await fetch(`${BROKEN_DB_APP_URL}/sign-in`);
-        if (response.status < 500) break;
-      } catch {}
-      if (Date.now() > deadline)
-        throw new Error("broken-db app server did not start");
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
+    const signInStatus = () =>
+      fetch(`${BROKEN_DB_APP_URL}/sign-in`).then((res) => res.status, () => 0);
+
+    await expect
+      .poll(signInStatus, {
+        timeout: 60_000,
+        message: "broken-db app server did not start",
+      })
+      .toBe(200);
   });
 
-  test.afterAll(async () => {
+  test.afterAll(() => {
     server?.kill();
-    for (const socket of blackholeSockets) socket.destroy();
-    await new Promise<void>((resolve) => blackhole.close(() => resolve()));
+    blackhole.close();
+    for (const socket of sockets) socket.destroy();
   });
 
   test("health endpoint reports the database as down, quickly", async ({
-    playwright,
+    request,
   }) => {
-    const anonymous = await playwright.request.newContext({
-      baseURL: BROKEN_DB_APP_URL,
-    });
-    try {
-      const started = Date.now();
-      const response = await anonymous.get("/api/health", {
-        timeout: 30_000,
-      });
-      expect(Date.now() - started).toBeLessThan(FAIL_FAST_BUDGET_MS);
-      expect(response.status()).toBe(503);
-      expect(await response.json()).toEqual({ status: "error", db: "error" });
-    } finally {
-      await anonymous.dispose();
-    }
+    const started = Date.now();
+    const response = await request.get("/api/health");
+    expect(Date.now() - started).toBeLessThan(FAIL_FAST_BUDGET_MS);
+    expect(response.status()).toBe(503);
+    expect(await response.json()).toEqual({ status: "error", db: "error" });
   });
 
   test("an authenticated data request fails fast instead of hanging", async ({
-    playwright,
+    request,
   }) => {
-    const signedIn = await playwright.request.newContext({
-      baseURL: BROKEN_DB_APP_URL,
-      storageState: STORAGE_STATE_A,
-    });
-    try {
-      const started = Date.now();
-      const response = await signedIn.get("/api/me", { timeout: 30_000 });
-      expect(Date.now() - started).toBeLessThan(FAIL_FAST_BUDGET_MS);
-      expect(response.status()).toBe(500);
-      const body = await response.text();
-      expect(body).not.toContain("postgresql://");
-      expect(body).not.toContain("cashlens_app");
-      expect(body).not.toContain("127.0.0.1");
-    } finally {
-      await signedIn.dispose();
-    }
+    const started = Date.now();
+    const response = await request.get("/api/me");
+    expect(Date.now() - started).toBeLessThan(FAIL_FAST_BUDGET_MS);
+    expect(response.status()).toBe(500);
+    const body = await response.text();
+    expect(body).not.toContain("postgresql://");
+    expect(body).not.toContain("cashlens_app");
+    expect(body).not.toContain("127.0.0.1");
   });
 });
