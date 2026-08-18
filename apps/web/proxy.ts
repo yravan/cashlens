@@ -24,9 +24,9 @@ export default clerkMiddleware(
     signInUrl: "/sign-in",
     signUpUrl: "/sign-up",
     // Set in production: rejects session tokens minted for another origin.
-    ...(process.env.APP_ORIGIN
-      ? { authorizedParties: [process.env.APP_ORIGIN] }
-      : {}),
+    authorizedParties: process.env.APP_ORIGIN
+      ? [process.env.APP_ORIGIN]
+      : undefined,
   },
 );
 

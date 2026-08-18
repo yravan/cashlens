@@ -48,7 +48,7 @@ test.describe("fail-fast when the database is unreachable", () => {
         path.join(appDir, "node_modules", "next", "dist", "bin", "next"),
         "start",
         "--port",
-        "3101",
+        new URL(BROKEN_DB_APP_URL).port,
       ],
       {
         cwd: appDir,
