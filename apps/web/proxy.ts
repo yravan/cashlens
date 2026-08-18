@@ -20,7 +20,14 @@ export default clerkMiddleware(
     if (!isAuthenticated) return redirectToSignIn({ returnBackUrl: req.url });
   },
   // In code, not env: the proxy can miss NEXT_PUBLIC_* (clerk/javascript#8302).
-  { signInUrl: "/sign-in", signUpUrl: "/sign-up" },
+  {
+    signInUrl: "/sign-in",
+    signUpUrl: "/sign-up",
+    // Set in production: rejects session tokens minted for another origin.
+    ...(process.env.APP_ORIGIN
+      ? { authorizedParties: [process.env.APP_ORIGIN] }
+      : {}),
+  },
 );
 
 export const config = {

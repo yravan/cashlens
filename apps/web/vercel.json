@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "ignoreCommand": "test \"$VERCEL_ENV\" != \"production\"",
+  "buildCommand": "pnpm deploy:build",
+  "regions": ["iad1"]
+}
