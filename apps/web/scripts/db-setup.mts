@@ -39,6 +39,17 @@ await run(env("DATABASE_URL_SUPERUSER"), async (client) => {
     const exists = await client.query("select 1 from pg_roles where rolname = $1", [role]);
     await client.query(`${exists.rowCount ? "alter" : "create"} role ${role} login password '${password}'`);
   }
+  await client.query(`alter role ${app.role} set statement_timeout = '15s'`);
+  await client.query(`alter role ${app.role} set idle_in_transaction_session_timeout = '30s'`);
+  await client.query(`grant ${owner.role} to current_user`);
+
+  // Roles created in a managed provider's console silently carry BYPASSRLS (neondatabase/neon#12926), voiding every policy.
+  const bypass = await client.query("select rolname from pg_roles where rolname in ($1, $2) and rolbypassrls", [owner.role, app.role]);
+  if (bypass.rowCount) {
+    const names = bypass.rows.map((row) => row.rolname).join(", ");
+    throw new Error(`${names} has BYPASSRLS — drop the role and re-run so it is created here, by SQL`);
+  }
+
   const dbExists = await client.query("select 1 from pg_database where datname = $1", [app.db]);
   if (!dbExists.rowCount) await client.query(`create database ${app.db} owner ${owner.role}`);
 });
@@ -46,7 +57,8 @@ await run(env("DATABASE_URL_SUPERUSER"), async (client) => {
 const superuserOnAppDb = new URL(env("DATABASE_URL_SUPERUSER"));
 superuserOnAppDb.pathname = `/${app.db}`;
 await run(superuserOnAppDb.href, async (client) => {
-  await client.query(`alter schema public owner to ${owner.role}`);
+  await client.query(`grant create on database ${app.db} to ${owner.role}`);
+  await client.query(`grant usage, create on schema public to ${owner.role}`);
   await client.query("revoke all on schema public from public");
   await client.query(`grant usage on schema public to ${app.role}`);
 });

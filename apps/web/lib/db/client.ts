@@ -1,4 +1,5 @@
 import "server-only";
+import { attachDatabasePool } from "@vercel/functions";
 import { sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
@@ -18,12 +19,25 @@ function getDb(): Db {
         "DATABASE_URL is not set — copy .env.example to .env.local first",
       );
     }
-    globalForDb.cashlensDb = drizzle({
-      client: new Pool({ connectionString: process.env.DATABASE_URL, max: 5 }),
-      schema,
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 5,
+      connectionTimeoutMillis: 5_000,
+      query_timeout: 20_000,
+      keepAlive: true,
     });
+    // Unhandled, a server-dropped idle connection crashes the process.
+    pool.on("error", (error) =>
+      console.error("idle database connection error:", error.message),
+    );
+    attachDatabasePool(pool);
+    globalForDb.cashlensDb = drizzle({ client: pool, schema });
   }
   return globalForDb.cashlensDb;
+}
+
+export async function pingDb(): Promise<void> {
+  await getDb().execute(sql`select 1`);
 }
 
 export async function withRequestScope<T>(

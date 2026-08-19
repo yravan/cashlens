@@ -1,7 +1,7 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/sign-in", "/sign-up"];
+const PUBLIC_PATHS = ["/sign-in", "/sign-up", "/api/health", "/robots.txt"];
 
 function isPublicRoute(req: NextRequest): boolean {
   const { pathname } = req.nextUrl;
@@ -20,7 +20,14 @@ export default clerkMiddleware(
     if (!isAuthenticated) return redirectToSignIn({ returnBackUrl: req.url });
   },
   // In code, not env: the proxy can miss NEXT_PUBLIC_* (clerk/javascript#8302).
-  { signInUrl: "/sign-in", signUpUrl: "/sign-up" },
+  {
+    signInUrl: "/sign-in",
+    signUpUrl: "/sign-up",
+    // Set in production: rejects session tokens minted for another origin.
+    authorizedParties: process.env.APP_ORIGIN
+      ? [process.env.APP_ORIGIN]
+      : undefined,
+  },
 );
 
 export const config = {
