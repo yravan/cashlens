@@ -37,6 +37,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "fflate": "^0.8.3",
     "server-only": "^0.0.1",
     "tailwindcss": "^4",
     "typescript": "^5"
