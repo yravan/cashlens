@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
+    "test:api": "vitest run",
     "test:e2e": "playwright test",
     "db:up": "docker compose -f ../../compose.yaml up -d --wait",
     "db:setup": "node --env-file-if-exists=.env.local scripts/db-setup.mts && drizzle-kit migrate",
@@ -40,7 +41,8 @@
     "fflate": "^0.8.3",
     "server-only": "^0.0.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   },
   "packageManager": "pnpm@10.32.1"
 }
