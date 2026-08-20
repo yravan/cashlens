@@ -26,11 +26,13 @@ export default defineConfig({
   testDir: "./e2e",
   workers: 1, // parallel clerk.signIn is flaky (clerk/javascript#7891)
   forbidOnly: !!process.env.CI,
+  globalTeardown: "./e2e/scrub-secrets.ts",
   use: {
     baseURL: BASE_URL,
     trace: "retain-on-failure",
   },
   projects: [
+    { name: "unit", testMatch: /\.unit\.spec\.ts/ },
     { name: "setup", testMatch: /global\.setup\.ts/ },
     {
       name: "signed-out",
@@ -45,8 +47,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // Production build: dev-mode lazy compilation makes first hits time out.
-    command: `pnpm build && pnpm start --port ${PORT}`,
+    // Dev-mode lazy compilation makes first hits time out; CI builds in its own step.
+    command: process.env.CI
+      ? `pnpm start --port ${PORT}`
+      : `pnpm build && pnpm start --port ${PORT}`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,

@@ -144,5 +144,3 @@ Prerequisite: a domain you own (`<domain>` below; the app can live at `<domain>`
 - **Content-Security-Policy** — needs the production Clerk Frontend API hostname
   (`clerk.<domain>`), which only exists after the domain is chosen. First task under branch 9.
 - **Preview deployments** — leaf 10.6 (remove `ignoreCommand`, add Preview-scoped env vars).
-- **CI gate before merge** — leaf 10.1 (branch protection + required checks on `main`). It gates
-  the merge and Vercel only ever deploys merged commits, so no Vercel-side change is needed.
