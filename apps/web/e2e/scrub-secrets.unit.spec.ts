@@ -16,12 +16,12 @@ function tmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "scrub-test-"));
 }
 
-test("planted secret values are removed from loose files, other content intact", () => {
+test("planted secret values are removed from loose files, other content intact, missing dirs skipped", () => {
   const dir = tmpDir();
   const file = path.join(dir, "error-context.md");
   fs.writeFileSync(file, `before\ncookie: __session=${SEED_SECRET}; ok\nafter`);
 
-  scrub([dir], [SEED_SECRET]);
+  scrub([dir, path.join(dir, "never-created")], [SEED_SECRET]);
 
   const scrubbed = fs.readFileSync(file, "utf8");
   expect(scrubbed).not.toContain(SEED_SECRET);
@@ -112,8 +112,4 @@ test("collectSecrets harvests storage-state cookie and localStorage values, skip
   expect(secrets).not.toContain("1787155005");
   expect(secrets).not.toContain("1");
   expect(secrets).not.toContain("user_123");
-});
-
-test("scrubbing a missing directory is a no-op", () => {
-  scrub([path.join(tmpDir(), "does-not-exist")], [SEED_SECRET]);
 });

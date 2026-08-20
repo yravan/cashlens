@@ -47,8 +47,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // Production build: dev-mode lazy compilation makes first hits time out.
-    // CI builds in its own step (cached); locally the suite stays one command.
+    // Dev-mode lazy compilation makes first hits time out; CI builds in its own step.
     command: process.env.CI
       ? `pnpm start --port ${PORT}`
       : `pnpm build && pnpm start --port ${PORT}`,

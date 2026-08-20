@@ -12,10 +12,8 @@ concurrency:
   group: ci-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-# leaf 10.7 (security scanning) adds its jobs here and to the required checks
 jobs:
   lint-typecheck:
-    name: lint-typecheck
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -32,22 +30,18 @@ jobs:
       - run: pnpm typecheck
 
   e2e:
-    name: e2e
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Browsers + system deps baked into the image: no apt or CDN on the hot
-    # path (a slow apt mirror once ate the whole job budget). Tag tracks the
-    # @playwright/test version; on skew the install step below self-repairs.
+    # Baked-in browsers and system deps keep apt and the browser CDN off the
+    # merge gate's hot path (a slow apt mirror once ate the whole job budget).
     container:
-      image: mcr.microsoft.com/playwright:v1.62.1-noble
+      image: mcr.microsoft.com/playwright:v1.62.1-noble # tag tracks @playwright/test
       options: --ipc=host
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: postgres
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 2s
@@ -74,7 +68,7 @@ jobs:
           path: apps/web/.next/cache
           key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/**/*.ts', 'apps/web/**/*.tsx', '!apps/web/node_modules/**') }}
           restore-keys: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
-      - run: pnpm --filter web exec playwright install chromium
+      - run: pnpm --filter web exec playwright install chromium # no-op unless versions skew
       - run: pnpm db:setup
       - run: pnpm build
       - run: pnpm test:e2e
