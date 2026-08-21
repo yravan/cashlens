@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import { ledgerCounts } from "@/lib/data/ledger";
 import { requireUser } from "@/lib/data/users";
+import { withRequestScope } from "@/lib/db/client";
 import { accounts, transactions } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
@@ -50,6 +51,10 @@ test("ledger counts are exactly the signed-in user's, never anyone else's", asyn
     accounts: 0,
     transactions: 0,
   });
+
+  await expect(
+    withRequestScope(clerkB, (tx) => tx.select().from(transactions)),
+  ).resolves.toHaveLength(1);
 });
 
 test("ledger reads require a signed-in user", async () => {
