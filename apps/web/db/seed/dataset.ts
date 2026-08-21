@@ -1,6 +1,7 @@
 import type { accountBalances, accounts, transactions, users } from "../../lib/db/schema.ts";
 
-export type SeedPersona = "demo" | "neighbor" | "empty";
+export const SEED_PERSONAS = ["demo", "neighbor", "empty"] as const;
+export type SeedPersona = (typeof SEED_PERSONAS)[number];
 
 const uid = (n: number) => `00000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
 
@@ -10,10 +11,7 @@ export const SEED_USERS: Record<SeedPersona, typeof users.$inferInsert & { id: s
   empty: { id: uid(0x03), clerkUserId: "user_SeedEmpty000000000000000000" },
 };
 
-type SeedRow<T extends { userId: string }> = Omit<T, "userId"> & {
-  id: string;
-  persona: SeedPersona;
-};
+type SeedRow<T extends { userId: string }> = Omit<T, "userId"> & { persona: SeedPersona };
 
 const A = {
   checking: uid(0x101),
@@ -24,7 +22,7 @@ const A = {
   neighborChecking: uid(0x106),
 } as const;
 
-export const SEED_ACCOUNTS: SeedRow<typeof accounts.$inferInsert>[] = [
+export const SEED_ACCOUNTS: (SeedRow<typeof accounts.$inferInsert> & { id: string })[] = [
   { persona: "demo", id: A.checking, name: "Everyday Checking", type: "depository", subtype: "checking", mask: "0100", currency: "USD", source: "plaid", sourceId: "seed-acct-checking" },
   { persona: "demo", id: A.savings, name: "Rainy Day Savings", type: "depository", subtype: "savings", mask: "0200", currency: "USD", source: "plaid", sourceId: "seed-acct-savings" },
   { persona: "demo", id: A.card, name: "Cash Rewards Card", type: "credit", subtype: "credit card", mask: "4321", currency: "USD", source: "plaid", sourceId: "seed-acct-card" },
@@ -33,7 +31,7 @@ export const SEED_ACCOUNTS: SeedRow<typeof accounts.$inferInsert>[] = [
   { persona: "neighbor", id: A.neighborChecking, name: "Neighbor Checking", type: "depository", subtype: "checking", mask: "0900", currency: "USD", source: "plaid", sourceId: "seed-acct-neighbor" },
 ];
 
-type SeedTransaction = SeedRow<typeof transactions.$inferInsert>;
+type SeedTransaction = SeedRow<typeof transactions.$inferInsert> & { id: string };
 
 const txn = (
   n: number,
@@ -80,15 +78,15 @@ export const SEED_TRANSACTIONS: SeedTransaction[] = [
   txn(18, "neighbor", A.neighborChecking, -12345, "USD", "2026-03-09", "ELECTRONICS EMPORIUM", { merchant: "Electronics Emporium" }),
 ];
 
-export const SEED_BALANCES: (Omit<SeedRow<typeof accountBalances.$inferInsert>, "id"> & {
-  accountId: string;
-})[] = [
-  { persona: "demo", accountId: A.checking, availableMinor: 234120, currentMinor: 235370, limitMinor: null, asOf: new Date("2026-03-31T12:00:00Z") },
-  { persona: "demo", accountId: A.savings, availableMinor: 1500000, currentMinor: 1500000, limitMinor: null, asOf: new Date("2026-03-31T12:00:00Z") },
-  { persona: "demo", accountId: A.card, availableMinor: 748755, currentMinor: 51245, limitMinor: 800000, asOf: new Date("2026-03-31T12:00:00Z") },
-  { persona: "demo", accountId: A.wallet, availableMinor: null, currentMinor: 8600, limitMinor: null, asOf: new Date("2026-03-31T12:00:00Z") },
-  { persona: "demo", accountId: A.euro, availableMinor: 120450, currentMinor: 120450, limitMinor: null, asOf: new Date("2026-03-31T12:00:00Z") },
-  { persona: "neighbor", accountId: A.neighborChecking, availableMinor: 50000, currentMinor: 50000, limitMinor: null, asOf: new Date("2026-03-31T12:00:00Z") },
+const AS_OF = new Date("2026-03-31T12:00:00Z");
+
+export const SEED_BALANCES: SeedRow<typeof accountBalances.$inferInsert>[] = [
+  { persona: "demo", accountId: A.checking, availableMinor: 234120, currentMinor: 235370, limitMinor: null, asOf: AS_OF },
+  { persona: "demo", accountId: A.savings, availableMinor: 1500000, currentMinor: 1500000, limitMinor: null, asOf: AS_OF },
+  { persona: "demo", accountId: A.card, availableMinor: 748755, currentMinor: 51245, limitMinor: 800000, asOf: AS_OF },
+  { persona: "demo", accountId: A.wallet, availableMinor: null, currentMinor: 8600, limitMinor: null, asOf: AS_OF },
+  { persona: "demo", accountId: A.euro, availableMinor: 120450, currentMinor: 120450, limitMinor: null, asOf: AS_OF },
+  { persona: "neighbor", accountId: A.neighborChecking, availableMinor: 50000, currentMinor: 50000, limitMinor: null, asOf: AS_OF },
 ];
 
 type PostedTotals = { inflowMinor: number; outflowMinor: number; netMinor: number; count: number };

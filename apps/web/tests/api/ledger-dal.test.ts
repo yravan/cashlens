@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { EXPECTED, SEED_USERS, type SeedPersona } from "@/db/seed/dataset";
+import { EXPECTED, SEED_PERSONAS, SEED_USERS } from "@/db/seed/dataset";
 import { seedDataset } from "@/db/seed/seed";
 import { ledgerCounts } from "@/lib/data/ledger";
 import { withRequestScope } from "@/lib/db/client";
@@ -11,10 +11,8 @@ import { adminDb } from "../harness/db";
 test("ledger counts are exactly the signed-in user's, never anyone else's", async () => {
   await seedDataset(adminDb());
 
-  for (const persona of Object.keys(SEED_USERS) as SeedPersona[]) {
-    await expect(
-      withAuth(SEED_USERS[persona].clerkUserId, () => ledgerCounts()),
-    ).resolves.toEqual({
+  for (const persona of SEED_PERSONAS) {
+    await expect(withAuth(SEED_USERS[persona].clerkUserId, () => ledgerCounts())).resolves.toEqual({
       accounts: EXPECTED[persona].accounts,
       transactions: EXPECTED[persona].transactions,
     });

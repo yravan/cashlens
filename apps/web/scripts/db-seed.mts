@@ -14,23 +14,22 @@ url.pathname = new URL(app).pathname;
 const clerkUserId = process.argv[2];
 
 const client = new pg.Client({ connectionString: url.href });
+
+async function userIdFor(id: string): Promise<string> {
+  const { rows } = await client.query<{ id: string }>(
+    "select id from users where clerk_user_id = $1",
+    [id],
+  );
+  if (!rows[0]) throw new Error(`no user with clerk id ${id} — sign in once, then re-run`);
+  return rows[0].id;
+}
+
 await client.connect();
 try {
-  let demo = SEED_USERS.demo.clerkUserId;
-  let overrides: { demo: string } | undefined;
-  if (clerkUserId) {
-    const { rows } = await client.query<{ id: string }>(
-      "select id from users where clerk_user_id = $1",
-      [clerkUserId],
-    );
-    if (!rows[0]) throw new Error(`no user with clerk id ${clerkUserId} — sign in once, then re-run`);
-    overrides = { demo: rows[0].id };
-    demo = clerkUserId;
-  }
-
+  const overrides = clerkUserId ? { demo: await userIdFor(clerkUserId) } : undefined;
   await seedDataset(drizzle({ client }), overrides);
   console.log(
-    `seeded the canonical dataset into ${url.pathname.slice(1)} — the demo ledger (${EXPECTED.demo.accounts} accounts, ${EXPECTED.demo.transactions} transactions) belongs to ${demo}`,
+    `seeded the canonical dataset into ${url.pathname.slice(1)} — the demo ledger (${EXPECTED.demo.accounts} accounts, ${EXPECTED.demo.transactions} transactions) belongs to ${clerkUserId ?? SEED_USERS.demo.clerkUserId}`,
   );
 
   if (!clerkUserId) {
@@ -39,8 +38,7 @@ try {
     );
     if (rows.length) {
       console.log(
-        `to browse it in the app, attach it to a sign-in you can use: pnpm db:seed <clerk_user_id>`,
-        `\nusers in this database: ${rows.map((row) => row.clerk_user_id).join(", ")}`,
+        `to browse it in the app, attach it to a sign-in you can use: pnpm db:seed <clerk_user_id>\nusers in this database: ${rows.map((row) => row.clerk_user_id).join(", ")}`,
       );
     }
   }

@@ -244,15 +244,15 @@ test.describe("ledger read seam", () => {
     return result.rows[0].id;
   }
 
-  async function expectCounts(page: Page, accounts: string, transactions: string) {
-    await page.goto("/accounts");
-    await expect(page.getByTestId("accounts-count")).toHaveText(accounts);
-    await page.goto("/transactions");
-    await expect(page.getByTestId("transactions-count")).toHaveText(transactions);
-  }
+  const inLedger = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"} in the ledger`;
 
-  function inLedger(n: number, noun: string): string {
-    return `${n} ${noun}${n === 1 ? "" : "s"} in the ledger`;
+  async function expectCounts(page: Page, accounts: number, transactions: number) {
+    await page.goto("/accounts");
+    await expect(page.getByTestId("accounts-count")).toHaveText(inLedger(accounts, "account"));
+    await page.goto("/transactions");
+    await expect(page.getByTestId("transactions-count")).toHaveText(
+      inLedger(transactions, "transaction"),
+    );
   }
 
   test.afterAll(async () => {
@@ -272,7 +272,7 @@ test.describe("ledger read seam", () => {
       [clerkIdOf("a")],
     );
 
-    await expectCounts(page, "0 accounts in the ledger", "0 transactions in the ledger");
+    await expectCounts(page, 0, 0);
   });
 
   test("pages count exactly the signed-in user's ledger, not anyone else's", async ({
@@ -299,11 +299,7 @@ test.describe("ledger read seam", () => {
     ]);
     await seedLedgerFixture({ demo: userA, neighbor: userB });
 
-    await expectCounts(
-      page,
-      inLedger(EXPECTED.demo.accounts, "account"),
-      inLedger(EXPECTED.demo.transactions, "transaction"),
-    );
+    await expectCounts(page, EXPECTED.demo.accounts, EXPECTED.demo.transactions);
 
     const contextB = await browser.newContext({
       baseURL,
@@ -311,11 +307,7 @@ test.describe("ledger read seam", () => {
     });
     try {
       const pageB = await contextB.newPage();
-      await expectCounts(
-        pageB,
-        inLedger(EXPECTED.neighbor.accounts, "account"),
-        inLedger(EXPECTED.neighbor.transactions, "transaction"),
-      );
+      await expectCounts(pageB, EXPECTED.neighbor.accounts, EXPECTED.neighbor.transactions);
     } finally {
       await contextB.close();
     }

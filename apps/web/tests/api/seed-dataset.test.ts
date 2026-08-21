@@ -1,7 +1,7 @@
 import { and, count, eq, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 
-import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_TRANSACTIONS, SEED_USERS, type SeedPersona } from "@/db/seed/dataset";
+import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_USERS, type SeedPersona } from "@/db/seed/dataset";
 import { assertLocalDatabaseUrl } from "@/db/seed/local-only";
 import { seedDataset } from "@/db/seed/seed";
 import { ledgerCounts } from "@/lib/data/ledger";
@@ -9,8 +9,6 @@ import { requireUser } from "@/lib/data/users";
 import { accounts, transactions, users } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
-
-const PERSONAS = Object.keys(SEED_USERS) as SeedPersona[];
 
 test("the dataset's exported totals match the hand-verified anchors", () => {
   expect(EXPECTED.demo).toEqual({
@@ -69,37 +67,34 @@ test("the dataset's transfer pairs cancel exactly", () => {
   }
 });
 
+const expectedCounts = (persona: SeedPersona) => ({
+  accounts: EXPECTED[persona].accounts,
+  transactions: EXPECTED[persona].transactions,
+});
+
 async function postedTotalsInDb(userId: string) {
   const rows = await adminDb()
     .select({
       currency: transactions.currency,
-      inflowMinor: sql<number>`sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} >= 0)::int`,
-      outflowMinor: sql<number>`sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} < 0)::int`,
+      inflowMinor: sql<number>`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} >= 0), 0)::int`,
+      outflowMinor: sql<number>`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} < 0), 0)::int`,
       netMinor: sql<number>`sum(${transactions.amountMinor})::int`,
       count: count(),
     })
     .from(transactions)
     .where(and(eq(transactions.userId, userId), eq(transactions.status, "posted")))
     .groupBy(transactions.currency);
-  return Object.fromEntries(
-    rows.map(({ currency, ...totals }) => [
-      currency,
-      { ...totals, inflowMinor: totals.inflowMinor ?? 0, outflowMinor: totals.outflowMinor ?? 0 },
-    ]),
-  );
+  return Object.fromEntries(rows.map(({ currency, ...totals }) => [currency, totals]));
 }
 
 test("seeding lands the dataset in the database exactly, and reseeding is idempotent", async () => {
   await seedDataset(adminDb());
   const ids = await seedDataset(adminDb());
 
-  for (const persona of PERSONAS) {
+  for (const persona of SEED_PERSONAS) {
     await expect(
       withAuth(SEED_USERS[persona].clerkUserId, () => ledgerCounts()),
-    ).resolves.toEqual({
-      accounts: EXPECTED[persona].accounts,
-      transactions: EXPECTED[persona].transactions,
-    });
+    ).resolves.toEqual(expectedCounts(persona));
     expect(await postedTotalsInDb(ids[persona])).toEqual(EXPECTED[persona].posted);
   }
 
@@ -117,10 +112,7 @@ test("seedDataset attaches persona ledgers to caller-provided users", async () =
   const ids = await seedDataset(adminDb(), { demo: realUser.id });
   expect(ids.demo).toBe(realUser.id);
 
-  await expect(withAuth(clerkUserId, () => ledgerCounts())).resolves.toEqual({
-    accounts: EXPECTED.demo.accounts,
-    transactions: EXPECTED.demo.transactions,
-  });
+  await expect(withAuth(clerkUserId, () => ledgerCounts())).resolves.toEqual(expectedCounts("demo"));
   expect(await postedTotalsInDb(realUser.id)).toEqual(EXPECTED.demo.posted);
 
   const demoPersonaUsers = await adminDb()
