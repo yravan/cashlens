@@ -29,6 +29,39 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
 
+  # Zero secrets (Clerk is substituted in-harness), so this job runs on fork PRs too.
+  api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgresql://cashlens_app:cashlens_app_dev@localhost:5432/cashlens
+      DATABASE_URL_OWNER: postgresql://cashlens_owner:cashlens_owner_dev@localhost:5432/cashlens
+      DATABASE_URL_SUPERUSER: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:setup
+      - run: pnpm test:api
+
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
