@@ -35,7 +35,6 @@ describe("roundtrip", () => {
     const envelope = encryptCredential(TOKEN, CONTEXT);
     expect(envelope).toMatch(/^v1\.k1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
     expect(envelope).not.toContain(TOKEN);
-    expect(Buffer.from(envelope).toString("hex")).not.toContain(Buffer.from(TOKEN).toString("hex"));
   });
 
   test("fresh nonce every call: same input, different envelopes, both decrypt", () => {
@@ -46,8 +45,10 @@ describe("roundtrip", () => {
     expect(decryptCredential(two, CONTEXT)).toBe(TOKEN);
   });
 
-  test("rejects empty plaintext", () => {
-    expect(() => encryptCredential("", CONTEXT)).toThrow(CredentialCryptoError);
+  test("rejects plaintext outside the 1..8192-byte bounds", () => {
+    for (const plaintext of ["", "a".repeat(8193)]) {
+      expect(() => encryptCredential(plaintext, CONTEXT)).toThrow(CredentialCryptoError);
+    }
   });
 });
 
@@ -101,12 +102,9 @@ describe("owner binding (AAD)", () => {
   });
 
   test("rejects malformed context ids instead of weakening the binding", () => {
-    expect(() => encryptCredential(TOKEN, { userId: "not-a-uuid", connectionId: CONTEXT.connectionId })).toThrow(
-      CredentialCryptoError,
-    );
-    expect(() => encryptCredential(TOKEN, { userId: `${CONTEXT.userId}:x`, connectionId: CONTEXT.connectionId })).toThrow(
-      CredentialCryptoError,
-    );
+    for (const userId of ["not-a-uuid", `${CONTEXT.userId}:x`]) {
+      expect(() => encryptCredential(TOKEN, { ...CONTEXT, userId })).toThrow(CredentialCryptoError);
+    }
   });
 });
 

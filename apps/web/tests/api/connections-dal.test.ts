@@ -26,16 +26,7 @@ const connect = (credential: string) =>
     institutionName: "First Platypus Bank",
   });
 
-function pgCode(error: unknown): string | undefined {
-  for (
-    let cursor = error as { code?: string; cause?: unknown } | undefined;
-    cursor;
-    cursor = cursor.cause as { code?: string; cause?: unknown } | undefined
-  ) {
-    if (cursor.code) return cursor.code;
-  }
-  return undefined;
-}
+const pgError = (code: string) => ({ cause: expect.objectContaining({ code }) });
 
 test("store → list → read → disconnect lifecycle, all scoped to the signed-in user", async () => {
   const clerkUserId = fakeClerkUserId();
@@ -130,25 +121,21 @@ test("a credential row can never attach to another user's connection", async () 
         ciphertext: "v1.k.a.a",
       }),
     ),
-  ).rejects.toSatisfy((error) => pgCode(error) === "23503");
+  ).rejects.toMatchObject(pgError("23503"));
 });
 
 test("the app role cannot rewrite connection identity or delete connection rows", async () => {
   const clerkUserId = fakeClerkUserId();
   await withAuth(clerkUserId, () => connect(TOKEN_A));
 
-  const asApp = (statement: ReturnType<typeof sql.raw>) =>
-    withRequestScope(clerkUserId, (tx) => tx.execute(statement));
+  const denied = (statement: string) =>
+    expect(
+      withRequestScope(clerkUserId, (tx) => tx.execute(sql.raw(statement))),
+    ).rejects.toMatchObject(pgError("42501"));
 
-  await expect(asApp(sql.raw("update connections set institution_name = 'x'"))).rejects.toSatisfy(
-    (error) => pgCode(error) === "42501",
-  );
-  await expect(asApp(sql.raw("update connection_credentials set ciphertext = 'x'"))).rejects.toSatisfy(
-    (error) => pgCode(error) === "42501",
-  );
-  await expect(asApp(sql.raw("delete from connections"))).rejects.toSatisfy(
-    (error) => pgCode(error) === "42501",
-  );
+  await denied("update connections set institution_name = 'x'");
+  await denied("update connection_credentials set ciphertext = 'x'");
+  await denied("delete from connections");
 });
 
 test("every connection function requires a signed-in user", async () => {

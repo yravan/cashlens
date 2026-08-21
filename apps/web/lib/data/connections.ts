@@ -23,13 +23,18 @@ type NewConnection = {
   institutionName?: string;
 };
 
-function label(value: string | undefined, name: string): string | undefined {
-  if (value === undefined) return undefined;
-  if (value.length === 0 || value.length > 512) {
+function boundedText(value: string | undefined, name: string): string | undefined {
+  if (value !== undefined && (value.length === 0 || value.length > 512)) {
     throw new Error(`${name} must be 1 to 512 characters`);
   }
   return value;
 }
+
+const ownCredential = (connectionId: string, userId: string) =>
+  and(
+    eq(connectionCredentials.connectionId, connectionId),
+    eq(connectionCredentials.userId, userId),
+  );
 
 export async function createConnection(input: NewConnection) {
   const user = await requireUser();
@@ -39,9 +44,9 @@ export async function createConnection(input: NewConnection) {
       .values({
         userId: user.id,
         provider: input.provider,
-        providerItemId: label(input.providerItemId, "providerItemId"),
-        institutionId: label(input.institutionId, "institutionId"),
-        institutionName: label(input.institutionName, "institutionName"),
+        providerItemId: boundedText(input.providerItemId, "providerItemId"),
+        institutionId: boundedText(input.institutionId, "institutionId"),
+        institutionName: boundedText(input.institutionName, "institutionName"),
         status: "active",
       })
       .returning(safeShape);
@@ -77,12 +82,7 @@ export async function readConnectionCredential(
     tx
       .select({ ciphertext: connectionCredentials.ciphertext })
       .from(connectionCredentials)
-      .where(
-        and(
-          eq(connectionCredentials.connectionId, connectionId),
-          eq(connectionCredentials.userId, user.id),
-        ),
-      ),
+      .where(ownCredential(connectionId, user.id)),
   );
   if (!rows[0]) return null;
   return new SecretString(
@@ -94,14 +94,7 @@ export async function disconnectConnection(connectionId: string): Promise<boolea
   const user = await requireUser();
   if (!UUID_PATTERN.test(connectionId)) return false;
   return withRequestScope(user.clerkUserId, async (tx) => {
-    await tx
-      .delete(connectionCredentials)
-      .where(
-        and(
-          eq(connectionCredentials.connectionId, connectionId),
-          eq(connectionCredentials.userId, user.id),
-        ),
-      );
+    await tx.delete(connectionCredentials).where(ownCredential(connectionId, user.id));
     const updated = await tx
       .update(connections)
       .set({ status: "disconnected", updatedAt: sql`now()` })
