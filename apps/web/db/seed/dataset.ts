@@ -11,6 +11,8 @@ export const SEED_USERS: Record<SeedPersona, typeof users.$inferInsert & { id: s
   empty: { id: uid(0x03), clerkUserId: "user_SeedEmpty000000000000000000" },
 };
 
+export const SEED_CLERK_IDS = Object.values(SEED_USERS).map((user) => user.clerkUserId);
+
 type SeedRow<T extends { userId: string }> = Omit<T, "userId"> & { persona: SeedPersona };
 
 const A = {

@@ -5,11 +5,10 @@ import { EXPECTED, SEED_USERS } from "../db/seed/dataset.ts";
 import { assertLocalDatabaseUrl } from "../db/seed/local-only.ts";
 import { seedDataset } from "../db/seed/seed.ts";
 
-const superuser = assertLocalDatabaseUrl("DATABASE_URL_SUPERUSER", process.env.DATABASE_URL_SUPERUSER);
-const app = assertLocalDatabaseUrl("DATABASE_URL", process.env.DATABASE_URL);
-
-const url = new URL(superuser);
-url.pathname = new URL(app).pathname;
+const url = new URL(
+  assertLocalDatabaseUrl("DATABASE_URL_SUPERUSER", process.env.DATABASE_URL_SUPERUSER),
+);
+url.pathname = new URL(assertLocalDatabaseUrl("DATABASE_URL", process.env.DATABASE_URL)).pathname;
 
 const clerkUserId = process.argv[2];
 
@@ -38,7 +37,7 @@ try {
     );
     if (rows.length) {
       console.log(
-        `to browse it in the app, attach it to a sign-in you can use: pnpm db:seed <clerk_user_id>\nusers in this database: ${rows.map((row) => row.clerk_user_id).join(", ")}`,
+        `to browse it signed in, re-run as pnpm db:seed <clerk_user_id> — this database has ${rows.map((row) => row.clerk_user_id).join(", ")}`,
       );
     }
   }

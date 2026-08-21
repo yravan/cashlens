@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
-import { EXPECTED, SEED_USERS } from "../db/seed/dataset";
+import { EXPECTED, SEED_CLERK_IDS } from "../db/seed/dataset";
 import { E2E_USERS_FILE, STORAGE_STATE_B } from "../playwright.config";
 import { adminQuery, appQuery, appQueryScopedAs, seedLedgerFixture } from "./db";
 
@@ -11,19 +11,6 @@ const PROBE_B = "ledger_rls_probe_b";
 const INSERT_TXN = `insert into transactions
   (user_id, account_id, amount_minor, currency, date, description, merchant, status, source, source_id)
   values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`;
-
-async function insertAccount(
-  userId: string,
-  name: string,
-  sourceId: string | null,
-): Promise<string> {
-  const result = await adminQuery(
-    `insert into accounts (user_id, name, type, subtype, mask, currency, source, source_id)
-     values ($1, $2, 'depository', 'checking', '0001', 'USD', $3, $4) returning id`,
-    [userId, name, sourceId ? "plaid" : "manual", sourceId],
-  );
-  return result.rows[0].id;
-}
 
 function insertBalance(
   accountId: string,
@@ -48,7 +35,12 @@ test.describe("ledger row-level security backstop", () => {
       [clerkId],
     );
     const userId = user.rows[0].id;
-    return { userId, accountId: await insertAccount(userId, name, sourceId) };
+    const account = await adminQuery(
+      `insert into accounts (user_id, name, type, subtype, mask, currency, source, source_id)
+       values ($1, $2, 'depository', 'checking', '0001', 'USD', 'plaid', $3) returning id`,
+      [userId, name, sourceId],
+    );
+    return { userId, accountId: account.rows[0].id };
   }
 
   test.beforeAll(async () => {
@@ -260,9 +252,7 @@ test.describe("ledger read seam", () => {
       "delete from accounts where user_id in (select id from users where clerk_user_id in ($1, $2))",
       [clerkIdOf("a"), clerkIdOf("b")],
     );
-    await adminQuery("delete from users where clerk_user_id = any($1)", [
-      Object.values(SEED_USERS).map((user) => user.clerkUserId),
-    ]);
+    await adminQuery("delete from users where clerk_user_id = any($1)", [SEED_CLERK_IDS]);
   });
 
   test("pages show an empty ledger as zero counts", async ({ page, request }) => {

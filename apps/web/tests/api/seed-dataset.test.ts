@@ -1,12 +1,12 @@
 import { and, count, eq, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 
-import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_USERS, type SeedPersona } from "@/db/seed/dataset";
+import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
 import { assertLocalDatabaseUrl } from "@/db/seed/local-only";
 import { seedDataset } from "@/db/seed/seed";
 import { ledgerCounts } from "@/lib/data/ledger";
 import { requireUser } from "@/lib/data/users";
-import { accounts, transactions, users } from "@/lib/db/schema";
+import { accountBalances, accounts, transactions, users } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 
@@ -67,13 +67,10 @@ test("the dataset's transfer pairs cancel exactly", () => {
   }
 });
 
-const expectedCounts = (persona: SeedPersona) => ({
-  accounts: EXPECTED[persona].accounts,
-  transactions: EXPECTED[persona].transactions,
-});
-
-async function postedTotalsInDb(userId: string) {
-  const rows = await adminDb()
+async function personaInDb(userId: string): Promise<ExpectedPersona> {
+  const db = adminDb();
+  const mine = eq(transactions.userId, userId);
+  const posted = await db
     .select({
       currency: transactions.currency,
       inflowMinor: sql<number>`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} >= 0), 0)::int`,
@@ -82,27 +79,25 @@ async function postedTotalsInDb(userId: string) {
       count: count(),
     })
     .from(transactions)
-    .where(and(eq(transactions.userId, userId), eq(transactions.status, "posted")))
+    .where(and(mine, eq(transactions.status, "posted")))
     .groupBy(transactions.currency);
-  return Object.fromEntries(rows.map(({ currency, ...totals }) => [currency, totals]));
+
+  return {
+    accounts: await db.$count(accounts, eq(accounts.userId, userId)),
+    transactions: await db.$count(transactions, mine),
+    balances: await db.$count(accountBalances, eq(accountBalances.userId, userId)),
+    pendingCount: await db.$count(transactions, and(mine, eq(transactions.status, "pending"))),
+    posted: Object.fromEntries(posted.map(({ currency, ...totals }) => [currency, totals])),
+  };
 }
 
-test("seeding lands the dataset in the database exactly, and reseeding is idempotent", async () => {
+test("seeding lands every persona's ledger in the database exactly, and reseeding is idempotent", async () => {
   await seedDataset(adminDb());
   const ids = await seedDataset(adminDb());
 
-  for (const persona of SEED_PERSONAS) {
-    await expect(
-      withAuth(SEED_USERS[persona].clerkUserId, () => ledgerCounts()),
-    ).resolves.toEqual(expectedCounts(persona));
-    expect(await postedTotalsInDb(ids[persona])).toEqual(EXPECTED[persona].posted);
-  }
+  for (const persona of SEED_PERSONAS) expect(await personaInDb(ids[persona])).toEqual(EXPECTED[persona]);
 
-  const [{ n }] = await adminDb()
-    .select({ n: count() })
-    .from(users)
-    .where(eq(users.clerkUserId, SEED_USERS.demo.clerkUserId));
-  expect(n).toBe(1);
+  expect(await adminDb().$count(users, eq(users.clerkUserId, SEED_USERS.demo.clerkUserId))).toBe(1);
 });
 
 test("seedDataset attaches persona ledgers to caller-provided users", async () => {
@@ -110,22 +105,15 @@ test("seedDataset attaches persona ledgers to caller-provided users", async () =
   const realUser = await withAuth(clerkUserId, () => requireUser());
 
   const ids = await seedDataset(adminDb(), { demo: realUser.id });
+
   expect(ids.demo).toBe(realUser.id);
-
-  await expect(withAuth(clerkUserId, () => ledgerCounts())).resolves.toEqual(expectedCounts("demo"));
-  expect(await postedTotalsInDb(realUser.id)).toEqual(EXPECTED.demo.posted);
-
-  const demoPersonaUsers = await adminDb()
-    .select()
-    .from(users)
-    .where(eq(users.clerkUserId, SEED_USERS.demo.clerkUserId));
-  expect(demoPersonaUsers).toEqual([]);
-
-  const [{ n }] = await adminDb()
-    .select({ n: count() })
-    .from(accounts)
-    .where(eq(accounts.userId, SEED_USERS.neighbor.id));
-  expect(n).toBe(EXPECTED.neighbor.accounts);
+  expect(await personaInDb(realUser.id)).toEqual(EXPECTED.demo);
+  expect(await personaInDb(SEED_USERS.neighbor.id)).toEqual(EXPECTED.neighbor);
+  await expect(withAuth(clerkUserId, () => ledgerCounts())).resolves.toEqual({
+    accounts: EXPECTED.demo.accounts,
+    transactions: EXPECTED.demo.transactions,
+  });
+  expect(await adminDb().$count(users, eq(users.clerkUserId, SEED_USERS.demo.clerkUserId))).toBe(0);
 });
 
 const LOCAL_URLS = [
@@ -140,38 +128,34 @@ const REMOTE_URLS = [
   "postgresql://postgres:postgres@db:5432/postgres",
   "postgresql://postgres:postgres@host.docker.internal:5433/postgres",
   "postgresql://postgres:postgres@localhost.evil.example:5433/postgres",
+  "postgresql://postgres:postgres@evil.localhost:5433/postgres",
 ];
 
-test("the seed guard accepts loopback database URLs", () => {
-  for (const url of LOCAL_URLS) {
-    expect(assertLocalDatabaseUrl("DATABASE_URL", url)).toBe(url);
-  }
-});
-
-test("the seed guard refuses any non-local database URL", () => {
-  for (const url of REMOTE_URLS) {
-    expect(() => assertLocalDatabaseUrl("DATABASE_URL", url)).toThrowError(
-      /only ever seeds a local database/,
-    );
-  }
-});
-
-test("the seed guard refuses non-local URLs without echoing the URL or its password", () => {
-  const url = REMOTE_URLS[0];
-  let thrown: unknown;
+function refusalFor(value: string | undefined): string {
   try {
-    assertLocalDatabaseUrl("DATABASE_URL", url);
+    assertLocalDatabaseUrl("DATABASE_URL", value);
   } catch (error) {
-    thrown = error;
+    return (error as Error).message;
   }
-  expect(thrown).toBeInstanceOf(Error);
-  const message = (thrown as Error).message;
-  expect(message).not.toContain(url);
-  expect(message).not.toContain("secret");
+  return "accepted, no refusal";
+}
+
+test("the seed guard accepts loopback database URLs", () => {
+  for (const url of LOCAL_URLS) expect(assertLocalDatabaseUrl("DATABASE_URL", url)).toBe(url);
+});
+
+test("the seed guard refuses every non-local database URL", () => {
+  for (const url of REMOTE_URLS) expect(refusalFor(url)).toContain("only ever seeds a local database");
+});
+
+test("the seed guard never echoes a refused URL or its password", () => {
+  for (const url of REMOTE_URLS) {
+    const message = refusalFor(url);
+    expect(message).not.toContain(url);
+    expect(message).not.toContain(new URL(url).password);
+  }
 });
 
 test("the seed guard fails closed on a missing or malformed URL", () => {
-  expect(() => assertLocalDatabaseUrl("DATABASE_URL", undefined)).toThrowError(/DATABASE_URL/);
-  expect(() => assertLocalDatabaseUrl("DATABASE_URL", "")).toThrowError(/DATABASE_URL/);
-  expect(() => assertLocalDatabaseUrl("DATABASE_URL", "not a url")).toThrowError(/DATABASE_URL/);
+  for (const value of [undefined, "", "not a url"]) expect(refusalFor(value)).toContain("DATABASE_URL");
 });

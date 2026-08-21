@@ -5,6 +5,7 @@ import { accountBalances, accounts, transactions, users } from "../../lib/db/sch
 import {
   SEED_ACCOUNTS,
   SEED_BALANCES,
+  SEED_CLERK_IDS,
   SEED_PERSONAS,
   SEED_TRANSACTIONS,
   SEED_USERS,
@@ -23,9 +24,7 @@ export async function seedDataset(
   const owned = <T extends { persona: SeedPersona }>(rows: readonly T[]) =>
     rows.map(({ persona, ...row }) => ({ ...row, userId: ids[persona] }));
 
-  await db.delete(users).where(
-    inArray(users.clerkUserId, SEED_PERSONAS.map((persona) => SEED_USERS[persona].clerkUserId)),
-  );
+  await db.delete(users).where(inArray(users.clerkUserId, SEED_CLERK_IDS));
   await db.delete(accounts).where(inArray(accounts.id, SEED_ACCOUNTS.map((account) => account.id)));
 
   const created = SEED_PERSONAS.filter((persona) => !userIds[persona]);
