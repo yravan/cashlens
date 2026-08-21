@@ -1,5 +1,5 @@
 import "server-only";
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import { inspect } from "node:util";
 
 const VERSION = "v1";
@@ -36,7 +36,9 @@ function keyring(): Keyring {
     if (!KEY_ID_PATTERN.test(id) || !KEY_HEX_PATTERN.test(hex) || byId.has(id)) {
       throw new CredentialCryptoError(KEYRING_FORMAT);
     }
-    const key = Buffer.from(hex, "hex");
+    const key = Buffer.from(
+      hkdfSync("sha256", Buffer.from(hex, "hex"), "cashlens.credentials.v1", "connection-credential", 32),
+    );
     byId.set(id, key);
     primary ??= { id, key };
   }
@@ -60,7 +62,7 @@ export function encryptCredential(plaintext: string, context: CredentialContext)
   }
   const { primary } = keyring();
   const nonce = randomBytes(NONCE_BYTES);
-  const cipher = createCipheriv("aes-256-gcm", primary.key, nonce);
+  const cipher = createCipheriv("aes-256-gcm", primary.key, nonce, { authTagLength: TAG_BYTES });
   cipher.setAAD(aad(primary.id, context));
   const sealed = Buffer.concat([cipher.update(bytes), cipher.final(), cipher.getAuthTag()]);
   return `${VERSION}.${primary.id}.${nonce.toString("base64url")}.${sealed.toString("base64url")}`;
@@ -78,7 +80,7 @@ export function decryptCredential(envelope: string, context: CredentialContext):
     const nonce = Buffer.from(nonceText, "base64url");
     const sealed = Buffer.from(sealedText, "base64url");
     if (nonce.length !== NONCE_BYTES || sealed.length <= TAG_BYTES) throw new Error("bad envelope");
-    const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+    const decipher = createDecipheriv("aes-256-gcm", key, nonce, { authTagLength: TAG_BYTES });
     decipher.setAAD(aad(keyId, context));
     decipher.setAuthTag(sealed.subarray(sealed.length - TAG_BYTES));
     return Buffer.concat([

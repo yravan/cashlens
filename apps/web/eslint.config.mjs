@@ -6,7 +6,7 @@ export default defineConfig([
   ...nextVitals,
   ...nextTs,
   {
-    ignores: ["lib/db/**", "lib/data/**", "db/seed/**", "e2e/**", "scripts/**", "tests/**"],
+    ignores: ["lib/db/**", "lib/data/**", "lib/crypto/**", "db/seed/**", "e2e/**", "scripts/**", "tests/**"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -18,6 +18,26 @@ export default defineConfig([
             {
               group: ["@/lib/db/*", "**/lib/db/*"],
               message: "Import DAL functions from lib/data instead of the db client.",
+            },
+            {
+              group: ["@/lib/crypto/*", "**/lib/crypto/*"],
+              message: "Credential crypto is confined to the DAL (lib/data).",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["lib/db/**", "db/seed/**", "e2e/**", "scripts/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/lib/crypto/*", "**/lib/crypto/*"],
+              message: "Credential crypto is confined to the DAL (lib/data).",
             },
           ],
         },
