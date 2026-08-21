@@ -111,14 +111,6 @@ describe("owner binding (AAD)", () => {
 });
 
 describe("keyring", () => {
-  test("decrypt fails under a keyring that lacks the right key", () => {
-    const envelope = encryptCredential(TOKEN, CONTEXT);
-    process.env.CREDENTIAL_ENCRYPTION_KEYS = `k1:${KEY_B}`;
-    expect(() => decryptCredential(envelope, CONTEXT)).toThrow(
-      new CredentialCryptoError("credential decryption failed"),
-    );
-  });
-
   test("rotation: first entry encrypts, older entries still decrypt", () => {
     const old = encryptCredential(TOKEN, CONTEXT);
     process.env.CREDENTIAL_ENCRYPTION_KEYS = `k2:${KEY_B},k1:${KEY_A}`;
@@ -128,9 +120,12 @@ describe("keyring", () => {
     expect(decryptCredential(fresh, CONTEXT)).toBe(TOKEN);
   });
 
-  test("an envelope naming a key id the keyring lost is a generic decrypt failure", () => {
+  test.each([
+    ["holds different material under the same id", `k1:${KEY_B}`],
+    ["lost the envelope's key id", `k2:${KEY_B}`],
+  ])("decrypt under a keyring that %s is a generic failure", (_name, ring) => {
     const envelope = encryptCredential(TOKEN, CONTEXT);
-    process.env.CREDENTIAL_ENCRYPTION_KEYS = `k2:${KEY_B}`;
+    process.env.CREDENTIAL_ENCRYPTION_KEYS = ring;
     expect(() => decryptCredential(envelope, CONTEXT)).toThrow(
       new CredentialCryptoError("credential decryption failed"),
     );

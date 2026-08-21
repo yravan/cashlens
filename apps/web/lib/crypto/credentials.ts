@@ -6,9 +6,8 @@ const VERSION = "v1";
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
 const MAX_PLAINTEXT_BYTES = 8192;
-const KEY_ID_PATTERN = /^[A-Za-z0-9_-]{1,16}$/;
-const KEY_HEX_PATTERN = /^[0-9a-f]{64}$/;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const KEY_ENTRY_PATTERN = /^([A-Za-z0-9_-]{1,16}):([0-9a-f]{64})$/;
+export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ENV_VAR = "CREDENTIAL_ENCRYPTION_KEYS";
 const KEYRING_FORMAT = `${ENV_VAR} must be "id:64-hex-chars" entries separated by commas, first entry encrypts — generate a key with: openssl rand -hex 32`;
 
@@ -30,12 +29,8 @@ function keyring(): Keyring {
   const byId = new Map<string, Buffer>();
   let primary: Keyring["primary"] | undefined;
   for (const entry of raw.split(",")) {
-    const colon = entry.indexOf(":");
-    const id = colon < 0 ? "" : entry.slice(0, colon);
-    const hex = entry.slice(colon + 1);
-    if (!KEY_ID_PATTERN.test(id) || !KEY_HEX_PATTERN.test(hex) || byId.has(id)) {
-      throw new CredentialCryptoError(KEYRING_FORMAT);
-    }
+    const [, id, hex] = KEY_ENTRY_PATTERN.exec(entry) ?? [];
+    if (!id || !hex || byId.has(id)) throw new CredentialCryptoError(KEYRING_FORMAT);
     const key = Buffer.from(
       hkdfSync("sha256", Buffer.from(hex, "hex"), "cashlens.credentials.v1", "connection-credential", 32),
     );
@@ -58,7 +53,7 @@ function aad(keyId: string, context: CredentialContext): Buffer {
 export function encryptCredential(plaintext: string, context: CredentialContext): string {
   const bytes = Buffer.from(plaintext, "utf8");
   if (bytes.length === 0 || bytes.length > MAX_PLAINTEXT_BYTES) {
-    throw new CredentialCryptoError("credential plaintext must be 1 to 8192 bytes");
+    throw new CredentialCryptoError(`credential plaintext must be 1 to ${MAX_PLAINTEXT_BYTES} bytes`);
   }
   const { primary } = keyring();
   const nonce = randomBytes(NONCE_BYTES);
@@ -67,8 +62,6 @@ export function encryptCredential(plaintext: string, context: CredentialContext)
   const sealed = Buffer.concat([cipher.update(bytes), cipher.final(), cipher.getAuthTag()]);
   return `${VERSION}.${primary.id}.${nonce.toString("base64url")}.${sealed.toString("base64url")}`;
 }
-
-const DECRYPT_FAILED = "credential decryption failed";
 
 export function decryptCredential(envelope: string, context: CredentialContext): string {
   const ring = keyring();
@@ -88,7 +81,7 @@ export function decryptCredential(envelope: string, context: CredentialContext):
       decipher.final(),
     ]).toString("utf8");
   } catch {
-    throw new CredentialCryptoError(DECRYPT_FAILED);
+    throw new CredentialCryptoError("credential decryption failed");
   }
 }
 

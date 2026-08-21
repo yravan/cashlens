@@ -1,12 +1,10 @@
 import "server-only";
 import { and, asc, eq, sql } from "drizzle-orm";
 
-import { decryptCredential, encryptCredential, SecretString } from "@/lib/crypto/credentials";
+import { decryptCredential, encryptCredential, SecretString, UUID_PATTERN } from "@/lib/crypto/credentials";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
 import { connectionCredentials, connections } from "@/lib/db/schema";
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const safeShape = {
   id: connections.id,

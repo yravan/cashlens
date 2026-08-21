@@ -1,5 +1,5 @@
 import { inspect } from "node:util";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 
 import {
@@ -8,6 +8,7 @@ import {
   listConnections,
   readConnectionCredential,
 } from "@/lib/data/connections";
+import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
 import { connectionCredentials, connections } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
@@ -101,16 +102,11 @@ test("a ciphertext transplanted onto another row decrypts for no one", async () 
   const a = await withAuth(clerkA, () => connect(TOKEN_A));
   const b = await withAuth(clerkB, () => connect(TOKEN_B));
 
-  const rows = await adminDb().select().from(connectionCredentials);
-  const byConnection = new Map(rows.map((row) => [row.connectionId, row.ciphertext]));
-  await adminDb()
-    .update(connectionCredentials)
-    .set({ ciphertext: byConnection.get(b.id)! })
-    .where(eq(connectionCredentials.connectionId, a.id));
-  await adminDb()
-    .update(connectionCredentials)
-    .set({ ciphertext: byConnection.get(a.id)! })
-    .where(eq(connectionCredentials.connectionId, b.id));
+  await adminDb().execute(sql`
+    update connection_credentials self set ciphertext = other.ciphertext
+    from connection_credentials other
+    where other.connection_id <> self.connection_id
+  `);
 
   await expect(withAuth(clerkA, () => readConnectionCredential(a.id))).rejects.toThrow(
     "credential decryption failed",
@@ -122,26 +118,19 @@ test("a ciphertext transplanted onto another row decrypts for no one", async () 
 
 test("a credential row can never attach to another user's connection", async () => {
   const clerkA = fakeClerkUserId();
-  const clerkB = fakeClerkUserId();
   const a = await withAuth(clerkA, () => connect(TOKEN_A));
   await withAuth(clerkA, () => disconnectConnection(a.id));
-  await withAuth(clerkB, () => listConnections());
-  const users = await adminDb().execute<{ id: string; clerk_user_id: string }>(
-    sql`select id, clerk_user_id from users`,
-  );
-  const bUserId = users.rows.find((row) => row.clerk_user_id === clerkB)!.id;
+  const b = await withAuth(fakeClerkUserId(), () => requireUser());
 
-  await withAuth(clerkB, () =>
-    expect(
-      withRequestScope(clerkB, (tx) =>
-        tx.insert(connectionCredentials).values({
-          connectionId: a.id,
-          userId: bUserId,
-          ciphertext: "v1.k.a.a",
-        }),
-      ),
-    ).rejects.toSatisfy((error) => pgCode(error) === "23503"),
-  );
+  await expect(
+    withRequestScope(b.clerkUserId, (tx) =>
+      tx.insert(connectionCredentials).values({
+        connectionId: a.id,
+        userId: b.id,
+        ciphertext: "v1.k.a.a",
+      }),
+    ),
+  ).rejects.toSatisfy((error) => pgCode(error) === "23503");
 });
 
 test("the app role cannot rewrite connection identity or delete connection rows", async () => {
