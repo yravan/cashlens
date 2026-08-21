@@ -33,8 +33,7 @@ function refuse(surface: string): never {
 }
 
 function unsignedJwt(claims: object): string {
-  const encode = (value: object) =>
-    Buffer.from(JSON.stringify(value)).toString("base64url");
+  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
   return `${encode({ alg: "none", typ: "JWT" })}.${encode(claims)}.`;
 }
 

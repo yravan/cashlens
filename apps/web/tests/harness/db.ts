@@ -1,19 +1,21 @@
+import path from "node:path";
 import { loadEnvConfig } from "@next/env";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { Client, Pool } from "pg";
 
 import * as schema from "@/lib/db/schema";
 
 export const TEMPLATE_DB = "cashlens_test_template";
+export const APP_DIR = path.join(import.meta.dirname, "..", "..");
 
-export function loadDbEnv(dir: string): void {
+export function loadDbEnv(): void {
   // Under NODE_ENV=test @next/env skips .env.local, but that file is where
   // this repo keeps its fixed local database URLs (see .env.example).
   const env = process.env as Record<string, string | undefined>;
   const nodeEnv = env.NODE_ENV;
   env.NODE_ENV = "development";
   try {
-    loadEnvConfig(dir, true, { info: () => {}, error: console.error });
+    loadEnvConfig(APP_DIR, true, { info: () => {}, error: console.error });
   } finally {
     env.NODE_ENV = nodeEnv;
   }
@@ -39,6 +41,19 @@ export function workerDb(): string {
     throw new Error("VITEST_POOL_ID missing — api tests only run under vitest");
   }
   return `cashlens_test_${id}`;
+}
+
+export async function withClient<T>(
+  connectionString: string,
+  fn: (client: Client) => Promise<T>,
+): Promise<T> {
+  const client = new Client({ connectionString });
+  await client.connect();
+  try {
+    return await fn(client);
+  } finally {
+    await client.end();
+  }
 }
 
 let pool: Pool | undefined;
