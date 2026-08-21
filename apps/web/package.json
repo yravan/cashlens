@@ -13,6 +13,7 @@
     "test:e2e": "playwright test",
     "db:up": "docker compose -f ../../compose.yaml up -d --wait",
     "db:setup": "node --env-file-if-exists=.env.local scripts/db-setup.mts && drizzle-kit migrate",
+    "db:seed": "node --env-file-if-exists=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/db-seed.mts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },

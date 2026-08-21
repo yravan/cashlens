@@ -1,4 +1,7 @@
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
+
+import { seedDataset } from "../db/seed/seed";
 
 function envUrl(name: "DATABASE_URL" | "DATABASE_URL_SUPERUSER"): string {
   const raw = process.env[name];
@@ -16,10 +19,18 @@ async function withClient<T>(connectionString: string, fn: (client: Client) => P
   }
 }
 
-export function adminQuery(text: string, params: unknown[] = []) {
+function adminUrl(): string {
   const admin = new URL(envUrl("DATABASE_URL_SUPERUSER"));
   admin.pathname = new URL(envUrl("DATABASE_URL")).pathname;
-  return withClient(admin.href, (client) => client.query(text, params));
+  return admin.href;
+}
+
+export function adminQuery(text: string, params: unknown[] = []) {
+  return withClient(adminUrl(), (client) => client.query(text, params));
+}
+
+export function seedLedgerFixture(userIds: { demo: string; neighbor: string }) {
+  return withClient(adminUrl(), (client) => seedDataset(drizzle({ client }), userIds));
 }
 
 export function appQuery(text: string, params: unknown[] = []) {

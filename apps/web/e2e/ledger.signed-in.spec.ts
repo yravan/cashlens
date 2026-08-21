@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
+import { EXPECTED, SEED_CLERK_IDS } from "../db/seed/dataset";
 import { E2E_USERS_FILE, STORAGE_STATE_B } from "../playwright.config";
-import { adminQuery, appQuery, appQueryScopedAs } from "./db";
+import { adminQuery, appQuery, appQueryScopedAs, seedLedgerFixture } from "./db";
 
 const PROBE_A = "ledger_rls_probe_a";
 const PROBE_B = "ledger_rls_probe_b";
@@ -10,19 +11,6 @@ const PROBE_B = "ledger_rls_probe_b";
 const INSERT_TXN = `insert into transactions
   (user_id, account_id, amount_minor, currency, date, description, merchant, status, source, source_id)
   values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`;
-
-async function insertAccount(
-  userId: string,
-  name: string,
-  sourceId: string | null,
-): Promise<string> {
-  const result = await adminQuery(
-    `insert into accounts (user_id, name, type, subtype, mask, currency, source, source_id)
-     values ($1, $2, 'depository', 'checking', '0001', 'USD', $3, $4) returning id`,
-    [userId, name, sourceId ? "plaid" : "manual", sourceId],
-  );
-  return result.rows[0].id;
-}
 
 function insertBalance(
   accountId: string,
@@ -47,7 +35,12 @@ test.describe("ledger row-level security backstop", () => {
       [clerkId],
     );
     const userId = user.rows[0].id;
-    return { userId, accountId: await insertAccount(userId, name, sourceId) };
+    const account = await adminQuery(
+      `insert into accounts (user_id, name, type, subtype, mask, currency, source, source_id)
+       values ($1, $2, 'depository', 'checking', '0001', 'USD', 'plaid', $3) returning id`,
+      [userId, name, sourceId],
+    );
+    return { userId, accountId: account.rows[0].id };
   }
 
   test.beforeAll(async () => {
@@ -243,11 +236,15 @@ test.describe("ledger read seam", () => {
     return result.rows[0].id;
   }
 
-  async function expectCounts(page: Page, accounts: string, transactions: string) {
+  const inLedger = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"} in the ledger`;
+
+  async function expectCounts(page: Page, accounts: number, transactions: number) {
     await page.goto("/accounts");
-    await expect(page.getByTestId("accounts-count")).toHaveText(accounts);
+    await expect(page.getByTestId("accounts-count")).toHaveText(inLedger(accounts, "account"));
     await page.goto("/transactions");
-    await expect(page.getByTestId("transactions-count")).toHaveText(transactions);
+    await expect(page.getByTestId("transactions-count")).toHaveText(
+      inLedger(transactions, "transaction"),
+    );
   }
 
   test.afterAll(async () => {
@@ -255,6 +252,7 @@ test.describe("ledger read seam", () => {
       "delete from accounts where user_id in (select id from users where clerk_user_id in ($1, $2))",
       [clerkIdOf("a"), clerkIdOf("b")],
     );
+    await adminQuery("delete from users where clerk_user_id = any($1)", [SEED_CLERK_IDS]);
   });
 
   test("pages show an empty ledger as zero counts", async ({ page, request }) => {
@@ -264,7 +262,7 @@ test.describe("ledger read seam", () => {
       [clerkIdOf("a")],
     );
 
-    await expectCounts(page, "0 accounts in the ledger", "0 transactions in the ledger");
+    await expectCounts(page, 0, 0);
   });
 
   test("pages count exactly the signed-in user's ledger, not anyone else's", async ({
@@ -289,31 +287,9 @@ test.describe("ledger read seam", () => {
       userA,
       userB,
     ]);
+    await seedLedgerFixture({ demo: userA, neighbor: userB });
 
-    const accountA1 = await insertAccount(userA, "Seam Checking", "seam-acct-a1");
-    const accountA2 = await insertAccount(userA, "Seam Card", null);
-    const accountB1 = await insertAccount(userB, "Seam Savings", "seam-acct-b1");
-
-    await insertBalance(accountA1, userA, 50000, 50000);
-
-    await adminQuery(INSERT_TXN, [
-      userA, accountA1, -1999, "USD", "2026-02-02",
-      "GROCERY MART", "Grocery Mart", "posted", "plaid", "seam-txn-a1",
-    ]);
-    await adminQuery(INSERT_TXN, [
-      userA, accountA1, -750, "USD", "2026-02-03",
-      "COFFEE", null, "pending", "plaid", "seam-txn-a2",
-    ]);
-    await adminQuery(INSERT_TXN, [
-      userA, accountA2, -4500, "USD", "2026-02-03",
-      "CASH LUNCH", null, "posted", "manual", null,
-    ]);
-    await adminQuery(INSERT_TXN, [
-      userB, accountB1, 100000, "USD", "2026-02-04",
-      "TRANSFER IN", null, "posted", "plaid", "seam-txn-b1",
-    ]);
-
-    await expectCounts(page, "2 accounts in the ledger", "3 transactions in the ledger");
+    await expectCounts(page, EXPECTED.demo.accounts, EXPECTED.demo.transactions);
 
     const contextB = await browser.newContext({
       baseURL,
@@ -321,7 +297,7 @@ test.describe("ledger read seam", () => {
     });
     try {
       const pageB = await contextB.newPage();
-      await expectCounts(pageB, "1 account in the ledger", "1 transaction in the ledger");
+      await expectCounts(pageB, EXPECTED.neighbor.accounts, EXPECTED.neighbor.transactions);
     } finally {
       await contextB.close();
     }

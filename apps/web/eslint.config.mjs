@@ -6,7 +6,7 @@ export default defineConfig([
   ...nextVitals,
   ...nextTs,
   {
-    ignores: ["lib/db/**", "lib/data/**", "e2e/**", "scripts/**", "tests/**"],
+    ignores: ["lib/db/**", "lib/data/**", "db/seed/**", "e2e/**", "scripts/**", "tests/**"],
     rules: {
       "no-restricted-imports": [
         "error",
