@@ -9,8 +9,7 @@ export const TEMPLATE_DB = "cashlens_test_template";
 export const APP_DIR = path.join(import.meta.dirname, "..", "..");
 
 export function loadDbEnv(): void {
-  // Under NODE_ENV=test @next/env skips .env.local, but that file is where
-  // this repo keeps its fixed local database URLs (see .env.example).
+  // @next/env skips .env.local under NODE_ENV=test, and that is where this repo keeps the database URLs.
   const env = process.env as Record<string, string | undefined>;
   const nodeEnv = env.NODE_ENV;
   env.NODE_ENV = "development";
@@ -58,30 +57,17 @@ export async function withClient<T>(
 
 let pool: Pool | undefined;
 
-function adminPool(): Pool {
-  pool ??= new Pool({
-    connectionString: urlForDb("DATABASE_URL_SUPERUSER", workerDb()),
-    max: 2,
-  });
-  return pool;
-}
+const adminPool = () =>
+  (pool ??= new Pool({ connectionString: urlForDb("DATABASE_URL_SUPERUSER", workerDb()), max: 2 }));
 
-export function adminDb() {
-  return drizzle({ client: adminPool(), schema });
-}
+export const adminDb = () => drizzle({ client: adminPool(), schema });
 
 export async function truncateAll(): Promise<void> {
-  await adminPool().query(`
-    do $$
-    declare tables text;
-    begin
-      select string_agg(format('%I.%I', schemaname, tablename), ', ') into tables
-        from pg_tables where schemaname = 'public';
-      if tables is not null then
-        execute 'truncate table ' || tables || ' restart identity cascade';
-      end if;
-    end $$;
-  `);
+  const { rows } = await adminPool().query<{ tables: string | null }>(
+    "select string_agg(format('%I.%I', schemaname, tablename), ', ') as tables from pg_tables where schemaname = 'public'",
+  );
+  const { tables } = rows[0];
+  if (tables) await adminPool().query(`truncate table ${tables} restart identity cascade`);
 }
 
 export async function closeAdmin(): Promise<void> {

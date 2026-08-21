@@ -6,26 +6,11 @@ import { accounts, transactions } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 
+const usd = { currency: "USD", source: "manual" } as const;
+const posted = { ...usd, status: "posted" } as const;
+
 async function provision(clerkUserId: string): Promise<string> {
-  const user = await withAuth(clerkUserId, () => requireUser());
-  return user.id;
-}
-
-function account(userId: string, name: string) {
-  return { userId, name, type: "depository" as const, currency: "USD", source: "manual" as const };
-}
-
-function transaction(userId: string, accountId: string, amountMinor: number, date: string, description: string) {
-  return {
-    userId,
-    accountId,
-    amountMinor,
-    currency: "USD",
-    date,
-    description,
-    status: "posted" as const,
-    source: "manual" as const,
-  };
+  return (await withAuth(clerkUserId, () => requireUser())).id;
 }
 
 test("ledger counts are exactly the signed-in user's, never anyone else's", async () => {
@@ -35,22 +20,23 @@ test("ledger counts are exactly the signed-in user's, never anyone else's", asyn
   const [userA, userB] = await Promise.all([provision(clerkA), provision(clerkB)]);
   await provision(clerkC);
 
-  const seeded = await adminDb()
+  const [a1, a2, b1] = await adminDb()
     .insert(accounts)
     .values([
-      account(userA, "A Checking"),
-      account(userA, "A Card"),
-      account(userB, "B Savings"),
+      { ...usd, userId: userA, name: "A Checking", type: "depository" },
+      { ...usd, userId: userA, name: "A Card", type: "depository" },
+      { ...usd, userId: userB, name: "B Savings", type: "depository" },
     ])
-    .returning({ id: accounts.id, userId: accounts.userId });
-  const [accountA1, accountA2, accountB1] = seeded;
+    .returning({ id: accounts.id });
 
-  await adminDb().insert(transactions).values([
-    transaction(userA, accountA1.id, -1999, "2026-02-02", "GROCERY MART"),
-    transaction(userA, accountA1.id, -750, "2026-02-03", "COFFEE"),
-    transaction(userA, accountA2.id, -4500, "2026-02-03", "CASH LUNCH"),
-    transaction(userB, accountB1.id, 100000, "2026-02-04", "TRANSFER IN"),
-  ]);
+  await adminDb()
+    .insert(transactions)
+    .values([
+      { ...posted, userId: userA, accountId: a1.id, amountMinor: -1999, date: "2026-02-02", description: "GROCERY MART" },
+      { ...posted, userId: userA, accountId: a1.id, amountMinor: -750, date: "2026-02-03", description: "COFFEE" },
+      { ...posted, userId: userA, accountId: a2.id, amountMinor: -4500, date: "2026-02-03", description: "CASH LUNCH" },
+      { ...posted, userId: userB, accountId: b1.id, amountMinor: 100000, date: "2026-02-04", description: "TRANSFER IN" },
+    ]);
 
   await expect(withAuth(clerkA, () => ledgerCounts())).resolves.toEqual({
     accounts: 2,

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import pg from "pg";
+import { escapeIdentifier } from "pg";
 
 import { APP_DIR, TEMPLATE_DB, loadDbEnv, requireEnv, urlForDb, withClient } from "./db";
 
@@ -10,20 +10,14 @@ export default async function globalSetup(): Promise<void> {
 
   const owner = decodeURIComponent(new URL(requireEnv("DATABASE_URL_OWNER")).username);
   const app = decodeURIComponent(new URL(requireEnv("DATABASE_URL")).username);
-  const ownerId = pg.escapeIdentifier(owner);
-  const appId = pg.escapeIdentifier(app);
+  const ownerId = escapeIdentifier(owner);
+  const appId = escapeIdentifier(app);
 
   await withClient(requireEnv("DATABASE_URL_SUPERUSER"), async (client) => {
-    const roles = await client.query(
-      "select 1 from pg_roles where rolname in ($1, $2)",
-      [owner, app],
-    );
-    if (roles.rowCount !== 2) {
-      throw new Error("database roles missing — run `pnpm db:setup` first");
-    }
+    const roles = await client.query("select 1 from pg_roles where rolname in ($1, $2)", [owner, app]);
+    if (roles.rowCount !== 2) throw new Error("database roles missing — run `pnpm db:setup` first");
     await client.query(`drop database if exists ${TEMPLATE_DB} with (force)`);
     await client.query(`create database ${TEMPLATE_DB} owner ${ownerId}`);
-    await client.query(`grant create on database ${TEMPLATE_DB} to ${ownerId}`);
   });
 
   await withClient(urlForDb("DATABASE_URL_SUPERUSER", TEMPLATE_DB), async (client) => {

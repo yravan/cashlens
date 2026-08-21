@@ -1,7 +1,6 @@
 import { expect, test } from "vitest";
 
-// Fresh process per test file: the dead URL must land before the app's lazy
-// pool first reads DATABASE_URL, and must not poison any other file.
+// Own file, so own process: the dead URL must beat the app's lazy pool to DATABASE_URL, and poison no other test.
 process.env.DATABASE_URL = "postgresql://cashlens_app:wrong@127.0.0.1:9/cashlens";
 const { GET } = await import("@/app/api/health/route");
 

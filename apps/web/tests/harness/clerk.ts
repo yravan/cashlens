@@ -3,19 +3,16 @@ import { randomBytes } from "node:crypto";
 
 import type { auth as realAuth } from "@clerk/nextjs/server";
 
-// vitest.config.mts aliases `@clerk/nextjs/server` to this file: the api suite
-// substitutes Clerk (a true external) behind the exact interface production
-// imports. Signed out is the default; `withAuth` scopes a signed-in user.
-// Surfaces no production code touches yet fail loud instead of faking.
+// vitest.config.mts aliases `@clerk/nextjs/server` to this file for the api suite.
 
 type SessionAuth = Awaited<ReturnType<typeof realAuth>>;
 
 const scope = new AsyncLocalStorage<string>();
 
-const ALPHANUMERIC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const BASE62 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 function base62(length: number): string {
-  return Array.from(randomBytes(length), (byte) => ALPHANUMERIC[byte % 62]).join("");
+  return Array.from(randomBytes(length), (byte) => BASE62[byte % BASE62.length]).join("");
 }
 
 export function fakeClerkUserId(): string {

@@ -13,17 +13,13 @@ test("a signed-out request gets 401 and provisions nothing", async () => {
   expect(await adminDb().$count(users)).toBe(0);
 });
 
-test("the first signed-in request provisions exactly one user row", async () => {
+test("the first signed-in request provisions one row and returns only its id and createdAt", async () => {
   const clerkUserId = fakeClerkUserId();
   const response = await withAuth(clerkUserId, () => GET());
   expect(response.status).toBe(200);
 
-  const rows = await adminDb()
-    .select()
-    .from(users)
-    .where(eq(users.clerkUserId, clerkUserId));
+  const rows = await adminDb().select().from(users).where(eq(users.clerkUserId, clerkUserId));
   expect(rows).toHaveLength(1);
-  // Exact body: id and createdAt, nothing else — the Clerk id never leaves the server.
   expect(await response.json()).toEqual({
     id: rows[0].id,
     createdAt: rows[0].createdAt.toISOString(),
