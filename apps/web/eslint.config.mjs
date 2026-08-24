@@ -8,8 +8,13 @@ const cryptoFence = {
 };
 
 const plaidFence = {
-  group: ["plaid", "@/lib/plaid/*", "**/lib/plaid/*"],
+  group: ["@/lib/plaid/*", "**/lib/plaid/*"],
   message: "Plaid access is confined to the DAL (lib/data).",
+};
+
+const plaidPackage = {
+  name: "plaid",
+  message: "The Plaid SDK is confined to lib/plaid (secret-bearing errors).",
 };
 
 export default defineConfig([
@@ -23,6 +28,7 @@ export default defineConfig([
         {
           paths: [
             { name: "pg", message: "Database access lives in lib/data (the DAL)." },
+            plaidPackage,
           ],
           patterns: [
             {
@@ -39,7 +45,10 @@ export default defineConfig([
   {
     files: ["lib/db/**", "db/seed/**", "e2e/**", "scripts/**"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [cryptoFence, plaidFence] }],
+      "no-restricted-imports": [
+        "error",
+        { paths: [plaidPackage], patterns: [cryptoFence, plaidFence] },
+      ],
     },
   },
   {

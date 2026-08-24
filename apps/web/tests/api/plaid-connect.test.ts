@@ -30,7 +30,6 @@ const post = (path: string, body?: unknown, headers: Record<string, string> = {}
 const postExchange = (publicToken: unknown) => exchange(post("exchange", { publicToken }));
 
 const CONNECTION_KEYS = ["createdAt", "id", "institutionId", "institutionName", "provider", "status"];
-const ACCOUNT_KEYS = ["currency", "id", "mask", "name", "subtype", "type"];
 
 test("signed-out requests are rejected before any Plaid call", async () => {
   const { publicToken } = mintSandboxItem();
@@ -91,17 +90,11 @@ test("exchange vaults the access token and registers the item's accounts and bal
     institutionId: SANDBOX_INSTITUTION.institution_id,
     institutionName: SANDBOX_INSTITUTION.institution_name,
   });
-  expect(body.accounts.map((account: Record<string, unknown>) => Object.keys(account).sort())).toEqual([
-    ACCOUNT_KEYS,
-    ACCOUNT_KEYS,
-    ACCOUNT_KEYS,
-  ]);
-  expect(
-    body.accounts.map(({ id: _id, ...account }: { id: string }) => account),
-  ).toEqual([
-    { name: "Plaid Checking", type: "depository", subtype: "checking", mask: "0000", currency: "USD" },
-    { name: "Plaid Saving", type: "depository", subtype: "savings", mask: "1111", currency: "USD" },
-    { name: "Plaid Credit Card", type: "credit", subtype: "credit card", mask: "3333", currency: "USD" },
+  const registered = (rest: Record<string, string | null>) => ({ id: expect.any(String), ...rest });
+  expect(body.accounts).toEqual([
+    registered({ name: "Plaid Checking", type: "depository", subtype: "checking", mask: "0000", currency: "USD" }),
+    registered({ name: "Plaid Saving", type: "depository", subtype: "savings", mask: "1111", currency: "USD" }),
+    registered({ name: "Plaid Credit Card", type: "credit", subtype: "credit card", mask: "3333", currency: "USD" }),
   ]);
 
   const serialized = JSON.stringify(body);

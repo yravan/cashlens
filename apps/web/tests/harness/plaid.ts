@@ -155,7 +155,7 @@ export const Products = { Transactions: "transactions" } as const;
 export const CountryCode = { Us: "US" } as const;
 
 export class PlaidApi {
-  constructor(_configuration: Configuration) {
+  constructor(readonly configuration: Configuration) {
     return new Proxy(this, {
       get(target, property, receiver) {
         if (typeof property === "symbol" || Reflect.has(target, property)) {
