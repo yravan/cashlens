@@ -51,7 +51,26 @@ leaf 10.6.
 | `DATABASE_URL_OWNER` | `postgresql://cashlens_owner:<pw2>@<endpoint>.<region>.aws.neon.tech/neondb?sslmode=verify-full` | yes |
 | `APP_ORIGIN` | `https://<app-domain>` — scheme + host, no trailing slash (Clerk compares it to the token origin verbatim) | no |
 | `ENABLE_EXPERIMENTAL_COREPACK` | `1` (all environments — honors the repo's pinned pnpm) | no |
-| `CREDENTIAL_ENCRYPTION_KEYS` | `prod1:<openssl rand -hex 32>` — connection-credential keyring (leaf 2.1.2); first entry encrypts, later entries still decrypt; rotate by prepending. MUST be set before the Plaid connect flow (2.1.1) ships; generate on a trusted machine and paste once — it is read lazily, so existing deploys stay green without it | yes |
+| `CREDENTIAL_ENCRYPTION_KEYS` | `prod1:<openssl rand -hex 32>` — connection-credential keyring (leaf 2.1.2); first entry encrypts, later entries still decrypt; rotate by prepending. MUST be set before the Plaid connect flow (2.1.1) is used; generate on a trusted machine and paste once — it is read lazily, so existing deploys stay green without it | yes |
+| `PLAID_CLIENT_ID` | from Plaid Dashboard → Developers → Keys | no |
+| `PLAID_SECRET` | the **production** secret (per-environment; the sandbox secret only works against sandbox) | yes |
+| `PLAID_ENV` | `production` | no |
+
+### Plaid production (leaf 2.1.1 — before real banks connect)
+
+1. Plaid Dashboard → request **Production** access (approval is per-institution; most grant in
+   hours-to-days, Charles Schwab up to six weeks). Until then production stays sandbox-less:
+   leave the `PLAID_*` vars unset and the Connect button will fail with `provider_error` —
+   harmless but pointless, so gate any announcement on this step.
+2. Set the three `PLAID_*` vars above (Production scope).
+3. OAuth redirect URI: **not required for the web MVP** — Plaid opens bank OAuth in a
+   popup/new tab without one; only mobile-webview users (links opened inside Gmail/Facebook
+   in-app browsers) are excluded. When that matters, allowlist
+   `https://cashlens.org/accounts` under Dashboard → Team Settings → API → Allowed redirect
+   URIs, pass it as `redirect_uri` in the link-token call, and add the `receivedRedirectUri`
+   re-init handling in the connect button (its own follow-up leaf).
+4. CI already runs the real-sandbox e2e spec with repo secrets `PLAID_CLIENT_ID` /
+   `PLAID_SECRET` (sandbox values — never put production keys in GitHub).
 
 `DATABASE_URL_SUPERUSER` is never set on Vercel: the `neondb_owner` credential exists only on the
 founder's machine, for bootstrap.

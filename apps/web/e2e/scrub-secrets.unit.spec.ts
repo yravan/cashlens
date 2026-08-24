@@ -11,6 +11,8 @@ const ROTATED_JWT =
   "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyb3RhdGVkIn0.c2lnbmF0dXJlLXJvdGF0ZWQ";
 const DEV_BROWSER_TOKEN = "dvb_2xJq8vLpR3sT5uW7yZ9aBcDeF";
 const TESTING_TOKEN = "1713877200-c_2J2MvPu9PnXcuhbPZNao0LOXqK9A7YrnBn0HmIWxy";
+const PLAID_ACCESS_TOKEN = "access-sandbox-11111111-2222-3333-4444-555555555555";
+const PLAID_PUBLIC_TOKEN = "public-sandbox-66666666-7777-8888-9999-000000000000";
 
 function tmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "scrub-test-"));
@@ -66,6 +68,7 @@ test("token-shaped values missing from the value list are still scrubbed", () =>
       `set-cookie: __session=${ROTATED_JWT}; Path=/`,
       `url: https://x.clerk.accounts.dev/v1/client?__clerk_db_jwt=${DEV_BROWSER_TOKEN}`,
       `url: https://x.clerk.accounts.dev/v1/sign_ups?__clerk_testing_token=${TESTING_TOKEN}`,
+      `body: {"access_token":"${PLAID_ACCESS_TOKEN}","publicToken":"${PLAID_PUBLIC_TOKEN}"}`,
       "status: 200 OK",
     ].join("\n"),
   );
@@ -76,6 +79,8 @@ test("token-shaped values missing from the value list are still scrubbed", () =>
   expect(scrubbed).not.toContain(ROTATED_JWT);
   expect(scrubbed).not.toContain(DEV_BROWSER_TOKEN);
   expect(scrubbed).not.toContain(TESTING_TOKEN);
+  expect(scrubbed).not.toContain(PLAID_ACCESS_TOKEN);
+  expect(scrubbed).not.toContain(PLAID_PUBLIC_TOKEN);
   expect(scrubbed).toContain("status: 200 OK");
   expect(scrubbed).toContain("__clerk_db_jwt=[redacted-e2e-secret]");
 });
