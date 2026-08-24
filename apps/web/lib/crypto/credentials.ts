@@ -1,0 +1,110 @@
+import "server-only";
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
+import { inspect } from "node:util";
+
+const VERSION = "v1";
+const NONCE_BYTES = 12;
+const TAG_BYTES = 16;
+const MAX_PLAINTEXT_BYTES = 8192;
+const KEY_ENTRY_PATTERN = /^([A-Za-z0-9_-]{1,16}):([0-9a-f]{64})$/;
+export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ENV_VAR = "CREDENTIAL_ENCRYPTION_KEYS";
+const KEYRING_FORMAT = `${ENV_VAR} must be "id:64-hex-chars" entries separated by commas, first entry encrypts — generate a key with: openssl rand -hex 32`;
+
+export class CredentialCryptoError extends Error {}
+
+export type CredentialContext = {
+  userId: string;
+  connectionId: string;
+};
+
+type Keyring = {
+  primary: { id: string; key: Buffer };
+  byId: Map<string, Buffer>;
+};
+
+function keyring(): Keyring {
+  const raw = process.env[ENV_VAR];
+  if (!raw) throw new CredentialCryptoError(`${ENV_VAR} is not set — ${KEYRING_FORMAT}`);
+  const byId = new Map<string, Buffer>();
+  let primary: Keyring["primary"] | undefined;
+  for (const entry of raw.split(",")) {
+    const [, id, hex] = KEY_ENTRY_PATTERN.exec(entry) ?? [];
+    if (!id || !hex || byId.has(id)) throw new CredentialCryptoError(KEYRING_FORMAT);
+    const key = Buffer.from(
+      hkdfSync("sha256", Buffer.from(hex, "hex"), "cashlens.credentials.v1", "connection-credential", 32),
+    );
+    byId.set(id, key);
+    primary ??= { id, key };
+  }
+  if (!primary) throw new CredentialCryptoError(KEYRING_FORMAT);
+  return { primary, byId };
+}
+
+function aad(keyId: string, context: CredentialContext): Buffer {
+  if (!UUID_PATTERN.test(context.userId) || !UUID_PATTERN.test(context.connectionId)) {
+    throw new CredentialCryptoError("credential context requires uuid ids");
+  }
+  return Buffer.from(
+    `cashlens:connection-credential:${VERSION}.${keyId}:${context.userId.toLowerCase()}:${context.connectionId.toLowerCase()}`,
+  );
+}
+
+export function encryptCredential(plaintext: string, context: CredentialContext): string {
+  const bytes = Buffer.from(plaintext, "utf8");
+  if (bytes.length === 0 || bytes.length > MAX_PLAINTEXT_BYTES) {
+    throw new CredentialCryptoError(`credential plaintext must be 1 to ${MAX_PLAINTEXT_BYTES} bytes`);
+  }
+  const { primary } = keyring();
+  const nonce = randomBytes(NONCE_BYTES);
+  const cipher = createCipheriv("aes-256-gcm", primary.key, nonce, { authTagLength: TAG_BYTES });
+  cipher.setAAD(aad(primary.id, context));
+  const sealed = Buffer.concat([cipher.update(bytes), cipher.final(), cipher.getAuthTag()]);
+  return `${VERSION}.${primary.id}.${nonce.toString("base64url")}.${sealed.toString("base64url")}`;
+}
+
+export function decryptCredential(envelope: string, context: CredentialContext): string {
+  const ring = keyring();
+  try {
+    const [version, keyId, nonceText, sealedText, ...rest] = envelope.split(".");
+    if (version !== VERSION || rest.length > 0) throw new Error("bad envelope");
+    const key = ring.byId.get(keyId);
+    if (!key) throw new Error("unknown key id");
+    const nonce = Buffer.from(nonceText, "base64url");
+    const sealed = Buffer.from(sealedText, "base64url");
+    if (nonce.length !== NONCE_BYTES || sealed.length <= TAG_BYTES) throw new Error("bad envelope");
+    const decipher = createDecipheriv("aes-256-gcm", key, nonce, { authTagLength: TAG_BYTES });
+    decipher.setAAD(aad(keyId, context));
+    decipher.setAuthTag(sealed.subarray(sealed.length - TAG_BYTES));
+    return Buffer.concat([
+      decipher.update(sealed.subarray(0, sealed.length - TAG_BYTES)),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch {
+    throw new CredentialCryptoError("credential decryption failed");
+  }
+}
+
+export class SecretString {
+  readonly #value: string;
+
+  constructor(value: string) {
+    this.#value = value;
+  }
+
+  expose(): string {
+    return this.#value;
+  }
+
+  toString(): string {
+    return "[redacted]";
+  }
+
+  toJSON(): never {
+    throw new CredentialCryptoError("SecretString must never be serialized — call expose() where the value is spent");
+  }
+
+  [inspect.custom](): string {
+    return "SecretString [redacted]";
+  }
+}

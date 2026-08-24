@@ -51,6 +51,7 @@ leaf 10.6.
 | `DATABASE_URL_OWNER` | `postgresql://cashlens_owner:<pw2>@<endpoint>.<region>.aws.neon.tech/neondb?sslmode=verify-full` | yes |
 | `APP_ORIGIN` | `https://<app-domain>` — scheme + host, no trailing slash (Clerk compares it to the token origin verbatim) | no |
 | `ENABLE_EXPERIMENTAL_COREPACK` | `1` (all environments — honors the repo's pinned pnpm) | no |
+| `CREDENTIAL_ENCRYPTION_KEYS` | `prod1:<openssl rand -hex 32>` — connection-credential keyring (leaf 2.1.2); first entry encrypts, later entries still decrypt; rotate by prepending. MUST be set before the Plaid connect flow (2.1.1) ships; generate on a trusted machine and paste once — it is read lazily, so existing deploys stay green without it | yes |
 
 `DATABASE_URL_SUPERUSER` is never set on Vercel: the `neondb_owner` credential exists only on the
 founder's machine, for bootstrap.

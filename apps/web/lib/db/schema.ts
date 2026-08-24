@@ -139,6 +139,67 @@ export const transactions = pgTable(
   ],
 );
 
+export const connectionProvider = pgEnum("connection_provider", ["plaid"]);
+
+export const connectionStatus = pgEnum("connection_status", [
+  "active",
+  "disconnected",
+]);
+
+export const connections = pgTable(
+  "connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: connectionProvider("provider").notNull(),
+    providerItemId: text("provider_item_id"),
+    institutionId: text("institution_id"),
+    institutionName: text("institution_name"),
+    status: connectionStatus("status").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    unique("connections_id_user_id_unique").on(t.id, t.userId),
+    uniqueIndex("connections_user_provider_item_key")
+      .on(t.userId, t.provider, t.providerItemId)
+      .where(sql`provider_item_id is not null`),
+    index("connections_user_id_idx").on(t.userId),
+    ...ownRowPolicies("connections"),
+    pgPolicy("connections_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
+  ],
+);
+
+export const connectionCredentials = pgTable(
+  "connection_credentials",
+  {
+    connectionId: uuid("connection_id").primaryKey(),
+    userId: uuid("user_id").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    foreignKey({
+      name: "connection_credentials_connection_user_fk",
+      columns: [t.connectionId, t.userId],
+      foreignColumns: [connections.id, connections.userId],
+    }).onDelete("cascade"),
+    index("connection_credentials_user_id_idx").on(t.userId),
+    ...ownRowPolicies("connection_credentials"),
+    pgPolicy("connection_credentials_delete_own", {
+      for: "delete",
+      to: appRole,
+      using: ownRow,
+    }),
+  ],
+);
+
 export const accountBalances = pgTable(
   "account_balances",
   {

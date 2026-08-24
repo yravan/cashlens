@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { afterAll, beforeEach } from "vitest";
 
 import { TEMPLATE_DB, closeAdmin, loadDbEnv, requireEnv, truncateAll, urlForDb, withClient, workerDb } from "./db";
@@ -12,6 +13,7 @@ await withClient(requireEnv("DATABASE_URL_SUPERUSER"), async (client) => {
 });
 
 process.env.DATABASE_URL = urlForDb("DATABASE_URL", db);
+process.env.CREDENTIAL_ENCRYPTION_KEYS ??= `test:${randomBytes(32).toString("hex")}`;
 
 beforeEach(truncateAll);
 afterAll(closeAdmin);
