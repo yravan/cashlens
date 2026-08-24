@@ -1,9 +1,11 @@
+import { inspect } from "node:util";
 import { eq } from "drizzle-orm";
 import { beforeEach, expect, test } from "vitest";
 
 import { POST as linkToken } from "@/app/api/plaid/link-token/route";
 import { POST as exchange } from "@/app/api/plaid/exchange/route";
 import { listConnections, readConnectionCredential } from "@/lib/data/connections";
+import { connectPlaidItem, ProviderError } from "@/lib/data/plaid";
 import { withRequestScope } from "@/lib/db/client";
 import { accountBalances, accounts, connectionCredentials, connections, users } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
@@ -16,6 +18,7 @@ import {
   resetPlaidSubstitute,
   revokeAccessToken,
   SANDBOX_INSTITUTION,
+  SUBSTITUTE_SECRET,
 } from "../harness/plaid";
 
 beforeEach(resetPlaidSubstitute);
@@ -24,7 +27,7 @@ const post = (path: string, body?: unknown, headers: Record<string, string> = {}
   new Request(`http://localhost/api/plaid/${path}`, {
     method: "POST",
     headers: { "content-type": "application/json", host: "localhost", ...headers },
-    body: body === undefined ? null : JSON.stringify(body),
+    body: body === undefined ? null : typeof body === "string" ? body : JSON.stringify(body),
   });
 
 const postExchange = (publicToken: unknown) => exchange(post("exchange", { publicToken }));
@@ -167,7 +170,7 @@ test("an already-connected item is refused and the fresh token is revoked at Pla
   expect(secret?.expose()).toBe(first.accessToken);
 });
 
-test("a provider failure after exchange leaves no partial state", async () => {
+test("a provider failure after exchange leaves no partial state and never carries the API secret", async () => {
   const clerkUserId = fakeClerkUserId();
   const { publicToken, accessToken } = mintSandboxItem();
   revokeAccessToken(accessToken);
@@ -178,13 +181,21 @@ test("a provider failure after exchange leaves no partial state", async () => {
   expect(await adminDb().$count(connections)).toBe(0);
   expect(await adminDb().$count(connectionCredentials)).toBe(0);
   expect(await adminDb().$count(accounts)).toBe(0);
+
+  const doomed = mintSandboxItem();
+  revokeAccessToken(doomed.accessToken);
+  const thrown = await withAuth(clerkUserId, () =>
+    connectPlaidItem(doomed.publicToken).catch((error: unknown) => error),
+  );
+  expect(thrown).toBeInstanceOf(ProviderError);
+  expect(inspect(thrown, { depth: null })).not.toContain(SUBSTITUTE_SECRET);
 });
 
 test("malformed bodies are rejected at the boundary without touching Plaid", async () => {
   const clerkUserId = fakeClerkUserId();
   const bodies = [
     undefined,
-    "not json",
+    "{nope",
     {},
     { publicToken: 123 },
     { publicToken: "not-a-plaid-token" },
@@ -192,15 +203,7 @@ test("malformed bodies are rejected at the boundary without touching Plaid", asy
     { publicToken: "public-sandbox-();drop table users" },
   ];
   for (const body of bodies) {
-    const request =
-      body === "not json"
-        ? new Request("http://localhost/api/plaid/exchange", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: "{nope",
-          })
-        : post("exchange", body);
-    const response = await withAuth(clerkUserId, () => exchange(request));
+    const response = await withAuth(clerkUserId, () => exchange(post("exchange", body)));
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "invalid_request" });
   }

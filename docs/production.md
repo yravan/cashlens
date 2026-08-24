@@ -59,16 +59,14 @@ leaf 10.6.
 ### Plaid production (leaf 2.1.1 — before real banks connect)
 
 1. Plaid Dashboard → request **Production** access (approval is per-institution; most grant in
-   hours-to-days, Charles Schwab up to six weeks). Until then production stays sandbox-less:
-   leave the `PLAID_*` vars unset and the Connect button will fail with `provider_error` —
-   harmless but pointless, so gate any announcement on this step.
+   hours-to-days, Charles Schwab up to six weeks). Until it lands, leave the `PLAID_*` vars
+   unset — Connect just fails with `provider_error`, so gate any announcement on this step.
 2. Set the three `PLAID_*` vars above (Production scope).
-3. OAuth redirect URI: **not required for the web MVP** — Plaid opens bank OAuth in a
-   popup/new tab without one; only mobile-webview users (links opened inside Gmail/Facebook
-   in-app browsers) are excluded. When that matters, allowlist
-   `https://cashlens.org/accounts` under Dashboard → Team Settings → API → Allowed redirect
-   URIs, pass it as `redirect_uri` in the link-token call, and add the `receivedRedirectUri`
-   re-init handling in the connect button (its own follow-up leaf).
+3. No OAuth redirect URI is needed for the web MVP — Plaid opens bank OAuth in a popup, which
+   excludes only in-app mobile webviews (links opened inside Gmail/Facebook). Supporting those
+   means allowlisting `https://cashlens.org/accounts` under Dashboard → Team Settings → API,
+   passing it as `redirect_uri`, and handling `receivedRedirectUri` re-init in the connect
+   button — its own follow-up leaf.
 4. CI already runs the real-sandbox e2e spec with repo secrets `PLAID_CLIENT_ID` /
    `PLAID_SECRET` (sandbox values — never put production keys in GitHub).
 

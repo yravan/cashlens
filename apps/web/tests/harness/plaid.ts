@@ -91,20 +91,18 @@ export function sandboxAccounts(): SandboxAccount[] {
   ];
 }
 
-type MintOptions = Partial<Omit<SandboxItem, "accounts">> & { accounts?: SandboxAccount[] };
-
-export function mintSandboxItem(options: MintOptions = {}) {
+export function mintSandboxItem(options: Partial<SandboxItem> = {}) {
   const item: SandboxItem = {
-    access_token: options.access_token ?? `access-sandbox-${randomUUID()}`,
-    item_id: options.item_id ?? `item-sandbox-${randomUUID()}`,
-    institution_id: options.institution_id ?? SANDBOX_INSTITUTION.institution_id,
-    institution_name: options.institution_name ?? SANDBOX_INSTITUTION.institution_name,
-    accounts: options.accounts ?? sandboxAccounts(),
+    access_token: `access-sandbox-${randomUUID()}`,
+    item_id: `item-sandbox-${randomUUID()}`,
+    ...SANDBOX_INSTITUTION,
+    accounts: sandboxAccounts(),
+    ...options,
   };
   const publicToken = `public-sandbox-${randomUUID()}`;
   byPublicToken.set(publicToken, item);
   byAccessToken.set(item.access_token, item);
-  return { publicToken, accessToken: item.access_token, itemId: item.item_id, item };
+  return { publicToken, accessToken: item.access_token, itemId: item.item_id };
 }
 
 export function revokeAccessToken(accessToken: string): void {
@@ -120,10 +118,12 @@ function refuse(surface: string): never {
 // The real client rejects with axios errors whose config.headers carry the API
 // secret (called out in plaid-node's README); reproducing that makes leak
 // assertions meaningful.
+export const SUBSTITUTE_SECRET = "leaked-substitute-secret-never-print";
+
 function plaidReject(status: number, errorType: string, errorCode: string, message: string) {
   const error = Object.assign(new Error(`Request failed with status code ${status}`), {
     isAxiosError: true,
-    config: { headers: { "PLAID-SECRET": "leaked-substitute-secret-never-print" } },
+    config: { headers: { "PLAID-SECRET": SUBSTITUTE_SECRET } },
     response: {
       status,
       data: {

@@ -4,14 +4,15 @@ import { expect, test } from "@playwright/test";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery } from "./db";
 
-// Real Plaid sandbox coverage; skipped when the sandbox keys are absent
-// (e.g. fork PRs). The Link UI itself is never driven — Plaid's own docs say
-// to bypass it in automated suites — the API suite covers the flow logic.
-const KEYS_PRESENT = !!process.env.PLAID_CLIENT_ID && !!process.env.PLAID_SECRET;
-const SANDBOX = process.env.PLAID_ENV === "sandbox";
+// The Link UI itself is never driven — Plaid's own docs say to bypass it in
+// automated suites — so the API suite covers the flow logic and this covers the wire.
+const CONFIGURED =
+  !!process.env.PLAID_CLIENT_ID &&
+  !!process.env.PLAID_SECRET &&
+  process.env.PLAID_ENV === "sandbox";
 
 test.describe("plaid connect flow (real sandbox)", () => {
-  test.skip(!KEYS_PRESENT || !SANDBOX, "PLAID_* sandbox keys not configured");
+  test.skip(!CONFIGURED, "PLAID_* sandbox keys not configured");
 
   function clerkIdA(): string {
     return JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8")).a.clerkUserId;
@@ -24,11 +25,9 @@ test.describe("plaid connect flow (real sandbox)", () => {
 
   async function cleanup() {
     await adminQuery(
-      "delete from accounts where user_id = (select id from users where clerk_user_id = $1)",
-      [clerkIdA()],
-    );
-    await adminQuery(
-      "delete from connections where user_id = (select id from users where clerk_user_id = $1)",
+      `with mine as (select id from users where clerk_user_id = $1),
+            cleared as (delete from accounts where user_id in (select id from mine))
+       delete from connections where user_id in (select id from mine)`,
       [clerkIdA()],
     );
   }
