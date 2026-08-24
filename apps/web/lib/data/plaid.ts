@@ -3,7 +3,7 @@ import "server-only";
 import { createConnection } from "@/lib/data/connections";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
-import { accountBalances, accounts } from "@/lib/db/schema";
+import { accountBalances, accounts, accountType } from "@/lib/db/schema";
 import { toMinorUnits } from "@/lib/ledger/minor-units";
 import {
   createLinkToken,
@@ -11,8 +11,7 @@ import {
   getItemAccounts,
   PlaidRequestError,
   removeItem,
-  type PlaidAccount,
-  type PlaidBalances,
+  type AccountBase,
 } from "@/lib/plaid/client";
 
 export class InvalidPublicTokenError extends Error {}
@@ -36,19 +35,16 @@ export async function createLinkTokenForUser(): Promise<string> {
   return createLinkToken(user.id).catch(translated);
 }
 
-const ACCOUNT_TYPES = new Set(["depository", "credit", "loan", "investment", "other"] as const);
-type AccountType = typeof ACCOUNT_TYPES extends Set<infer T> ? T : never;
+type AccountType = (typeof accountType.enumValues)[number];
 
 function normalizeType(type: string): AccountType {
-  return ACCOUNT_TYPES.has(type as AccountType) ? (type as AccountType) : "other";
+  const known: readonly string[] = accountType.enumValues;
+  return known.includes(type) ? (type as AccountType) : "other";
 }
 
-function currencyOf(balances: PlaidBalances): string {
-  const unofficial = balances.unofficialCurrencyCode;
-  if (balances.isoCurrencyCode) return balances.isoCurrencyCode;
-  if (unofficial && /^[A-Z]{3}$/.test(unofficial)) return unofficial;
-  return "USD";
-}
+const currencyOf = ({ iso_currency_code, unofficial_currency_code }: AccountBase["balances"]) =>
+  [iso_currency_code, unofficial_currency_code].find((code) => code && /^[A-Z]{3}$/.test(code)) ??
+  "USD";
 
 const minorOrNull = (value: number | null, currency: string) =>
   value === null ? null : toMinorUnits(value, currency);
@@ -69,8 +65,8 @@ export async function connectPlaidItem(publicToken: string) {
       provider: "plaid",
       credential: accessToken,
       providerItemId: itemId,
-      institutionId: item.institutionId ?? undefined,
-      institutionName: item.institutionName ?? undefined,
+      institutionId: item.institutionId,
+      institutionName: item.institutionName,
     });
   } catch (error) {
     if (!isDuplicateItem(error)) throw error;
@@ -92,7 +88,7 @@ export async function connectPlaidItem(publicToken: string) {
           mask: account.mask,
           currency: currencyOf(account.balances),
           source: "plaid" as const,
-          sourceId: account.accountId,
+          sourceId: account.account_id,
         })),
       )
       .returning({
@@ -105,20 +101,18 @@ export async function connectPlaidItem(publicToken: string) {
       });
 
     const asOf = new Date();
-    const balanceRows = item.accounts.flatMap((account: PlaidAccount, index: number) => {
+    const balanceRows = item.accounts.flatMap((account, index) => {
       const { available, current, limit } = account.balances;
       if (available === null && current === null) return [];
       const currency = currencyOf(account.balances);
-      return [
-        {
-          accountId: inserted[index].id,
-          userId: user.id,
-          availableMinor: minorOrNull(available, currency),
-          currentMinor: minorOrNull(current, currency),
-          limitMinor: minorOrNull(limit, currency),
-          asOf,
-        },
-      ];
+      return {
+        accountId: inserted[index].id,
+        userId: user.id,
+        availableMinor: minorOrNull(available, currency),
+        currentMinor: minorOrNull(current, currency),
+        limitMinor: minorOrNull(limit, currency),
+        asOf,
+      };
     });
     if (balanceRows.length > 0) await tx.insert(accountBalances).values(balanceRows);
     return inserted;

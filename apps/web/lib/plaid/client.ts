@@ -1,12 +1,20 @@
 import "server-only";
-import { Configuration, CountryCode, PlaidApi, PlaidEnvironments, Products } from "plaid";
+import {
+  Configuration,
+  CountryCode,
+  PlaidApi,
+  PlaidEnvironments,
+  Products,
+  type AccountBase,
+} from "plaid";
+
+export type { AccountBase };
 
 export class PlaidRequestError extends Error {
   constructor(
-    readonly errorType: string,
+    errorType: string,
     readonly errorCode: string,
     readonly displayMessage: string | null,
-    readonly requestId?: string,
   ) {
     super(`plaid request failed: ${errorType}/${errorCode}`);
   }
@@ -51,37 +59,12 @@ function domainError(error: unknown): never {
     const value = data?.[field];
     return typeof value === "string" ? value : null;
   };
-  const errorType = text("error_type");
-  const errorCode = text("error_code");
-  if (errorType && errorCode) {
-    throw new PlaidRequestError(errorType, errorCode, text("display_message"), text("request_id") ?? undefined);
-  }
-  throw new PlaidRequestError("API_ERROR", "UNREACHABLE", null);
+  throw new PlaidRequestError(
+    text("error_type") ?? "API_ERROR",
+    text("error_code") ?? "UNREACHABLE",
+    text("display_message"),
+  );
 }
-
-export type PlaidBalances = {
-  available: number | null;
-  current: number | null;
-  limit: number | null;
-  isoCurrencyCode: string | null;
-  unofficialCurrencyCode: string | null;
-};
-
-export type PlaidAccount = {
-  accountId: string;
-  name: string;
-  mask: string | null;
-  type: string;
-  subtype: string | null;
-  balances: PlaidBalances;
-};
-
-export type PlaidItemAccounts = {
-  itemId: string;
-  institutionId: string | null;
-  institutionName: string | null;
-  accounts: PlaidAccount[];
-};
 
 export async function createLinkToken(clientUserId: string): Promise<string> {
   try {
@@ -110,27 +93,13 @@ export async function exchangePublicToken(
   }
 }
 
-export async function getItemAccounts(accessToken: string): Promise<PlaidItemAccounts> {
+export async function getItemAccounts(accessToken: string) {
   try {
     const { data } = await client().accountsGet({ access_token: accessToken });
     return {
-      itemId: data.item.item_id,
-      institutionId: data.item.institution_id ?? null,
-      institutionName: data.item.institution_name ?? null,
-      accounts: data.accounts.map((account) => ({
-        accountId: account.account_id,
-        name: account.name,
-        mask: account.mask,
-        type: account.type,
-        subtype: account.subtype,
-        balances: {
-          available: account.balances.available,
-          current: account.balances.current,
-          limit: account.balances.limit,
-          isoCurrencyCode: account.balances.iso_currency_code,
-          unofficialCurrencyCode: account.balances.unofficial_currency_code,
-        },
-      })),
+      institutionId: data.item.institution_id ?? undefined,
+      institutionName: data.item.institution_name ?? undefined,
+      accounts: data.accounts,
     };
   } catch (error) {
     domainError(error);

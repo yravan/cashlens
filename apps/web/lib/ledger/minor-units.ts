@@ -4,14 +4,10 @@ const EXPONENT_0 = new Set([
 ]);
 const EXPONENT_3 = new Set(["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"]);
 
-function exponent(currency: string): number {
-  if (EXPONENT_0.has(currency)) return 0;
-  if (EXPONENT_3.has(currency)) return 3;
-  return 2;
-}
+const exponent = (currency: string) =>
+  EXPONENT_0.has(currency) ? 0 : EXPONENT_3.has(currency) ? 3 : 2;
 
-// Provider amounts are decimals serialized as floats (110.94, 210.33). The
-// epsilon absorbs float noise below the half boundary (0.615 * 100 ===
+// The epsilon absorbs float noise below the half boundary (0.615 * 100 ===
 // 61.49999999999999); rounding is half away from zero.
 export function toMinorUnits(amount: number, currency: string): number {
   if (!Number.isFinite(amount)) {

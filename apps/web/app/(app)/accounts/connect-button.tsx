@@ -8,9 +8,7 @@ import {
   type PlaidLinkOnSuccess,
 } from "react-plaid-link";
 
-type Status =
-  | { kind: "idle" | "busy"; text?: string }
-  | { kind: "done" | "error"; text: string };
+type Status = { kind: "idle" | "busy" | "done" | "error"; text?: string };
 
 function exchangeFailureText(body: { error?: string; message?: string | null } | null): string {
   if (body?.error === "already_connected") return "That institution is already connected.";
@@ -37,10 +35,6 @@ export function ConnectButton() {
   const onSuccess = useCallback<PlaidLinkOnSuccess>(
     async (publicToken) => {
       setLinkToken(null);
-      if (!publicToken) {
-        setStatus({ kind: "error", text: "Plaid returned no token. Try again." });
-        return;
-      }
       setStatus({ kind: "busy", text: "Registering accounts…" });
       try {
         const response = await fetch("/api/plaid/exchange", {
@@ -60,7 +54,7 @@ export function ConnectButton() {
         });
         router.refresh();
       } catch {
-        setStatus({ kind: "error", text: "Connecting failed — nothing was saved. Try again." });
+        setStatus({ kind: "error", text: exchangeFailureText(null) });
       }
     },
     [router],
