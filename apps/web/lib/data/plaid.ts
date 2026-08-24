@@ -1,0 +1,128 @@
+import "server-only";
+
+import { createConnection } from "@/lib/data/connections";
+import { requireUser } from "@/lib/data/users";
+import { withRequestScope } from "@/lib/db/client";
+import { accountBalances, accounts } from "@/lib/db/schema";
+import { toMinorUnits } from "@/lib/ledger/minor-units";
+import {
+  createLinkToken,
+  exchangePublicToken,
+  getItemAccounts,
+  PlaidRequestError,
+  removeItem,
+  type PlaidAccount,
+  type PlaidBalances,
+} from "@/lib/plaid/client";
+
+export class InvalidPublicTokenError extends Error {}
+export class DuplicateConnectionError extends Error {}
+export class ProviderError extends Error {
+  constructor(readonly displayMessage: string | null) {
+    super("provider request failed");
+  }
+}
+
+function translated(error: unknown): never {
+  if (error instanceof PlaidRequestError) {
+    if (error.errorCode === "INVALID_PUBLIC_TOKEN") throw new InvalidPublicTokenError();
+    throw new ProviderError(error.displayMessage);
+  }
+  throw error;
+}
+
+export async function createLinkTokenForUser(): Promise<string> {
+  const user = await requireUser();
+  return createLinkToken(user.id).catch(translated);
+}
+
+const ACCOUNT_TYPES = new Set(["depository", "credit", "loan", "investment", "other"] as const);
+type AccountType = typeof ACCOUNT_TYPES extends Set<infer T> ? T : never;
+
+function normalizeType(type: string): AccountType {
+  return ACCOUNT_TYPES.has(type as AccountType) ? (type as AccountType) : "other";
+}
+
+function currencyOf(balances: PlaidBalances): string {
+  const unofficial = balances.unofficialCurrencyCode;
+  if (balances.isoCurrencyCode) return balances.isoCurrencyCode;
+  if (unofficial && /^[A-Z]{3}$/.test(unofficial)) return unofficial;
+  return "USD";
+}
+
+const minorOrNull = (value: number | null, currency: string) =>
+  value === null ? null : toMinorUnits(value, currency);
+
+function isDuplicateItem(error: unknown): boolean {
+  const cause = (error as { cause?: { code?: string; constraint?: string } }).cause;
+  return cause?.code === "23505" && cause?.constraint === "connections_user_provider_item_key";
+}
+
+export async function connectPlaidItem(publicToken: string) {
+  const user = await requireUser();
+  const { accessToken, itemId } = await exchangePublicToken(publicToken).catch(translated);
+  const item = await getItemAccounts(accessToken).catch(translated);
+
+  let connection;
+  try {
+    connection = await createConnection({
+      provider: "plaid",
+      credential: accessToken,
+      providerItemId: itemId,
+      institutionId: item.institutionId ?? undefined,
+      institutionName: item.institutionName ?? undefined,
+    });
+  } catch (error) {
+    if (!isDuplicateItem(error)) throw error;
+    await removeItem(accessToken).catch(() => {});
+    throw new DuplicateConnectionError();
+  }
+
+  const registered = await withRequestScope(user.clerkUserId, async (tx) => {
+    if (item.accounts.length === 0) return [];
+    const inserted = await tx
+      .insert(accounts)
+      .values(
+        item.accounts.map((account) => ({
+          userId: user.id,
+          connectionId: connection.id,
+          name: account.name,
+          type: normalizeType(account.type),
+          subtype: account.subtype,
+          mask: account.mask,
+          currency: currencyOf(account.balances),
+          source: "plaid" as const,
+          sourceId: account.accountId,
+        })),
+      )
+      .returning({
+        id: accounts.id,
+        name: accounts.name,
+        type: accounts.type,
+        subtype: accounts.subtype,
+        mask: accounts.mask,
+        currency: accounts.currency,
+      });
+
+    const asOf = new Date();
+    const balanceRows = item.accounts.flatMap((account: PlaidAccount, index: number) => {
+      const { available, current, limit } = account.balances;
+      if (available === null && current === null) return [];
+      const currency = currencyOf(account.balances);
+      return [
+        {
+          accountId: inserted[index].id,
+          userId: user.id,
+          availableMinor: minorOrNull(available, currency),
+          currentMinor: minorOrNull(current, currency),
+          limitMinor: minorOrNull(limit, currency),
+          asOf,
+        },
+      ];
+    });
+    if (balanceRows.length > 0) await tx.insert(accountBalances).values(balanceRows);
+    return inserted;
+  });
+
+  return { connection, accounts: registered };
+}

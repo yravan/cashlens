@@ -7,11 +7,16 @@ const cryptoFence = {
   message: "Credential crypto is confined to the DAL (lib/data).",
 };
 
+const plaidFence = {
+  group: ["plaid", "@/lib/plaid/*", "**/lib/plaid/*"],
+  message: "Plaid access is confined to the DAL (lib/data).",
+};
+
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
   {
-    ignores: ["lib/db/**", "lib/data/**", "lib/crypto/**", "db/seed/**", "e2e/**", "scripts/**", "tests/**"],
+    ignores: ["lib/db/**", "lib/data/**", "lib/crypto/**", "lib/plaid/**", "db/seed/**", "e2e/**", "scripts/**", "tests/**"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -25,6 +30,7 @@ export default defineConfig([
               message: "Import DAL functions from lib/data instead of the db client.",
             },
             cryptoFence,
+            plaidFence,
           ],
         },
       ],
@@ -33,7 +39,24 @@ export default defineConfig([
   {
     files: ["lib/db/**", "db/seed/**", "e2e/**", "scripts/**"],
     rules: {
-      "no-restricted-imports": ["error", { patterns: [cryptoFence] }],
+      "no-restricted-imports": ["error", { patterns: [cryptoFence, plaidFence] }],
+    },
+  },
+  {
+    files: ["lib/plaid/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            cryptoFence,
+            {
+              group: ["@/lib/db/*", "**/lib/db/*"],
+              message: "The Plaid client stays stateless; persistence lives in lib/data.",
+            },
+          ],
+        },
+      ],
     },
   },
   {
