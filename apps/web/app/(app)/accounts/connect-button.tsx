@@ -36,26 +36,51 @@ export function ConnectButton() {
     async (publicToken) => {
       setLinkToken(null);
       setStatus({ kind: "busy", text: "Registering accounts…" });
+      let body;
       try {
         const response = await fetch("/api/plaid/exchange", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ publicToken }),
         });
-        const body = await response.json().catch(() => null);
+        body = await response.json().catch(() => null);
         if (!response.ok) {
           setStatus({ kind: "error", text: exchangeFailureText(body) });
           return;
         }
-        const n = body.accounts.length;
-        setStatus({
-          kind: "done",
-          text: `Connected ${body.connection.institutionName ?? "your institution"} — ${n} account${n === 1 ? "" : "s"} registered.`,
-        });
-        router.refresh();
       } catch {
         setStatus({ kind: "error", text: exchangeFailureText(null) });
+        return;
       }
+
+      const institution = body.connection.institutionName ?? "your institution";
+      const n = body.accounts.length;
+      const connected = `Connected ${institution} — ${n} account${n === 1 ? "" : "s"} registered`;
+      router.refresh();
+
+      let imported = 0;
+      try {
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          setStatus({ kind: "busy", text: `${connected}. Importing transaction history… (${imported} so far)` });
+          const response = await fetch(`/api/connections/${body.connection.id}/sync`, { method: "POST" });
+          if (!response.ok) throw new Error();
+          const step = await response.json();
+          imported += step.added;
+          if (step.backfillStatus === "complete") {
+            setStatus({ kind: "done", text: `${connected}, ${imported} transactions imported.` });
+            router.refresh();
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+        setStatus({ kind: "done", text: `${connected}. History is still importing — check back shortly.` });
+      } catch {
+        setStatus({
+          kind: "error",
+          text: `${connected}, but the history import was interrupted. It will resume on the next sync.`,
+        });
+      }
+      router.refresh();
     },
     [router],
   );

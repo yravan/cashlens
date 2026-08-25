@@ -100,6 +100,49 @@ test.describe("plaid connect flow (real sandbox)", () => {
     const checking = registered.rows.find((row) => row.mask === "0000");
     expect(checking).toMatchObject({ available_minor: "10000", current_minor: "11000" });
 
+    expect(body.connection.backfillStatus).toBe("in_progress");
+    let imported = 0;
+    let step;
+    for (let poll = 0; poll < 30; poll += 1) {
+      const advanced = await page.request.post(`/api/connections/${body.connection.id}/sync`);
+      expect(advanced.status()).toBe(200);
+      step = await advanced.json();
+      imported += step.added;
+      if (step.backfillStatus === "complete") break;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    expect(step.backfillStatus).toBe("complete");
+    expect(imported).toBeGreaterThanOrEqual(15);
+
+    const history = await adminQuery(
+      `select t.description, t.amount_minor, t.currency, t.status, t.source, t.source_id
+         from transactions t join accounts a on a.id = t.account_id
+        where a.connection_id = $1 and t.user_id = $2`,
+      [body.connection.id, userId],
+    );
+    expect(history.rowCount).toBe(imported);
+    for (const row of history.rows) {
+      expect(row.source).toBe("plaid");
+      expect(row.currency).toBe("USD");
+      expect(row.source_id).toMatch(/\w{10,}/);
+    }
+    // The sandbox fixture is deterministic in names and amounts (dates roll):
+    // ledger signs must be Plaid's inverted — purchases negative, credits positive.
+    const amounts = (description: string) =>
+      history.rows.filter((row) => row.description === description).map((row) => row.amount_minor);
+    expect(amounts("McDonald's")).toContain("-1200");
+    expect(amounts("INTRST PYMNT")).toContain("422");
+    expect(amounts("AUTOMATIC PAYMENT - THANK")).toContain("-207850");
+    expect(amounts("United Airlines")).toContain("-50000");
+    expect(amounts("United Airlines")).toContain("50000");
+
+    const settled = await adminQuery(
+      "select backfill_status, sync_cursor from connections where id = $1",
+      [body.connection.id],
+    );
+    expect(settled.rows[0].backfill_status).toBe("complete");
+    expect(settled.rows[0].sync_cursor).toMatch(/\w{10,}/);
+
     await page.goto("/accounts");
     await expect(page.getByTestId("accounts-count")).toHaveText(
       `${body.accounts.length} accounts in the ledger`,
