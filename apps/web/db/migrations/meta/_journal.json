@@ -57,6 +57,20 @@
       "when": 1787604379353,
       "tag": "0007_account_connection",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787630467956,
+      "tag": "0008_backfill_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787630478722,
+      "tag": "0009_backfill_grants",
+      "breakpoints": true
     }
   ]
 }

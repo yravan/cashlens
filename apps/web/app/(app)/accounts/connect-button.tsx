@@ -16,6 +16,27 @@ function exchangeFailureText(body: { error?: string; message?: string | null } |
   return "Connecting failed — nothing was saved. Try again.";
 }
 
+async function importHistory(connectionId: string, connected: string, setStatus: (status: Status) => void) {
+  let imported = 0;
+  try {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      setStatus({ kind: "busy", text: `${connected}. Importing transaction history… (${imported} so far)` });
+      const response = await fetch(`/api/connections/${connectionId}/sync`, { method: "POST" });
+      if (!response.ok) throw new Error();
+      const step = await response.json();
+      imported += step.added;
+      if (step.backfillStatus === "complete") {
+        setStatus({ kind: "done", text: `${connected}, ${imported} transactions imported.` });
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    setStatus({ kind: "done", text: `${connected}. History is still importing — check back shortly.` });
+  } catch {
+    setStatus({ kind: "error", text: `${connected}, but the history import was interrupted. It will resume on the next sync.` });
+  }
+}
+
 export function ConnectButton() {
   const router = useRouter();
   const [linkToken, setLinkToken] = useState<string | null>(null);
@@ -48,10 +69,10 @@ export function ConnectButton() {
           return;
         }
         const n = body.accounts.length;
-        setStatus({
-          kind: "done",
-          text: `Connected ${body.connection.institutionName ?? "your institution"} — ${n} account${n === 1 ? "" : "s"} registered.`,
-        });
+        const institution = body.connection.institutionName ?? "your institution";
+        const connected = `Connected ${institution} — ${n} account${n === 1 ? "" : "s"} registered`;
+        router.refresh();
+        await importHistory(body.connection.id, connected, setStatus);
         router.refresh();
       } catch {
         setStatus({ kind: "error", text: exchangeFailureText(null) });

@@ -20,12 +20,27 @@ export type SandboxAccount = {
   balances: SandboxBalances;
 };
 
+export type SandboxTransaction = {
+  transaction_id: string;
+  account_id: string;
+  amount: number;
+  iso_currency_code: string | null;
+  unofficial_currency_code: string | null;
+  date: string;
+  name: string;
+  merchant_name: string | null;
+  pending: boolean;
+  pending_transaction_id: string | null;
+};
+
 type SandboxItem = {
   access_token: string;
   item_id: string;
   institution_id: string;
   institution_name: string;
   accounts: SandboxAccount[];
+  syncLog: SandboxTransaction[];
+  updateStatus: string;
 };
 
 const byPublicToken = new Map<string, SandboxItem>();
@@ -33,6 +48,9 @@ const byAccessToken = new Map<string, SandboxItem>();
 export const linkTokenRequests: Array<Record<string, unknown>> = [];
 export const exchangeRequests: string[] = [];
 export const removedAccessTokens: string[] = [];
+export const syncRequests: Array<{ cursor?: string; count?: number }> = [];
+let syncPageCap = Infinity;
+const syncFailures: Array<{ errorType: string; errorCode: string; after: number }> = [];
 
 export function resetPlaidSubstitute(): void {
   byPublicToken.clear();
@@ -40,6 +58,54 @@ export function resetPlaidSubstitute(): void {
   linkTokenRequests.length = 0;
   exchangeRequests.length = 0;
   removedAccessTokens.length = 0;
+  syncRequests.length = 0;
+  syncFailures.length = 0;
+  syncPageCap = Infinity;
+}
+
+export function capSyncPageSize(size: number): void {
+  syncPageCap = size;
+}
+
+export function failNextSync(errorType: string, errorCode: string, after = 0): void {
+  syncFailures.push({ errorType, errorCode, after });
+}
+
+export function sandboxTransaction(
+  accountId: string,
+  amount: number,
+  name: string,
+  date: string,
+  rest: Partial<SandboxTransaction> = {},
+): SandboxTransaction {
+  return {
+    transaction_id: `sub-txn-${randomUUID()}`,
+    account_id: accountId,
+    amount,
+    iso_currency_code: "USD",
+    unofficial_currency_code: null,
+    date,
+    name,
+    merchant_name: null,
+    pending: false,
+    pending_transaction_id: null,
+    ...rest,
+  };
+}
+
+export function pushSyncUpdates(
+  accessToken: string,
+  updates: { added?: SandboxTransaction[]; updateStatus?: string; balances?: Record<string, Partial<SandboxBalances>> },
+): void {
+  const item = byAccessToken.get(accessToken);
+  if (!item) throw new Error("unknown sandbox access token — mint the item first");
+  item.syncLog.push(...(updates.added ?? []));
+  if (updates.updateStatus) item.updateStatus = updates.updateStatus;
+  for (const [accountId, patch] of Object.entries(updates.balances ?? {})) {
+    const account = item.accounts.find((candidate) => candidate.account_id === accountId);
+    if (!account) throw new Error("unknown sandbox account id in balances patch");
+    Object.assign(account.balances, patch);
+  }
 }
 
 export const SANDBOX_INSTITUTION = {
@@ -47,7 +113,7 @@ export const SANDBOX_INSTITUTION = {
   institution_name: "First Platypus Bank",
 };
 
-const usd = (
+export const usd = (
   available: number | null,
   current: number | null,
   limit: number | null = null,
@@ -97,6 +163,8 @@ export function mintSandboxItem(options: Partial<SandboxItem> = {}) {
     item_id: `item-sandbox-${randomUUID()}`,
     ...SANDBOX_INSTITUTION,
     accounts: sandboxAccounts(),
+    syncLog: [],
+    updateStatus: "NOT_READY",
     ...options,
   };
   const publicToken = `public-sandbox-${randomUUID()}`;
@@ -153,6 +221,9 @@ export const PlaidEnvironments: Record<string, string> = {
 
 export const Products = { Transactions: "transactions" } as const;
 export const CountryCode = { Us: "US" } as const;
+export const TransactionsUpdateStatus = {
+  HistoricalUpdateComplete: "HISTORICAL_UPDATE_COMPLETE",
+} as const;
 
 export class PlaidApi {
   constructor(readonly configuration: Configuration) {
@@ -216,6 +287,35 @@ export class PlaidApi {
         consent_expiration_time: null,
         update_type: "background",
       },
+    });
+  }
+
+  async transactionsSync({ access_token, cursor, count }: { access_token: string; cursor?: string; count?: number }) {
+    syncRequests.push({ cursor, count });
+    const failure = syncFailures[0];
+    if (failure && failure.after-- <= 0) {
+      syncFailures.shift();
+      return plaidReject(400, failure.errorType, failure.errorCode, "injected sync failure");
+    }
+    const item = byAccessToken.get(access_token);
+    if (!item) {
+      return plaidReject(400, "INVALID_INPUT", "INVALID_ACCESS_TOKEN", "could not find matching access token");
+    }
+    const start = cursor ? Number(cursor.replace("sync-cursor-", "")) : 0;
+    if (!Number.isInteger(start) || start < 0 || start > item.syncLog.length) {
+      return plaidReject(400, "INVALID_INPUT", "INVALID_FIELD", "cursor not associated with item");
+    }
+    const page = item.syncLog.slice(start, start + Math.min(count ?? 100, syncPageCap));
+    const end = start + page.length;
+    const primed = item.syncLog.length > 0 || item.updateStatus !== "NOT_READY";
+    return respond({
+      added: structuredClone(page),
+      modified: [],
+      removed: [],
+      accounts: structuredClone(item.accounts),
+      next_cursor: primed ? `sync-cursor-${end}` : "",
+      has_more: end < item.syncLog.length,
+      transactions_update_status: item.updateStatus,
     });
   }
 

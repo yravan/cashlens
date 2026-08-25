@@ -196,19 +196,25 @@ test.describe("ledger row-level security backstop", () => {
     ).rejects.toMatchObject({ code: "23514" });
   });
 
-  test("the app role has no update or delete path on ledger rows", async () => {
+  test("the app role's only ledger write paths are inserts and the 2.1.3 balance refresh", async () => {
     for (const statement of [
       "update accounts set name = 'overwritten'",
       "delete from accounts",
       "update transactions set amount_minor = 0",
       "delete from transactions",
-      "update account_balances set current_minor = 0",
+      "update account_balances set user_id = user_id",
       "delete from account_balances",
     ]) {
       await expect(
         appQueryScopedAs(PROBE_A, statement),
       ).rejects.toMatchObject({ code: "42501" });
     }
+
+    const refresh = await appQueryScopedAs(
+      PROBE_A,
+      "update account_balances set current_minor = 0 returning account_id",
+    );
+    expect(refresh.rows).toEqual([{ account_id: a.accountId }]);
   });
 
   test("deleting a user cascades through accounts, balances, and transactions", async () => {
