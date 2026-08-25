@@ -3,7 +3,7 @@ import { asc, eq } from "drizzle-orm";
 import { beforeEach, expect, test } from "vitest";
 
 import { POST as exchange } from "@/app/api/plaid/exchange/route";
-import { POST as sync } from "@/app/api/connections/[connectionId]/sync/route";
+import { POST as syncRoute } from "@/app/api/connections/[connectionId]/sync/route";
 import { advanceBackfill } from "@/lib/data/plaid-sync";
 import { ProviderError } from "@/lib/data/plaid";
 import { withRequestScope } from "@/lib/db/client";
@@ -44,7 +44,7 @@ const postExchange = (publicToken: string) =>
   );
 
 const postSync = (connectionId: string, headers: Record<string, string> = {}) =>
-  sync(
+  syncRoute(
     new Request(`http://localhost/api/connections/${connectionId}/sync`, {
       method: "POST",
       headers: { host: "localhost", ...headers },
