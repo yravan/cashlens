@@ -20,6 +20,15 @@ const MAX_PAGES_PER_RUN = 20;
 const RESTARTS_ON_MUTATION = 2;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+function isCalendarDate(date: string): boolean {
+  if (!DATE_PATTERN.test(date)) return false;
+  try {
+    return new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
+  } catch {
+    return false;
+  }
+}
+
 export type BackfillStep = { backfillStatus: "in_progress" | "complete"; added: number };
 
 // Ledger amounts carry the net-worth effect; Plaid's positive means money left
@@ -33,8 +42,7 @@ function ledgerRow(raw: Transaction, accountId: string, userId: string) {
     throw new ProviderError(null);
   }
   if (
-    !DATE_PATTERN.test(raw.date) ||
-    Number.isNaN(Date.parse(raw.date)) ||
+    !isCalendarDate(raw.date) ||
     raw.transaction_id.length === 0 ||
     raw.transaction_id.length > 256
   ) {

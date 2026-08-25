@@ -419,7 +419,7 @@ test("rows for unregistered accounts are skipped and invalid provider rows fail 
     .set({ backfillStatus: "in_progress", syncCursor: null })
     .where(eq(connections.id, connectionId));
   pushSyncUpdates(accessToken, {
-    added: [sandboxTransaction(CHECKING, 3, "BAD DATE", "05/03/2026")],
+    added: [sandboxTransaction(CHECKING, 3, "BAD DATE", "2026-02-30")],
   });
   const poisoned = await withAuth(clerkUserId, () => postSync(connectionId));
   expect(poisoned.status).toBe(502);
