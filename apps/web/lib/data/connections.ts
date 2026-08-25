@@ -12,6 +12,7 @@ const safeShape = {
   institutionId: connections.institutionId,
   institutionName: connections.institutionName,
   status: connections.status,
+  backfillStatus: connections.backfillStatus,
   createdAt: connections.createdAt,
 };
 

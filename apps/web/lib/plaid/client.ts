@@ -5,10 +5,12 @@ import {
   PlaidApi,
   PlaidEnvironments,
   Products,
+  TransactionsUpdateStatus,
   type AccountBase,
+  type Transaction,
 } from "plaid";
 
-export type { AccountBase };
+export type { AccountBase, Transaction };
 
 export class PlaidRequestError extends Error {
   constructor(
@@ -100,6 +102,25 @@ export async function getItemAccounts(accessToken: string) {
       institutionId: data.item.institution_id ?? undefined,
       institutionName: data.item.institution_name ?? undefined,
       accounts: data.accounts,
+    };
+  } catch (error) {
+    domainError(error);
+  }
+}
+
+export async function syncTransactions(accessToken: string, cursor: string | null, count: number) {
+  try {
+    const { data } = await client().transactionsSync({
+      access_token: accessToken,
+      ...(cursor ? { cursor } : {}),
+      count,
+    });
+    return {
+      added: data.added,
+      nextCursor: data.next_cursor,
+      hasMore: data.has_more,
+      historicalUpdateComplete:
+        data.transactions_update_status === TransactionsUpdateStatus.HistoricalUpdateComplete,
     };
   } catch (error) {
     domainError(error);

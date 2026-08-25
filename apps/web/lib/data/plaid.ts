@@ -22,7 +22,7 @@ export class ProviderError extends Error {
   }
 }
 
-function translated(error: unknown): never {
+export function translated(error: unknown): never {
   if (error instanceof PlaidRequestError) {
     if (error.errorCode === "INVALID_PUBLIC_TOKEN") throw new InvalidPublicTokenError();
     throw new ProviderError(error.displayMessage);
@@ -42,11 +42,14 @@ function normalizeType(type: string): AccountType {
   return known.includes(type) ? (type as AccountType) : "other";
 }
 
-const currencyOf = ({ iso_currency_code, unofficial_currency_code }: AccountBase["balances"]) =>
+export const currencyOf = ({
+  iso_currency_code,
+  unofficial_currency_code,
+}: Pick<AccountBase["balances"], "iso_currency_code" | "unofficial_currency_code">) =>
   [iso_currency_code, unofficial_currency_code].find((code) => code && /^[A-Z]{3}$/.test(code)) ??
   "USD";
 
-const minorOrNull = (value: number | null, currency: string) =>
+export const minorOrNull = (value: number | null, currency: string) =>
   value === null ? null : toMinorUnits(value, currency);
 
 function isDuplicateItem(error: unknown): boolean {
