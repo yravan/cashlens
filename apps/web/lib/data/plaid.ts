@@ -49,8 +49,29 @@ export const currencyOf = ({
   [iso_currency_code, unofficial_currency_code].find((code) => code && /^[A-Z]{3}$/.test(code)) ??
   "USD";
 
-export const minorOrNull = (value: number | null, currency: string) =>
+const minorOrNull = (value: number | null, currency: string) =>
   value === null ? null : toMinorUnits(value, currency);
+
+export function balanceRow(
+  accountId: string,
+  userId: string,
+  balances: AccountBase["balances"],
+  asOf: Date,
+) {
+  const { available, current, limit } = balances;
+  if (available === null && current === null) return [];
+  const currency = currencyOf(balances);
+  return [
+    {
+      accountId,
+      userId,
+      availableMinor: minorOrNull(available, currency),
+      currentMinor: minorOrNull(current, currency),
+      limitMinor: minorOrNull(limit, currency),
+      asOf,
+    },
+  ];
+}
 
 function isDuplicateItem(error: unknown): boolean {
   const cause = (error as { cause?: { code?: string; constraint?: string } }).cause;
@@ -104,19 +125,9 @@ export async function connectPlaidItem(publicToken: string) {
       });
 
     const asOf = new Date();
-    const balanceRows = item.accounts.flatMap((account, index) => {
-      const { available, current, limit } = account.balances;
-      if (available === null && current === null) return [];
-      const currency = currencyOf(account.balances);
-      return {
-        accountId: inserted[index].id,
-        userId: user.id,
-        availableMinor: minorOrNull(available, currency),
-        currentMinor: minorOrNull(current, currency),
-        limitMinor: minorOrNull(limit, currency),
-        asOf,
-      };
-    });
+    const balanceRows = item.accounts.flatMap((account, index) =>
+      balanceRow(inserted[index].id, user.id, account.balances, asOf),
+    );
     if (balanceRows.length > 0) await tx.insert(accountBalances).values(balanceRows);
     return inserted;
   });

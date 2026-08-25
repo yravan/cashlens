@@ -3,7 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
 import { readConnectionCredential } from "@/lib/data/connections";
-import { currencyOf, minorOrNull, ProviderError, translated } from "@/lib/data/plaid";
+import { balanceRow, currencyOf, ProviderError, translated } from "@/lib/data/plaid";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
 import { accountBalances, accounts, connections, transactions } from "@/lib/db/schema";
@@ -21,31 +21,23 @@ const RESTARTS_ON_MUTATION = 2;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function isCalendarDate(date: string): boolean {
-  if (!DATE_PATTERN.test(date)) return false;
-  try {
-    return new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) === date;
-  } catch {
-    return false;
-  }
+  const parsed = new Date(`${date}T00:00:00Z`);
+  return DATE_PATTERN.test(date) && !Number.isNaN(+parsed) && parsed.toISOString().startsWith(date);
 }
 
-export type BackfillStep = { backfillStatus: "in_progress" | "complete"; added: number };
+type BackfillStep = { backfillStatus: "in_progress" | "complete"; added: number };
 
-// Ledger amounts carry the net-worth effect; Plaid's positive means money left
-// the account, so every amount is negated on the way in.
+// Plaid's positive means money left the account; the ledger stores the net-worth effect.
 function ledgerRow(raw: Transaction, accountId: string, userId: string) {
   const currency = currencyOf(raw);
+  const sourceId = raw.transaction_id;
   let amountMinor: number;
   try {
     amountMinor = -toMinorUnits(raw.amount, currency);
   } catch {
     throw new ProviderError(null);
   }
-  if (
-    !isCalendarDate(raw.date) ||
-    raw.transaction_id.length === 0 ||
-    raw.transaction_id.length > 256
-  ) {
+  if (!isCalendarDate(raw.date) || sourceId.length === 0 || sourceId.length > 256) {
     throw new ProviderError(null);
   }
   return {
@@ -58,7 +50,7 @@ function ledgerRow(raw: Transaction, accountId: string, userId: string) {
     merchant: raw.merchant_name?.slice(0, 500) ?? null,
     status: raw.pending ? ("pending" as const) : ("posted" as const),
     source: "plaid" as const,
-    sourceId: raw.transaction_id,
+    sourceId,
   };
 }
 
@@ -125,6 +117,7 @@ export async function advanceBackfill(connectionId: string): Promise<BackfillSte
   const refreshed = run.complete
     ? await getItemAccounts(credential.expose()).catch(translated)
     : null;
+  const backfillStatus = run.complete ? "complete" : "in_progress";
 
   const added = await withRequestScope(user.clerkUserId, async (tx) => {
     let inserted = 0;
@@ -141,17 +134,7 @@ export async function advanceBackfill(connectionId: string): Promise<BackfillSte
       const asOf = new Date();
       const balanceRows = refreshed.accounts.flatMap((account) => {
         const accountId = bySourceId.get(account.account_id);
-        const { available, current, limit } = account.balances;
-        if (!accountId || (available === null && current === null)) return [];
-        const currency = currencyOf(account.balances);
-        return {
-          accountId,
-          userId: user.id,
-          availableMinor: minorOrNull(available, currency),
-          currentMinor: minorOrNull(current, currency),
-          limitMinor: minorOrNull(limit, currency),
-          asOf,
-        };
+        return accountId ? balanceRow(accountId, user.id, account.balances, asOf) : [];
       });
       if (balanceRows.length > 0) {
         await tx
@@ -171,14 +154,10 @@ export async function advanceBackfill(connectionId: string): Promise<BackfillSte
 
     await tx
       .update(connections)
-      .set({
-        syncCursor: run.cursor,
-        backfillStatus: run.complete ? "complete" : "in_progress",
-        updatedAt: sql`now()`,
-      })
+      .set({ syncCursor: run.cursor, backfillStatus, updatedAt: sql`now()` })
       .where(owned);
     return inserted;
   });
 
-  return { backfillStatus: run.complete ? "complete" : "in_progress", added };
+  return { backfillStatus, added };
 }

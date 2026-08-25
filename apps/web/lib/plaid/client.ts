@@ -110,17 +110,12 @@ export async function getItemAccounts(accessToken: string) {
 
 export async function syncTransactions(accessToken: string, cursor: string | null, count: number) {
   try {
-    const { data } = await client().transactionsSync({
-      access_token: accessToken,
-      ...(cursor ? { cursor } : {}),
-      count,
-    });
+    const { data } = await client().transactionsSync({ access_token: accessToken, ...(cursor ? { cursor } : {}), count });
     return {
       added: data.added,
       nextCursor: data.next_cursor,
       hasMore: data.has_more,
-      historicalUpdateComplete:
-        data.transactions_update_status === TransactionsUpdateStatus.HistoricalUpdateComplete,
+      historicalUpdateComplete: data.transactions_update_status === TransactionsUpdateStatus.HistoricalUpdateComplete,
     };
   } catch (error) {
     domainError(error);
