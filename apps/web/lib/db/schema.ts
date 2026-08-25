@@ -86,6 +86,11 @@ export const connectionStatus = pgEnum("connection_status", [
   "disconnected",
 ]);
 
+export const backfillStatus = pgEnum("backfill_status", [
+  "in_progress",
+  "complete",
+]);
+
 export const connections = pgTable(
   "connections",
   {
@@ -98,6 +103,8 @@ export const connections = pgTable(
     institutionId: text("institution_id"),
     institutionName: text("institution_name"),
     status: connectionStatus("status").notNull(),
+    backfillStatus: backfillStatus("backfill_status").notNull().default("in_progress"),
+    syncCursor: text("sync_cursor"),
     ...timestamps,
   },
   (t) => [
@@ -231,5 +238,11 @@ export const accountBalances = pgTable(
       sql`available_minor is not null or current_minor is not null`,
     ),
     ...ownRowPolicies("account_balances"),
+    pgPolicy("account_balances_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
   ],
 );
