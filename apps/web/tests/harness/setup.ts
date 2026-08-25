@@ -14,6 +14,10 @@ await withClient(requireEnv("DATABASE_URL_SUPERUSER"), async (client) => {
 
 process.env.DATABASE_URL = urlForDb("DATABASE_URL", db);
 process.env.CREDENTIAL_ENCRYPTION_KEYS ??= `test:${randomBytes(32).toString("hex")}`;
+// The Plaid substitute (harness/plaid.ts) never sends these anywhere.
+process.env.PLAID_ENV ??= "sandbox";
+process.env.PLAID_CLIENT_ID ??= "api-suite-client-id";
+process.env.PLAID_SECRET ??= "api-suite-secret";
 
 beforeEach(truncateAll);
 afterAll(closeAdmin);

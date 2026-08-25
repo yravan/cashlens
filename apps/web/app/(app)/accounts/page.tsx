@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { ledgerCounts } from "@/lib/data/ledger";
 import { requireUser } from "@/lib/data/users";
+import { ConnectButton } from "./connect-button";
 
 export const metadata: Metadata = { title: "Accounts" };
 
@@ -23,6 +24,7 @@ export default async function AccountsPage() {
       <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
         The accounts overview lands here (leaf 6.3.1).
       </p>
+      <ConnectButton />
     </>
   );
 }

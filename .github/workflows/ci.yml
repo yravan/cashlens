@@ -83,6 +83,10 @@ jobs:
     env:
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
       CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+      # Sandbox-only Plaid keys; absent on fork PRs, where the plaid e2e spec skips itself.
+      PLAID_CLIENT_ID: ${{ secrets.PLAID_CLIENT_ID }}
+      PLAID_SECRET: ${{ secrets.PLAID_SECRET }}
+      PLAID_ENV: sandbox
       DATABASE_URL: postgresql://cashlens_app:cashlens_app_dev@postgres:5432/cashlens
       DATABASE_URL_OWNER: postgresql://cashlens_owner:cashlens_owner_dev@postgres:5432/cashlens
       DATABASE_URL_SUPERUSER: postgresql://postgres:postgres@postgres:5432/postgres
@@ -104,6 +108,7 @@ jobs:
       - run: pnpm --filter web exec playwright install chromium # no-op unless versions skew
       - run: pnpm db:setup
       - run: pnpm build
+      - run: echo "CREDENTIAL_ENCRYPTION_KEYS=ci-e2e:$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - run: pnpm test:e2e
       - name: refuse unscrubbed artifacts
         id: scrubbed

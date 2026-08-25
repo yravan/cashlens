@@ -79,6 +79,43 @@ const timestamps = {
     .defaultNow(),
 };
 
+export const connectionProvider = pgEnum("connection_provider", ["plaid"]);
+
+export const connectionStatus = pgEnum("connection_status", [
+  "active",
+  "disconnected",
+]);
+
+export const connections = pgTable(
+  "connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: connectionProvider("provider").notNull(),
+    providerItemId: text("provider_item_id"),
+    institutionId: text("institution_id"),
+    institutionName: text("institution_name"),
+    status: connectionStatus("status").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    unique("connections_id_user_id_unique").on(t.id, t.userId),
+    uniqueIndex("connections_user_provider_item_key")
+      .on(t.userId, t.provider, t.providerItemId)
+      .where(sql`provider_item_id is not null`),
+    index("connections_user_id_idx").on(t.userId),
+    ...ownRowPolicies("connections"),
+    pgPolicy("connections_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
+  ],
+);
+
 export const accounts = pgTable(
   "accounts",
   {
@@ -86,6 +123,7 @@ export const accounts = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    connectionId: uuid("connection_id"),
     name: text("name").notNull(),
     type: accountType("type").notNull(),
     subtype: text("subtype"),
@@ -97,6 +135,13 @@ export const accounts = pgTable(
   },
   (t) => [
     unique("accounts_id_user_id_unique").on(t.id, t.userId),
+    // Composite FK: plain FKs bypass RLS, letting a row reference another user's connection.
+    foreignKey({
+      name: "accounts_connection_user_fk",
+      columns: [t.connectionId, t.userId],
+      foreignColumns: [connections.id, connections.userId],
+    }),
+    index("accounts_connection_id_idx").on(t.connectionId),
     uniqueIndex("accounts_user_source_row_key")
       .on(t.userId, t.source, t.sourceId)
       .where(sql`source_id is not null`),
@@ -136,43 +181,6 @@ export const transactions = pgTable(
     index("transactions_account_date_idx").on(t.accountId, t.date),
     check("transactions_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
     ...ownRowPolicies("transactions"),
-  ],
-);
-
-export const connectionProvider = pgEnum("connection_provider", ["plaid"]);
-
-export const connectionStatus = pgEnum("connection_status", [
-  "active",
-  "disconnected",
-]);
-
-export const connections = pgTable(
-  "connections",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    provider: connectionProvider("provider").notNull(),
-    providerItemId: text("provider_item_id"),
-    institutionId: text("institution_id"),
-    institutionName: text("institution_name"),
-    status: connectionStatus("status").notNull(),
-    ...timestamps,
-  },
-  (t) => [
-    unique("connections_id_user_id_unique").on(t.id, t.userId),
-    uniqueIndex("connections_user_provider_item_key")
-      .on(t.userId, t.provider, t.providerItemId)
-      .where(sql`provider_item_id is not null`),
-    index("connections_user_id_idx").on(t.userId),
-    ...ownRowPolicies("connections"),
-    pgPolicy("connections_update_own", {
-      for: "update",
-      to: appRole,
-      using: ownRow,
-      withCheck: ownRow,
-    }),
   ],
 );
 

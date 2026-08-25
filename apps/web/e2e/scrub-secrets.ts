@@ -10,6 +10,7 @@ const TOKEN_SHAPES = [
   /\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/g,
   /\bdvb_[\w-]{10,}/g,
   /\b\d{10}-c_[\w-]{16,}/g,
+  /\b(?:access|public|link)-(?:sandbox|production)-[\w-]{10,}/g,
 ];
 
 type Parts = Record<string, string>;
@@ -29,6 +30,7 @@ export function collectSecrets(stateDir: string): string[] {
     }
   };
   consider(process.env.CLERK_SECRET_KEY);
+  consider(process.env.PLAID_SECRET);
   for (const name of fs.existsSync(stateDir) ? fs.readdirSync(stateDir) : []) {
     if (!name.endsWith(".json")) continue;
     const state = JSON.parse(fs.readFileSync(path.join(stateDir, name), "utf8"));

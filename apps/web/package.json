@@ -23,8 +23,10 @@
     "drizzle-orm": "^0.45.2",
     "next": "16.3.0",
     "pg": "^8.23.0",
+    "plaid": "46.0.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "react-plaid-link": "^5.0.0"
   },
   "devDependencies": {
     "@clerk/backend": "^3.16.4",
