@@ -187,6 +187,23 @@ test("initial pagination walks every page at the bounded page size and commits o
   ]);
 });
 
+test("a run stops at the page cap, parks in progress, and the next run finishes it", async () => {
+  const { connectionId, accessToken, sync } = await connect();
+  const capped = [...Array(21).keys()].map((n) =>
+    sandboxTransaction(CHECKING, n + 1, `CAPPED ${n}`, "2026-05-01"),
+  );
+  pushHistory(accessToken, ...capped);
+  capSyncPageSize(1);
+
+  const bounded = await sync();
+  await expect(bounded.json()).resolves.toEqual({ backfillStatus: "in_progress", added: 20 });
+  await expectStored(connectionId, "in_progress", "sync-cursor-20");
+
+  const finished = await sync();
+  await expect(finished.json()).resolves.toEqual({ backfillStatus: "complete", added: 1 });
+  await expect(adminDb().$count(transactions)).resolves.toBe(21);
+});
+
 test("re-running the backfill never duplicates a transaction", async () => {
   const { connectionId, accessToken, sync } = await connect();
   pushHistory(
