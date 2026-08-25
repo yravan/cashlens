@@ -86,10 +86,7 @@ export const connectionStatus = pgEnum("connection_status", [
   "disconnected",
 ]);
 
-export const backfillStatus = pgEnum("backfill_status", [
-  "in_progress",
-  "complete",
-]);
+export const backfillStatus = pgEnum("backfill_status", ["in_progress", "complete"]);
 
 export const connections = pgTable(
   "connections",

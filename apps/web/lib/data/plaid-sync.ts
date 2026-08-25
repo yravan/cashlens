@@ -17,6 +17,8 @@ import {
 
 const PAGE_SIZE = 500;
 const MAX_PAGES_PER_RUN = 20;
+// A full run can carry 10k rows; Postgres binds at most 65535 parameters per statement.
+const INSERT_CHUNK = 500;
 const RESTARTS_ON_MUTATION = 2;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -64,9 +66,7 @@ async function paginate(accessToken: string, origin: string | null) {
         if (page.nextCursor.length > 512) throw new ProviderError(null);
         added.push(...page.added);
         cursor = page.nextCursor || cursor;
-        if (!page.hasMore) {
-          return { added, cursor, complete: page.historicalUpdateComplete };
-        }
+        if (!page.hasMore) return { added, cursor, complete: page.historicalUpdateComplete };
       }
       return { added, cursor, complete: false };
     } catch (error) {
@@ -121,13 +121,12 @@ export async function advanceBackfill(connectionId: string): Promise<BackfillSte
 
   const added = await withRequestScope(user.clerkUserId, async (tx) => {
     let inserted = 0;
-    for (let at = 0; at < rows.length; at += 500) {
+    for (let at = 0; at < rows.length; at += INSERT_CHUNK) {
       const chunk = await tx
         .insert(transactions)
-        .values(rows.slice(at, at + 500))
-        .onConflictDoNothing()
-        .returning({ id: transactions.id });
-      inserted += chunk.length;
+        .values(rows.slice(at, at + INSERT_CHUNK))
+        .onConflictDoNothing();
+      inserted += chunk.rowCount ?? 0;
     }
 
     if (refreshed) {
