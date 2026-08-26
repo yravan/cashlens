@@ -218,12 +218,21 @@ test.describe("plaid connect flow (real sandbox)", () => {
     );
     expect(history.rows[0].n).toBeGreaterThanOrEqual(15);
 
-    const balances = await adminQuery(
-      `select count(*)::int as n from account_balances b join accounts a on a.id = b.account_id
-        where a.connection_id = $1 and b.as_of >= $2`,
-      [connectionId, start.toISOString()],
-    );
-    expect(balances.rows[0].n).toBeGreaterThanOrEqual(1);
+    // The status flip is visible at commit, but the live-balance refresh runs
+    // after it — poll rather than racing the institution round trip.
+    await expect
+      .poll(
+        async () => {
+          const balances = await adminQuery(
+            `select count(*)::int as n from account_balances b join accounts a on a.id = b.account_id
+              where a.connection_id = $1 and b.as_of >= $2`,
+            [connectionId, start.toISOString()],
+          );
+          return balances.rows[0].n;
+        },
+        { timeout: 60_000, intervals: [2_000] },
+      )
+      .toBeGreaterThanOrEqual(1);
 
     const registered = await adminQuery(
       "select count(*)::int as n from accounts where connection_id = $1",
