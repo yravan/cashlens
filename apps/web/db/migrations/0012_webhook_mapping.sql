@@ -1,0 +1,2 @@
+CREATE POLICY "connections_select_webhook_item" ON "connections" AS PERMISSIVE FOR SELECT TO "cashlens_app" USING (provider = 'plaid' and provider_item_id = current_setting('app.plaid_item_id', true));--> statement-breakpoint
+CREATE POLICY "users_select_webhook_owner" ON "users" AS PERMISSIVE FOR SELECT TO "cashlens_app" USING (id::text = current_setting('app.plaid_webhook_user_id', true));

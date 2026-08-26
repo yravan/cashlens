@@ -1,7 +1,9 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/sign-in", "/sign-up", "/api/health", "/robots.txt"];
+// The webhook authenticates itself by provider signature (a Clerk redirect
+// would 307 every delivery and trip Plaid's rejection circuit breaker).
+const PUBLIC_PATHS = ["/sign-in", "/sign-up", "/api/health", "/api/plaid/webhook", "/robots.txt"];
 
 function isPublicRoute(req: NextRequest): boolean {
   const { pathname } = req.nextUrl;

@@ -121,7 +121,12 @@ export async function advanceSync(connectionId: string): Promise<SyncStep | null
   return advanceSyncFor(user, connectionId);
 }
 
-async function advanceSyncFor(user: SyncUser, connectionId: string): Promise<SyncStep | null> {
+// lib/data-internal: `user` must come from auth() or the verified webhook
+// item→owner mapping (plaid-webhook.ts) — never from request input.
+export async function advanceSyncFor(
+  user: SyncUser,
+  connectionId: string,
+): Promise<SyncStep | null> {
   if (!UUID_PATTERN.test(connectionId)) return null;
 
   const owned = and(eq(connections.id, connectionId), eq(connections.userId, user.id));

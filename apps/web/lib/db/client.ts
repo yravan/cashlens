@@ -51,3 +51,17 @@ export async function withRequestScope<T>(
     return fn(tx);
   });
 }
+
+// Webhook scope: no session exists, so visibility is keyed on the verified
+// provider item id instead of a user (policies *_webhook_* in the schema).
+export async function withPlaidItemScope<T>(
+  itemId: string,
+  fn: (tx: ScopedTx) => Promise<T>,
+): Promise<T> {
+  return getDb().transaction(async (tx) => {
+    await tx.execute(
+      sql`select set_config('app.plaid_item_id', ${itemId}, true)`,
+    );
+    return fn(tx);
+  });
+}
