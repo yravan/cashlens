@@ -51,15 +51,13 @@ async function verificationKey(kid: string): Promise<WebhookVerificationKey | nu
   return key;
 }
 
-const fail: (reason: string) => never = (reason) => {
+function fail(reason: string): never {
   throw new WebhookVerificationError(reason);
-};
+}
 
-// Plaid's documented verification: ES256 JWT in the Plaid-Verification header
-// whose request_body_sha256 claim must match the raw request bytes.
-// Returns stale=true for a correctly signed but >5-minute-old webhook — the
-// caller acks those without acting so delayed provider retries never trip
-// Plaid's rejection circuit breaker, while replays still do nothing.
+// stale=true means correctly signed but over MAX_AGE_SECONDS old: the caller
+// acks those without acting, so a delayed provider retry never trips Plaid's
+// rejection circuit breaker (replaying costs nothing — ingestion is idempotent).
 export async function verifyPlaidWebhook(
   rawBody: string,
   verificationJwt: string | null,

@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { advanceSyncFor } from "@/lib/data/plaid-sync";
 import { withPlaidItemScope } from "@/lib/db/client";
 import { connections, users } from "@/lib/db/schema";
-import { logEvent } from "@/lib/log";
+import { errorClass, logEvent } from "@/lib/log";
 import { verifyPlaidWebhook, WebhookVerificationError } from "@/lib/plaid/webhook";
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -24,9 +24,9 @@ const boundedText = (value: unknown): string | null =>
 
 type ItemOwner = { connectionId: string; user: { id: string; clerkUserId: string } };
 
-// Server-side item→owner mapping under the webhook RLS policies: the verified
-// item id unlocks exactly its connection rows, and each owning user's id —
-// set as a request-local setting — unlocks exactly that user's clerk id.
+// The verified item id unlocks exactly its connection rows; each owning user's
+// id, set as a request-local setting, then unlocks exactly that user's clerk id
+// (webhook RLS policies — no SECURITY DEFINER, no elevated role).
 async function ownersOfItem(itemId: string): Promise<ItemOwner[]> {
   return withPlaidItemScope(itemId, async (tx) => {
     const rows = await tx
@@ -67,12 +67,11 @@ async function syncItem(itemId: string): Promise<void> {
         logEvent("plaid_webhook.partial_drain", { connectionId: owner.connectionId });
       }
     } catch (error) {
-      // The stored cursor is unharmed; the page-load resumer or the next
-      // webhook picks it up. A non-200 here would only feed Plaid's
-      // rejection circuit breaker.
+      // Swallowed on purpose: the stored cursor is unharmed and a non-200 here
+      // would only feed Plaid's rejection circuit breaker.
       logEvent("plaid_webhook.sync_failed", {
         connectionId: owner.connectionId,
-        errorClass: error instanceof Error ? error.constructor.name : "unknown",
+        errorClass: errorClass(error),
       });
     }
   }
@@ -82,7 +81,7 @@ export async function handlePlaidWebhook(
   rawBody: string,
   verificationJwt: string | null,
 ): Promise<Response> {
-  if (rawBody.length > MAX_BODY_BYTES) {
+  if (Buffer.byteLength(rawBody, "utf8") > MAX_BODY_BYTES) {
     return Response.json({ error: "too_large" }, { status: 413 });
   }
 

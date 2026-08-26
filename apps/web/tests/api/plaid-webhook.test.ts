@@ -226,13 +226,29 @@ test("an oversized body is refused before any verification work", async () => {
   expect(webhookKeyRequests).toHaveLength(0);
 });
 
-test("the verification key is fetched once and cached across deliveries", async () => {
+test("verification keys are cached, misses are negative-cached, and a new kid re-checks the rest", async () => {
   const { itemId } = await backfilled(fakeClerkUserId());
   const first = webhookBody(itemId);
   const second = webhookBody(itemId, "DEFAULT_UPDATE");
   expect((await postWebhook(first, await signPlaidWebhook(first))).status).toBe(200);
   expect((await postWebhook(second, await signPlaidWebhook(second))).status).toBe(200);
   expect(webhookKeyRequests).toEqual([WEBHOOK_KID]);
+
+  const stranger = { kid: "kid-plaid-never-issued" };
+  expect((await postWebhook(first, await signPlaidWebhook(first, stranger))).status).toBe(401);
+  expect((await postWebhook(first, await signPlaidWebhook(first, stranger))).status).toBe(401);
+  expect(webhookKeyRequests).toEqual([WEBHOOK_KID, stranger.kid]);
+
+  // A kid Plaid does serve is a rotation signal: every cached unexpired key is
+  // re-fetched so one that has since retired starts being rejected.
+  const rotated = await signPlaidWebhook(first, { kid: WEBHOOK_RETIRED_KID, key: "retired" });
+  expect((await postWebhook(first, rotated)).status).toBe(401);
+  expect(webhookKeyRequests).toEqual([
+    WEBHOOK_KID,
+    stranger.kid,
+    WEBHOOK_RETIRED_KID,
+    WEBHOOK_KID,
+  ]);
 });
 
 test("the link token arms the webhook URL exactly when one is configured", async () => {
