@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
 import { accountBalances, accounts, connections, transactions } from "@/lib/db/schema";
 import { toMinorUnits } from "@/lib/ledger/minor-units";
-import { logEvent } from "@/lib/log";
+import { errorClass, logEvent } from "@/lib/log";
 import {
   getFreshBalances,
   PlaidRequestError,
@@ -24,9 +24,8 @@ const MAX_PAGES_PER_RUN = 20;
 const INSERT_CHUNK = 500;
 const RESTARTS_ON_MUTATION = 2;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-// Webhooks are the primary trigger; page-load resume is the fallback for the
-// ones that never arrived. The grace window keeps the resumer off backfills the
-// connect flow is still actively driving.
+// The grace window keeps the page-load resumer off backfills the connect flow
+// is still actively driving.
 const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 const RESUME_GRACE_MS = 2 * 60 * 1000;
 
@@ -77,8 +76,8 @@ function ledgerRow(raw: Transaction, account: RegisteredAccount, userId: string)
 type LedgerRow = ReturnType<typeof ledgerRow>;
 
 async function paginate(accessToken: string, origin: string | null) {
-  // The page budget spans mutation restarts, so one run issues at most
-  // MAX_PAGES_PER_RUN provider calls no matter how often pagination restarts.
+  // One page budget across restarts: a mutation replays from the origin cursor
+  // and keeps spending it, so a churning item cannot multiply a run's cost.
   let restarts = 0;
   for (let pages = 0; ; ) {
     try {
@@ -109,7 +108,7 @@ async function paginate(accessToken: string, origin: string | null) {
 }
 
 const errorFields = (error: unknown) => ({
-  errorClass: error instanceof Error ? error.constructor.name : "unknown",
+  errorClass: errorClass(error),
   plaidErrorCode: error instanceof PlaidRequestError ? error.errorCode : null,
 });
 
@@ -191,7 +190,9 @@ export async function advanceSyncFor(
       unregistered += 1;
       continue;
     }
-    removedByAccount.set(account.id, [...(removedByAccount.get(account.id) ?? []), gone.transaction_id]);
+    const ids = removedByAccount.get(account.id);
+    if (ids) ids.push(gone.transaction_id);
+    else removedByAccount.set(account.id, [gone.transaction_id]);
   }
 
   const previous = connection.backfillStatus;
@@ -264,14 +265,8 @@ export async function advanceSyncFor(
     const [current] = await withRequestScope(user.clerkUserId, (tx) =>
       tx.select({ backfillStatus: connections.backfillStatus }).from(connections).where(owned),
     );
-    return {
-      backfillStatus: current?.backfillStatus ?? backfillStatus,
-      drained: false,
-      added: 0,
-      modified: 0,
-      removed: 0,
-      skipped: 0,
-    };
+    const nothing = { drained: false, added: 0, modified: 0, removed: 0, skipped: 0 };
+    return { backfillStatus: current?.backfillStatus ?? backfillStatus, ...nothing };
   }
 
   const activity = counts.added + counts.modified + counts.removed;
