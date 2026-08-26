@@ -1,0 +1,2 @@
+CREATE POLICY "transactions_update_own" ON "transactions" AS PERMISSIVE FOR UPDATE TO "cashlens_app" USING (user_id = (select app_current_user_id())) WITH CHECK (user_id = (select app_current_user_id()));--> statement-breakpoint
+CREATE POLICY "transactions_delete_own" ON "transactions" AS PERMISSIVE FOR DELETE TO "cashlens_app" USING (user_id = (select app_current_user_id()));

@@ -16,6 +16,7 @@ import {
 
 export class InvalidPublicTokenError extends Error {}
 export class DuplicateConnectionError extends Error {}
+export class RateLimitedError extends Error {}
 export class ProviderError extends Error {
   constructor(readonly displayMessage: string | null) {
     super("provider request failed");
@@ -25,6 +26,7 @@ export class ProviderError extends Error {
 export function translated(error: unknown): never {
   if (error instanceof PlaidRequestError) {
     if (error.errorCode === "INVALID_PUBLIC_TOKEN") throw new InvalidPublicTokenError();
+    if (error.errorType === "RATE_LIMIT_EXCEEDED") throw new RateLimitedError();
     throw new ProviderError(error.displayMessage);
   }
   throw error;
@@ -42,12 +44,15 @@ function normalizeType(type: string): AccountType {
   return known.includes(type) ? (type as AccountType) : "other";
 }
 
-export const currencyOf = ({
-  iso_currency_code,
-  unofficial_currency_code,
-}: Pick<AccountBase["balances"], "iso_currency_code" | "unofficial_currency_code">) =>
+export const currencyOf = (
+  {
+    iso_currency_code,
+    unofficial_currency_code,
+  }: Pick<AccountBase["balances"], "iso_currency_code" | "unofficial_currency_code">,
+  fallback = "USD",
+) =>
   [iso_currency_code, unofficial_currency_code].find((code) => code && /^[A-Z]{3}$/.test(code)) ??
-  "USD";
+  fallback;
 
 const minorOrNull = (value: number | null, currency: string) =>
   value === null ? null : toMinorUnits(value, currency);
@@ -57,10 +62,11 @@ export function balanceRow(
   userId: string,
   balances: AccountBase["balances"],
   asOf: Date,
+  fallbackCurrency = "USD",
 ) {
   const { available, current, limit } = balances;
   if (available === null && current === null) return [];
-  const currency = currencyOf(balances);
+  const currency = currencyOf(balances, fallbackCurrency);
   return [
     {
       accountId,

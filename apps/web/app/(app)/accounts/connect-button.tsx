@@ -16,24 +16,31 @@ function exchangeFailureText(body: { error?: string; message?: string | null } |
   return "Connecting failed — nothing was saved. Try again.";
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function importHistory(connectionId: string, connected: string, setStatus: (status: Status) => void) {
   let imported = 0;
   try {
     for (let attempt = 0; attempt < 40; attempt += 1) {
       setStatus({ kind: "busy", text: `${connected}. Importing transaction history… (${imported} so far)` });
       const response = await fetch(`/api/connections/${connectionId}/sync`, { method: "POST" });
+      if (response.status === 429) {
+        const seconds = Number(response.headers.get("retry-after"));
+        await sleep((Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 60) : 5) * 1000);
+        continue;
+      }
       if (!response.ok) throw new Error();
       const step = await response.json();
       imported += step.added;
-      if (step.backfillStatus === "complete") {
+      if (step.drained && step.backfillStatus === "complete") {
         setStatus({ kind: "done", text: `${connected}, ${imported} transactions imported.` });
         return;
       }
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await sleep(1500);
     }
     setStatus({ kind: "done", text: `${connected}. History is still importing — check back shortly.` });
   } catch {
-    setStatus({ kind: "error", text: `${connected}, but the history import was interrupted. It will resume on the next sync.` });
+    setStatus({ kind: "error", text: `${connected}, but the history import was interrupted. It will resume next time you open Accounts.` });
   }
 }
 

@@ -7,14 +7,17 @@ import {
   Products,
   TransactionsUpdateStatus,
   type AccountBase,
+  type RemovedTransaction,
   type Transaction,
 } from "plaid";
 
-export type { AccountBase, Transaction };
+export type { AccountBase, RemovedTransaction, Transaction };
+
+export type UpdateStatus = "complete" | "pending" | "unknown";
 
 export class PlaidRequestError extends Error {
   constructor(
-    errorType: string,
+    readonly errorType: string,
     readonly errorCode: string,
     readonly displayMessage: string | null,
   ) {
@@ -108,6 +111,12 @@ export async function getItemAccounts(accessToken: string) {
   }
 }
 
+function toUpdateStatus(status: TransactionsUpdateStatus): UpdateStatus {
+  if (status === TransactionsUpdateStatus.HistoricalUpdateComplete) return "complete";
+  if (status === TransactionsUpdateStatus.TransactionsUpdateStatusUnknown) return "unknown";
+  return "pending";
+}
+
 export async function syncTransactions(accessToken: string, cursor: string | null, count: number) {
   try {
     const { data } = await client().transactionsSync({
@@ -117,11 +126,28 @@ export async function syncTransactions(accessToken: string, cursor: string | nul
     });
     return {
       added: data.added,
+      modified: data.modified,
+      removed: data.removed,
       nextCursor: data.next_cursor,
       hasMore: data.has_more,
-      historicalUpdateComplete:
-        data.transactions_update_status === TransactionsUpdateStatus.HistoricalUpdateComplete,
+      updateStatus: toUpdateStatus(data.transactions_update_status),
     };
+  } catch (error) {
+    domainError(error);
+  }
+}
+
+// The one balance endpoint that pulls live from the institution rather than
+// Plaid's cache. min_last_updated_datetime is ignored everywhere except
+// Capital One non-depository accounts, which reject the request without it.
+export async function getFreshBalances(accessToken: string): Promise<AccountBase[]> {
+  const staleFloor = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const { data } = await client().accountsBalanceGet({
+      access_token: accessToken,
+      options: { min_last_updated_datetime: staleFloor },
+    });
+    return data.accounts;
   } catch (error) {
     domainError(error);
   }

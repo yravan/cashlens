@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
 
 import { ledgerCounts } from "@/lib/data/ledger";
+import { listResumableSyncs } from "@/lib/data/plaid-sync";
 import { requireUser } from "@/lib/data/users";
 import { ConnectButton } from "./connect-button";
+import { SyncResume } from "./sync-resume";
 
 export const metadata: Metadata = { title: "Accounts" };
 
 export default async function AccountsPage() {
   await requireUser();
   const counts = await ledgerCounts();
+  const resumable = await listResumableSyncs();
 
   return (
     <>
@@ -25,6 +28,7 @@ export default async function AccountsPage() {
         The accounts overview lands here (leaf 6.3.1).
       </p>
       <ConnectButton />
+      <SyncResume connectionIds={resumable} />
     </>
   );
 }

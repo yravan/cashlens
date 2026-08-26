@@ -77,7 +77,16 @@ export async function listConnections() {
 export async function readConnectionCredential(
   connectionId: string,
 ): Promise<SecretString | null> {
-  const user = await requireUser();
+  return readConnectionCredentialAs(await requireUser(), connectionId);
+}
+
+// For server-side callers with no session (webhooks): `user` must come from a
+// server-derived mapping, never request input. The ciphertext's AAD binds it to
+// (userId, connectionId), so a mismatched user fails decryption regardless.
+export async function readConnectionCredentialAs(
+  user: { id: string; clerkUserId: string },
+  connectionId: string,
+): Promise<SecretString | null> {
   if (!UUID_PATTERN.test(connectionId)) return null;
   const rows = await withRequestScope(user.clerkUserId, (tx) =>
     tx

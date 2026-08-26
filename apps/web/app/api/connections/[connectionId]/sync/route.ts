@@ -1,6 +1,6 @@
 import { guardPost } from "@/lib/api/guard";
 import { plaidErrorResponse } from "@/lib/api/plaid-errors";
-import { advanceBackfill } from "@/lib/data/plaid-sync";
+import { advanceSync } from "@/lib/data/plaid-sync";
 
 export const maxDuration = 60;
 
@@ -13,7 +13,7 @@ export async function POST(
 
   const { connectionId } = await params;
   try {
-    const step = await advanceBackfill(connectionId);
+    const step = await advanceSync(connectionId);
     if (!step) return Response.json({ error: "not_found" }, { status: 404 });
     return Response.json(step);
   } catch (error) {

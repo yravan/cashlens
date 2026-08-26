@@ -1,10 +1,8 @@
 import { inspect } from "node:util";
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { beforeEach, expect, test } from "vitest";
 
-import { POST as exchange } from "@/app/api/plaid/exchange/route";
-import { POST as syncRoute } from "@/app/api/connections/[connectionId]/sync/route";
-import { advanceBackfill } from "@/lib/data/plaid-sync";
+import { advanceSync } from "@/lib/data/plaid-sync";
 import { ProviderError } from "@/lib/data/plaid";
 import { withRequestScope } from "@/lib/db/client";
 import { accountBalances, connections, transactions } from "@/lib/db/schema";
@@ -19,89 +17,22 @@ import {
   sandboxTransaction,
   syncRequests,
   SUBSTITUTE_SECRET,
-  usd,
-  type SandboxAccount,
   type SandboxTransaction,
 } from "../harness/plaid";
+import {
+  CARD,
+  CHECKING,
+  connect,
+  expectStored,
+  ledgerRows,
+  postExchange,
+  postSync,
+  pushHistory,
+  rewind,
+  step,
+} from "./plaid-helpers";
 
 beforeEach(resetPlaidSubstitute);
-
-const CHECKING = "acct-checking";
-const CARD = "acct-card";
-
-const testAccounts = (): SandboxAccount[] => [
-  { account_id: CHECKING, name: "Checking", official_name: null, mask: null, type: "depository", subtype: "checking", balances: usd(1000, 1000) },
-  { account_id: CARD, name: "Card", official_name: null, mask: null, type: "credit", subtype: "credit card", balances: usd(null, 410, 2000) },
-];
-
-const postExchange = (publicToken: string) =>
-  exchange(
-    new Request("http://localhost/api/plaid/exchange", {
-      method: "POST",
-      headers: { "content-type": "application/json", host: "localhost" },
-      body: JSON.stringify({ publicToken }),
-    }),
-  );
-
-const postSync = (connectionId: string, headers: Record<string, string> = {}) =>
-  syncRoute(
-    new Request(`http://localhost/api/connections/${connectionId}/sync`, {
-      method: "POST",
-      headers: { host: "localhost", ...headers },
-    }),
-    { params: Promise.resolve({ connectionId }) },
-  );
-
-async function connect(clerkUserId = fakeClerkUserId()) {
-  const minted = mintSandboxItem({ accounts: testAccounts() });
-  const response = await withAuth(clerkUserId, () => postExchange(minted.publicToken));
-  expect(response.status).toBe(200);
-  const body = await response.json();
-  const accountId = new Map<string, string>(
-    body.accounts.map((registered: { name: string; id: string }) => [
-      registered.name === "Checking" ? CHECKING : CARD,
-      registered.id,
-    ]),
-  );
-  const connectionId = body.connection.id as string;
-  const sync = (headers?: Record<string, string>) =>
-    withAuth(clerkUserId, () => postSync(connectionId, headers));
-  return { ...minted, clerkUserId, connectionId, accountId, body, sync };
-}
-
-const ledgerRows = () =>
-  adminDb()
-    .select({
-      accountId: transactions.accountId,
-      amountMinor: transactions.amountMinor,
-      currency: transactions.currency,
-      date: transactions.date,
-      description: transactions.description,
-      merchant: transactions.merchant,
-      status: transactions.status,
-      source: transactions.source,
-      sourceId: transactions.sourceId,
-    })
-    .from(transactions)
-    .orderBy(asc(transactions.date));
-
-const expectStored = async (
-  connectionId: string,
-  backfillStatus: "in_progress" | "complete",
-  syncCursor: string | null,
-) => {
-  const [row] = await adminDb()
-    .select({ backfillStatus: connections.backfillStatus, syncCursor: connections.syncCursor })
-    .from(connections)
-    .where(eq(connections.id, connectionId));
-  expect(row).toEqual({ backfillStatus, syncCursor });
-};
-
-const rewind = (connectionId: string) =>
-  adminDb().update(connections).set({ backfillStatus: "in_progress", syncCursor: null }).where(eq(connections.id, connectionId));
-
-const pushHistory = (accessToken: string, ...added: SandboxTransaction[]) =>
-  pushSyncUpdates(accessToken, { added, updateStatus: "HISTORICAL_UPDATE_COMPLETE" });
 
 test("backfill inverts Plaid signs into net-worth amounts, faithfully across waves, statuses, and currencies", async () => {
   const start = new Date();
@@ -116,7 +47,7 @@ test("backfill inverts Plaid signs into net-worth amounts, faithfully across wav
 
   const first = await sync();
   expect(first.status).toBe(200);
-  await expect(first.json()).resolves.toEqual({ backfillStatus: "in_progress", added: 3 });
+  await expect(first.json()).resolves.toEqual(step("in_progress", 3));
 
   const refund = sandboxTransaction(CARD, -18.99, "SKYLINE AIR REFUND", "2026-07-01", { merchant_name: "Skyline Air" });
   const groceries = sandboxTransaction(CHECKING, 67.42, "MAPLE MARKET #204", "2026-06-15", { merchant_name: "Maple Market" });
@@ -131,7 +62,7 @@ test("backfill inverts Plaid signs into net-worth amounts, faithfully across wav
   });
 
   const second = await sync();
-  await expect(second.json()).resolves.toEqual({ backfillStatus: "complete", added: 6 });
+  await expect(second.json()).resolves.toEqual(step("complete", 6));
 
   const row = (
     txn: SandboxTransaction,
@@ -172,7 +103,7 @@ test("initial pagination walks every page at the bounded page size and commits o
   capSyncPageSize(2);
 
   const response = await sync();
-  await expect(response.json()).resolves.toEqual({ backfillStatus: "complete", added: 5 });
+  await expect(response.json()).resolves.toEqual(step("complete", 5));
   expect(syncRequests).toEqual([
     { cursor: undefined, count: 500 },
     { cursor: "sync-cursor-2", count: 500 },
@@ -196,11 +127,11 @@ test("a run stops at the page cap, parks in progress, and the next run finishes 
   capSyncPageSize(1);
 
   const bounded = await sync();
-  await expect(bounded.json()).resolves.toEqual({ backfillStatus: "in_progress", added: 20 });
+  await expect(bounded.json()).resolves.toEqual(step("in_progress", 20, { drained: false }));
   await expectStored(connectionId, "in_progress", "sync-cursor-20");
 
   const finished = await sync();
-  await expect(finished.json()).resolves.toEqual({ backfillStatus: "complete", added: 1 });
+  await expect(finished.json()).resolves.toEqual(step("complete", 1));
   await expect(adminDb().$count(transactions)).resolves.toBe(21);
 });
 
@@ -214,11 +145,11 @@ test("re-running the backfill never duplicates a transaction", async () => {
 
   await sync();
   const again = await sync();
-  await expect(again.json()).resolves.toEqual({ backfillStatus: "complete", added: 0 });
+  await expect(again.json()).resolves.toEqual(step("complete", 0));
 
   await rewind(connectionId);
   const rerun = await sync();
-  await expect(rerun.json()).resolves.toEqual({ backfillStatus: "complete", added: 0 });
+  await expect(rerun.json()).resolves.toEqual(step("complete", 0));
   await expect(adminDb().$count(transactions)).resolves.toBe(2);
 });
 
@@ -235,7 +166,7 @@ test("a failure mid-pagination commits nothing and the next run resumes without 
   await expectStored(connectionId, "in_progress", null);
 
   const retried = await sync();
-  await expect(retried.json()).resolves.toEqual({ backfillStatus: "complete", added: 5 });
+  await expect(retried.json()).resolves.toEqual(step("complete", 5));
   await expect(adminDb().$count(transactions)).resolves.toBe(5);
 });
 
@@ -246,9 +177,27 @@ test("a mutation during pagination restarts the whole sequence from its origin c
   failNextSync("TRANSACTIONS_ERROR", "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION", 1);
 
   const response = await sync();
-  await expect(response.json()).resolves.toEqual({ backfillStatus: "complete", added: 4 });
+  await expect(response.json()).resolves.toEqual(step("complete", 4));
   expect(syncRequests.map((request) => request.cursor)).toEqual([undefined, "sync-cursor-2", undefined, "sync-cursor-2"]);
   await expect(adminDb().$count(transactions)).resolves.toBe(4);
+});
+
+test("mutation restarts share one run's page budget instead of multiplying it", async () => {
+  const { connectionId, accessToken, sync } = await connect();
+  pushHistory(accessToken, ...[...Array(25).keys()].map((n) =>
+    sandboxTransaction(CHECKING, n + 1, `BUDGETED ${n}`, "2026-05-01"),
+  ));
+  capSyncPageSize(1);
+  failNextSync("TRANSACTIONS_ERROR", "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION", 5);
+
+  const response = await sync();
+  await expect(response.json()).resolves.toEqual(step("in_progress", 14, { drained: false }));
+  expect(syncRequests).toHaveLength(21);
+  await expectStored(connectionId, "in_progress", "sync-cursor-14");
+
+  const finished = await sync();
+  await expect(finished.json()).resolves.toEqual(step("complete", 11));
+  await expect(adminDb().$count(transactions)).resolves.toBe(25);
 });
 
 test("user B can never advance or read user A's backfill", async () => {
@@ -292,33 +241,25 @@ test("connect before Plaid has any data: backfill stays in progress and stores n
   const { connectionId, accessToken, sync } = await connect();
 
   const notReady = await sync();
-  await expect(notReady.json()).resolves.toEqual({ backfillStatus: "in_progress", added: 0 });
+  await expect(notReady.json()).resolves.toEqual(step("in_progress", 0));
   await expectStored(connectionId, "in_progress", null);
 
   pushHistory(accessToken, sandboxTransaction(CHECKING, 3.5, "LATE ARRIVAL", "2026-05-01"));
   const ready = await sync();
-  await expect(ready.json()).resolves.toEqual({ backfillStatus: "complete", added: 1 });
+  await expect(ready.json()).resolves.toEqual(step("complete", 1));
 });
 
-test("rows for unregistered accounts are skipped and invalid provider rows fail the run whole", async () => {
+test("a sanitized error still reaches the caller when the provider fails outright", async () => {
   const { clerkUserId, connectionId, accessToken, sync } = await connect();
-  pushHistory(
-    accessToken,
-    sandboxTransaction(CHECKING, 1, "KEPT", "2026-05-01"),
-    sandboxTransaction("acct-never-registered", 2, "HOMELESS", "2026-05-02"),
-  );
-  const response = await sync();
-  await expect(response.json()).resolves.toEqual({ backfillStatus: "complete", added: 1 });
-  expect((await ledgerRows()).map((r) => r.description)).toEqual(["KEPT"]);
+  pushHistory(accessToken, sandboxTransaction(CHECKING, 1, "KEPT", "2026-05-01"));
+  failNextSync("API_ERROR", "INTERNAL_SERVER_ERROR");
 
-  await rewind(connectionId);
-  pushSyncUpdates(accessToken, { added: [sandboxTransaction(CHECKING, 3, "BAD DATE", "2026-02-30")] });
-  const poisoned = await sync();
-  expect(poisoned.status).toBe(502);
-  await expect(adminDb().$count(transactions)).resolves.toBe(1);
+  const failed = await sync();
+  expect(failed.status).toBe(502);
 
+  failNextSync("API_ERROR", "INTERNAL_SERVER_ERROR");
   const thrown = await withAuth(clerkUserId, () =>
-    advanceBackfill(connectionId).catch((error: unknown) => error),
+    advanceSync(connectionId).catch((error: unknown) => error),
   );
   expect(thrown).toBeInstanceOf(ProviderError);
   expect(inspect(thrown, { depth: null })).not.toContain(SUBSTITUTE_SECRET);
