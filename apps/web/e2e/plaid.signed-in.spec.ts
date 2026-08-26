@@ -158,4 +158,80 @@ test.describe("plaid connect flow (real sandbox)", () => {
       page.locator('iframe[id^="plaid-link-"], iframe[title="Plaid Link"]').first(),
     ).toBeAttached({ timeout: 20_000 });
   });
+
+  test("a backfill that never got driven self-heals from the accounts page", async ({ page }) => {
+    await page.goto("/accounts");
+    await cleanup();
+
+    const minted = await fetch("https://sandbox.plaid.com/sandbox/public_token/create", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        client_id: process.env.PLAID_CLIENT_ID,
+        secret: process.env.PLAID_SECRET,
+        institution_id: "ins_109508",
+        initial_products: ["transactions"],
+      }),
+    });
+    expect(minted.status).toBe(200);
+    const { public_token } = await minted.json();
+
+    const exchanged = await page.request.post("/api/plaid/exchange", {
+      data: { publicToken: public_token },
+    });
+    expect(exchanged.status()).toBe(200);
+    const body = await exchanged.json();
+    const connectionId = body.connection.id;
+    const start = new Date();
+
+    // The interruption scenario: the tab closed before any sync ran. Nothing
+    // but the page-load resumer will ever touch this connection again.
+    const parked = await adminQuery(
+      "select backfill_status, sync_cursor from connections where id = $1",
+      [connectionId],
+    );
+    expect(parked.rows[0]).toMatchObject({ backfill_status: "in_progress", sync_cursor: null });
+    await adminQuery(
+      "update connections set updated_at = now() - interval '3 minutes' where id = $1",
+      [connectionId],
+    );
+
+    await page.goto("/accounts");
+    await expect
+      .poll(
+        async () => {
+          const settled = await adminQuery(
+            "select backfill_status from connections where id = $1",
+            [connectionId],
+          );
+          return settled.rows[0].backfill_status;
+        },
+        { timeout: 90_000, intervals: [2_000] },
+      )
+      .toBe("complete");
+
+    const userId = await userIdA();
+    const history = await adminQuery(
+      `select count(*)::int as n from transactions t join accounts a on a.id = t.account_id
+        where a.connection_id = $1 and t.user_id = $2`,
+      [connectionId, userId],
+    );
+    expect(history.rows[0].n).toBeGreaterThanOrEqual(15);
+
+    const balances = await adminQuery(
+      `select count(*)::int as n from account_balances b join accounts a on a.id = b.account_id
+        where a.connection_id = $1 and b.as_of >= $2`,
+      [connectionId, start.toISOString()],
+    );
+    expect(balances.rows[0].n).toBeGreaterThanOrEqual(1);
+
+    const registered = await adminQuery(
+      "select count(*)::int as n from accounts where connection_id = $1",
+      [connectionId],
+    );
+    await page.reload();
+    await expect(page.getByTestId("accounts-count")).toHaveText(
+      `${registered.rows[0].n} accounts in the ledger`,
+    );
+  });
 });
