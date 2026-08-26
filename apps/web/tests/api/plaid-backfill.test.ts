@@ -191,12 +191,12 @@ test("mutation restarts share one run's page budget instead of multiplying it", 
   failNextSync("TRANSACTIONS_ERROR", "TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION", 5);
 
   const response = await sync();
-  await expect(response.json()).resolves.toEqual(step("in_progress", 14, { drained: false }));
+  await expect(response.json()).resolves.toEqual(step("in_progress", 15, { drained: false }));
   expect(syncRequests).toHaveLength(21);
-  await expectStored(connectionId, "in_progress", "sync-cursor-14");
+  await expectStored(connectionId, "in_progress", "sync-cursor-15");
 
   const finished = await sync();
-  await expect(finished.json()).resolves.toEqual(step("complete", 11));
+  await expect(finished.json()).resolves.toEqual(step("complete", 10));
   await expect(adminDb().$count(transactions)).resolves.toBe(25);
 });
 
