@@ -13,6 +13,7 @@ const safeShape = {
   institutionName: connections.institutionName,
   status: connections.status,
   backfillStatus: connections.backfillStatus,
+  providerError: connections.providerError,
   createdAt: connections.createdAt,
 };
 
@@ -22,6 +23,7 @@ type NewConnection = {
   providerItemId?: string;
   institutionId?: string;
   institutionName?: string;
+  webhookUrl?: string;
 };
 
 function boundedText(value: string | undefined, name: string): string | undefined {
@@ -31,11 +33,16 @@ function boundedText(value: string | undefined, name: string): string | undefine
   return value;
 }
 
+type ConnectionUser = { id: string; clerkUserId: string };
+
 const ownCredential = (connectionId: string, userId: string) =>
   and(
     eq(connectionCredentials.connectionId, connectionId),
     eq(connectionCredentials.userId, userId),
   );
+
+const ownConnection = (connectionId: string, userId: string) =>
+  and(eq(connections.id, connectionId), eq(connections.userId, userId));
 
 export async function createConnection(input: NewConnection) {
   const user = await requireUser();
@@ -48,6 +55,7 @@ export async function createConnection(input: NewConnection) {
         providerItemId: boundedText(input.providerItemId, "providerItemId"),
         institutionId: boundedText(input.institutionId, "institutionId"),
         institutionName: boundedText(input.institutionName, "institutionName"),
+        webhookUrl: boundedText(input.webhookUrl, "webhookUrl"),
         status: "active",
       })
       .returning(safeShape);
@@ -80,11 +88,10 @@ export async function readConnectionCredential(
   return readConnectionCredentialAs(await requireUser(), connectionId);
 }
 
-// For server-side callers with no session (webhooks): `user` must come from a
-// server-derived mapping, never request input. The ciphertext's AAD binds it to
-// (userId, connectionId), so a mismatched user fails decryption regardless.
+// The ciphertext's AAD binds it to (userId, connectionId), so a mismatched user
+// fails decryption regardless of what RLS let through.
 export async function readConnectionCredentialAs(
-  user: { id: string; clerkUserId: string },
+  user: ConnectionUser,
   connectionId: string,
 ): Promise<SecretString | null> {
   if (!UUID_PATTERN.test(connectionId)) return null;
@@ -100,16 +107,45 @@ export async function readConnectionCredentialAs(
   );
 }
 
-export async function disconnectConnection(connectionId: string): Promise<boolean> {
-  const user = await requireUser();
+// The `As` variants take a server-derived user (the verified webhook
+// item→owner mapping) instead of a session — never request input. `code` is
+// always one of this codebase's own constants, never provider input verbatim.
+export async function setProviderErrorAs(
+  user: ConnectionUser,
+  connectionId: string,
+  code: string | null,
+): Promise<void> {
+  await withRequestScope(user.clerkUserId, (tx) =>
+    tx
+      .update(connections)
+      .set({ providerError: code, updatedAt: sql`now()` })
+      .where(and(ownConnection(connectionId, user.id), eq(connections.status, "active"))),
+  );
+}
+
+async function disconnectConnectionAs(
+  user: ConnectionUser,
+  connectionId: string,
+  providerError?: string,
+): Promise<boolean> {
   if (!UUID_PATTERN.test(connectionId)) return false;
   return withRequestScope(user.clerkUserId, async (tx) => {
     await tx.delete(connectionCredentials).where(ownCredential(connectionId, user.id));
     const updated = await tx
       .update(connections)
-      .set({ status: "disconnected", updatedAt: sql`now()` })
-      .where(and(eq(connections.id, connectionId), eq(connections.userId, user.id)))
+      .set({ status: "disconnected", updatedAt: sql`now()`, ...(providerError && { providerError }) })
+      .where(ownConnection(connectionId, user.id))
       .returning({ id: connections.id });
     return updated.length > 0;
   });
+}
+
+// The provider-side revocation: the item is dead at Plaid, so the credential
+// goes now and the tombstone carries the reason. Imported data stays until the
+// user chooses to purge it.
+export const revokeConnectionAs = (user: ConnectionUser, connectionId: string) =>
+  disconnectConnectionAs(user, connectionId, "USER_PERMISSION_REVOKED");
+
+export async function disconnectConnection(connectionId: string): Promise<boolean> {
+  return disconnectConnectionAs(await requireUser(), connectionId);
 }

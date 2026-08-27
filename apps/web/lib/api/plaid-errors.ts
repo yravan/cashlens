@@ -3,6 +3,7 @@ import {
   InvalidPublicTokenError,
   ProviderError,
   RateLimitedError,
+  ReauthRequiredError,
 } from "@/lib/data/plaid";
 
 export const RETRY_AFTER_SECONDS = 60;
@@ -13,6 +14,9 @@ export function plaidErrorResponse(error: unknown): Response {
   }
   if (error instanceof DuplicateConnectionError) {
     return Response.json({ error: "already_connected" }, { status: 409 });
+  }
+  if (error instanceof ReauthRequiredError) {
+    return Response.json({ error: "reauth_required" }, { status: 409 });
   }
   if (error instanceof RateLimitedError) {
     return Response.json(

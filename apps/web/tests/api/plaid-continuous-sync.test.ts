@@ -174,27 +174,33 @@ test("a rate-limited run commits nothing, returns 429 with retry-after, and the 
   await expectStored(connectionId, "complete", "sync-cursor-1");
 });
 
-test("an overlapping run cannot regress the cursor or duplicate rows: the loser commits nothing", async () => {
-  const { accessToken, sync, connectionId } = await backfilled(fakeClerkUserId());
+test("a lost race cannot regress the cursor or backfill status, and the loser reports the winner's state", async () => {
+  const { accessToken, sync, connectionId } = await connect();
   pushSyncUpdates(accessToken, {
-    added: [
-      sandboxTransaction(CHECKING, 5, "RACED 1", "2026-08-24"),
-      sandboxTransaction(CHECKING, 6, "RACED 2", "2026-08-25"),
-    ],
+    added: Array.from({ length: 25 }, (_, i) =>
+      sandboxTransaction(CHECKING, i + 1, `RACED ${i + 1}`, "2026-08-24"),
+    ),
+    updateStatus: "HISTORICAL_UPDATE_COMPLETE",
   });
   capSyncPageSize(1);
 
   let winner: unknown;
   onceAfterSyncPage(async () => {
+    capSyncPageSize(500);
     winner = await (await sync()).json();
+    capSyncPageSize(1);
   });
 
   const loser = await sync();
-  expect(winner).toEqual(step("complete", 2));
+  expect(winner).toEqual(step("complete", 25));
+  // The loser's page budget ran out 5 events behind the winner's commit: had
+  // its commit gone through, the cursor would regress from 25 to 20 and
+  // backfill_status from complete back to in_progress. Its reported "complete"
+  // can only come from the post-loss re-read — its own run computed in_progress.
   await expect(loser.json()).resolves.toEqual(step("complete", 0, { drained: false }));
-  expect((await ledgerRows()).map((row) => row.description)).toEqual(["RACED 1", "RACED 2"]);
-  await expectStored(connectionId, "complete", "sync-cursor-2");
-  expect(syncRequests).toHaveLength(5);
+  await expect(adminDb().$count(transactions)).resolves.toBe(25);
+  await expectStored(connectionId, "complete", "sync-cursor-25");
+  expect(syncRequests).toHaveLength(21);
 });
 
 test("an item stuck reporting UNKNOWN stays honestly in progress and resumable instead of completing", async () => {

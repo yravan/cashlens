@@ -1,6 +1,8 @@
 import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 
+import { revokeConnectionAs, setProviderErrorAs } from "@/lib/data/connections";
+import { LOGIN_REPAIR_CODES, WARNING_REPAIR_CODES } from "@/lib/data/plaid";
 import { advanceSyncFor } from "@/lib/data/plaid-sync";
 import { withPlaidItemScope } from "@/lib/db/client";
 import { connections, users } from "@/lib/db/schema";
@@ -54,7 +56,13 @@ async function ownersOfItem(itemId: string): Promise<ItemOwner[]> {
   });
 }
 
-async function syncItem(itemId: string): Promise<void> {
+// Per-owner failures are swallowed on purpose: stored state is unharmed and a
+// non-200 here would only feed Plaid's rejection circuit breaker.
+async function forEachOwner(
+  itemId: string,
+  failEvent: string,
+  act: (owner: ItemOwner) => Promise<unknown>,
+): Promise<void> {
   const owners = await ownersOfItem(itemId);
   if (owners.length === 0) {
     logEvent("plaid_webhook.unknown_item", {});
@@ -62,19 +70,20 @@ async function syncItem(itemId: string): Promise<void> {
   }
   for (const owner of owners) {
     try {
-      const step = await advanceSyncFor(owner.user, owner.connectionId);
-      if (step && !step.drained) {
-        logEvent("plaid_webhook.partial_drain", { connectionId: owner.connectionId });
-      }
+      await act(owner);
     } catch (error) {
-      // Swallowed on purpose: the stored cursor is unharmed and a non-200 here
-      // would only feed Plaid's rejection circuit breaker.
-      logEvent("plaid_webhook.sync_failed", {
-        connectionId: owner.connectionId,
-        errorClass: errorClass(error),
-      });
+      logEvent(failEvent, { connectionId: owner.connectionId, errorClass: errorClass(error) });
     }
   }
+}
+
+async function syncItem(itemId: string): Promise<void> {
+  await forEachOwner(itemId, "plaid_webhook.sync_failed", async (owner) => {
+    const step = await advanceSyncFor(owner.user, owner.connectionId);
+    if (step && !step.drained) {
+      logEvent("plaid_webhook.partial_drain", { connectionId: owner.connectionId });
+    }
+  });
 }
 
 export async function handlePlaidWebhook(
@@ -121,11 +130,36 @@ export async function handlePlaidWebhook(
   if (type === "TRANSACTIONS" && code && LEGACY_TRANSACTIONS_CODES.has(code)) {
     return ok();
   }
-  if (type === "ITEM" && code === "NEW_ACCOUNTS_AVAILABLE") {
-    // Seam: surfacing newly-visible accounts is 2.1.5/2.1.6 territory.
-    logEvent("plaid_webhook.new_accounts_available", {});
+  if (type === "ITEM" && code && itemId) {
+    await actOnItemCode(code, itemId, body.error);
     return ok();
   }
   logEvent("plaid_webhook.ignored", { type, code });
   return ok();
+}
+
+async function actOnItemCode(code: string, itemId: string, error: unknown): Promise<void> {
+  const mark = (value: string | null) =>
+    forEachOwner(itemId, "plaid_webhook.mark_failed", (owner) =>
+      setProviderErrorAs(owner.user, owner.connectionId, value),
+    );
+
+  if (code === "ERROR") {
+    const errorCode = boundedText((error as { error_code?: unknown } | null)?.error_code);
+    if (errorCode && LOGIN_REPAIR_CODES.has(errorCode)) return mark(errorCode);
+    logEvent("plaid_webhook.item_error_unactioned", { errorCode });
+    return;
+  }
+  if (WARNING_REPAIR_CODES.has(code)) return mark(code);
+  if (code === "LOGIN_REPAIRED") return mark(null);
+  if (code === "USER_PERMISSION_REVOKED") {
+    return forEachOwner(itemId, "plaid_webhook.revoke_failed", (owner) =>
+      revokeConnectionAs(owner.user, owner.connectionId),
+    );
+  }
+  // Seam: NEW_ACCOUNTS_AVAILABLE keeps its own event for 2.1.6. Everything else
+  // — WEBHOOK_UPDATE_ACKNOWLEDGED, the per-account USER_ACCOUNT_REVOKED, and
+  // anything newer — is acked unactioned.
+  if (code === "NEW_ACCOUNTS_AVAILABLE") return logEvent("plaid_webhook.new_accounts_available", {});
+  logEvent("plaid_webhook.ignored", { type: "ITEM", code });
 }

@@ -72,7 +72,9 @@ export async function verifyPlaidWebhook(
     fail("malformed_jwt");
   }
   if (alg !== "ES256") fail("wrong_algorithm");
-  if (!kid || typeof kid !== "string" || kid.length > 256) fail("missing_kid");
+  // Shape-checked before the key fetch: every novel kid costs a provider call
+  // and a miss-cache slot, so garbage must die here.
+  if (typeof kid !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(kid)) fail("malformed_kid");
 
   const key = await verificationKey(kid);
   if (!key) fail("unknown_key");

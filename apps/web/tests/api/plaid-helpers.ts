@@ -3,10 +3,11 @@ import { expect } from "vitest";
 
 import { POST as exchange } from "@/app/api/plaid/exchange/route";
 import { POST as syncRoute } from "@/app/api/connections/[connectionId]/sync/route";
+import { POST as webhookRoute } from "@/app/api/plaid/webhook/route";
 import { connections, transactions } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
-import { mintSandboxItem, pushSyncUpdates, usd, type SandboxAccount, type SandboxTransaction } from "../harness/plaid";
+import { mintSandboxItem, pushSyncUpdates, signPlaidWebhook, usd, type SandboxAccount, type SandboxTransaction } from "../harness/plaid";
 
 export const CHECKING = "acct-checking";
 export const CARD = "acct-card";
@@ -39,6 +40,40 @@ export const postSync = (connectionId: string, headers: Record<string, string> =
     }),
     { params: Promise.resolve({ connectionId }) },
   );
+
+export const postWebhook = (rawBody: string, jwt: string | null) =>
+  webhookRoute(
+    new Request("http://localhost/api/plaid/webhook", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        host: "localhost",
+        ...(jwt === null ? {} : { "plaid-verification": jwt }),
+      },
+      body: rawBody,
+    }),
+  );
+
+export const webhookBody = (
+  itemId: string,
+  code = "SYNC_UPDATES_AVAILABLE",
+  type = "TRANSACTIONS",
+  extra: Record<string, unknown> = {},
+) =>
+  JSON.stringify(
+    {
+      webhook_type: type,
+      webhook_code: code,
+      item_id: itemId,
+      environment: "sandbox",
+      ...extra,
+    },
+    null,
+    2,
+  );
+
+export const postSignedWebhook = async (rawBody: string) =>
+  postWebhook(rawBody, await signPlaidWebhook(rawBody));
 
 export async function connect(clerkUserId = fakeClerkUserId(), accounts = testAccounts()) {
   const minted = mintSandboxItem({ accounts });

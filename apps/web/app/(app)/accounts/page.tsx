@@ -4,6 +4,7 @@ import { ledgerCounts } from "@/lib/data/ledger";
 import { listResumableSyncs } from "@/lib/data/plaid-sync";
 import { requireUser } from "@/lib/data/users";
 import { ConnectButton } from "./connect-button";
+import { ConnectionsList } from "./connections-list";
 import { SyncResume } from "./sync-resume";
 
 export const metadata: Metadata = { title: "Accounts" };
@@ -28,6 +29,7 @@ export default async function AccountsPage() {
         The accounts overview lands here (leaf 6.3.1).
       </p>
       <ConnectButton />
+      <ConnectionsList />
       <SyncResume connectionIds={resumable} />
     </>
   );

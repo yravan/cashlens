@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, expect, test } from "vitest";
 
-import { POST as webhookRoute } from "@/app/api/plaid/webhook/route";
 import { POST as linkToken } from "@/app/api/plaid/link-token/route";
 import { resetWebhookKeyCache } from "@/lib/plaid/webhook";
 import { connections, transactions } from "@/lib/db/schema";
@@ -18,39 +17,12 @@ import {
   WEBHOOK_RETIRED_KID,
   webhookKeyRequests,
 } from "../harness/plaid";
-import { backfilled, CHECKING, ledgerRows } from "./plaid-helpers";
+import { backfilled, CHECKING, ledgerRows, postSignedWebhook, postWebhook, webhookBody } from "./plaid-helpers";
 
 beforeEach(() => {
   resetPlaidSubstitute();
   resetWebhookKeyCache();
 });
-
-const postWebhook = (rawBody: string, jwt: string | null) =>
-  webhookRoute(
-    new Request("http://localhost/api/plaid/webhook", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        host: "localhost",
-        ...(jwt === null ? {} : { "plaid-verification": jwt }),
-      },
-      body: rawBody,
-    }),
-  );
-
-const webhookBody = (itemId: string, code = "SYNC_UPDATES_AVAILABLE", type = "TRANSACTIONS") =>
-  JSON.stringify(
-    {
-      webhook_type: type,
-      webhook_code: code,
-      item_id: itemId,
-      initial_update_complete: true,
-      historical_update_complete: true,
-      environment: "sandbox",
-    },
-    null,
-    2,
-  );
 
 const storedCursor = async (connectionId: string) => {
   const [row] = await adminDb()
@@ -122,6 +94,18 @@ test("unverifiable deliveries are rejected before any provider call or database 
   }
   expect(syncRequests).toHaveLength(0);
   await expect(adminDb().$count(transactions)).resolves.toBe(0);
+});
+
+test("a malformed kid is rejected before any key fetch — garbage cannot drive provider calls", async () => {
+  const body = webhookBody("item-x");
+  for (const kid of ["../../etc", "kid with spaces", "x".repeat(129), ""]) {
+    const response = await postWebhook(body, await signPlaidWebhook(body, { kid }));
+    expect(response.status, JSON.stringify(kid)).toBe(401);
+  }
+  expect(webhookKeyRequests).toHaveLength(0);
+
+  expect((await postSignedWebhook(body)).status).toBe(200);
+  expect(webhookKeyRequests).toEqual([WEBHOOK_KID]);
 });
 
 test("an HS256 signature never verifies even with the live kid", async () => {

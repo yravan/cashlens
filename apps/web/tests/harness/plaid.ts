@@ -58,6 +58,7 @@ export const exchangeRequests: string[] = [];
 export const removedAccessTokens: string[] = [];
 export const syncRequests: Array<{ cursor?: string; count?: number }> = [];
 export const balanceRequests: Array<{ min_last_updated_datetime?: string }> = [];
+export const webhookUpdateRequests: Array<{ accessToken: string; webhook: string }> = [];
 let syncPageCap = Infinity;
 const syncFailures: Array<{ errorType: string; errorCode: string; after: number }> = [];
 const balanceFailures: Array<{ errorType: string; errorCode: string }> = [];
@@ -71,6 +72,7 @@ export function resetPlaidSubstitute(): void {
   removedAccessTokens.length = 0;
   syncRequests.length = 0;
   balanceRequests.length = 0;
+  webhookUpdateRequests.length = 0;
   webhookKeyRequests.length = 0;
   syncFailures.length = 0;
   balanceFailures.length = 0;
@@ -428,6 +430,15 @@ export class PlaidApi {
       });
     }
     return plaidReject(400, "INVALID_INPUT", "INVALID_WEBHOOK_VERIFICATION_KEY_ID", "invalid key");
+  }
+
+  async itemWebhookUpdate({ access_token, webhook }: { access_token: string; webhook: string }) {
+    const item = byAccessToken.get(access_token);
+    if (!item) {
+      return plaidReject(400, "INVALID_INPUT", "INVALID_ACCESS_TOKEN", "could not find matching access token");
+    }
+    webhookUpdateRequests.push({ accessToken: access_token, webhook });
+    return respond({ item: { item_id: item.item_id, webhook } });
   }
 
   async itemRemove({ access_token }: { access_token: string }) {

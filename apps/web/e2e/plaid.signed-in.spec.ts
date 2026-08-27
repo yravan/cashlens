@@ -37,6 +37,7 @@ test.describe("plaid connect flow (real sandbox)", () => {
   test("a sandbox public token exchanged through the app registers the institution and its accounts", async ({
     page,
   }) => {
+    test.setTimeout(120_000);
     // page.request shares the browser context's live cookie jar: Clerk session
     // JWTs expire after ~60s and only page loads refresh them; a POST through
     // the standalone request fixture gets bounced to sign-in mid-suite.
@@ -160,6 +161,7 @@ test.describe("plaid connect flow (real sandbox)", () => {
   });
 
   test("a backfill that never got driven self-heals from the accounts page", async ({ page }) => {
+    test.setTimeout(120_000);
     await page.goto("/accounts");
     await cleanup();
 

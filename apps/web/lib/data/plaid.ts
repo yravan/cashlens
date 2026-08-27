@@ -17,11 +17,18 @@ import {
 export class InvalidPublicTokenError extends Error {}
 export class DuplicateConnectionError extends Error {}
 export class RateLimitedError extends Error {}
+export class ReauthRequiredError extends Error {}
 export class ProviderError extends Error {
   constructor(readonly displayMessage: string | null) {
     super("provider request failed");
   }
 }
+
+// The item states Link update mode can repair (ITEM_LOCKED and friends need the
+// user at the bank first). Login-class = broken now, so a working sync disproves
+// it; warning-class = consent lapsing while sync still works, so it stands.
+export const LOGIN_REPAIR_CODES = new Set(["ITEM_LOGIN_REQUIRED", "ACCESS_NOT_GRANTED"]);
+export const WARNING_REPAIR_CODES = new Set(["PENDING_EXPIRATION", "PENDING_DISCONNECT"]);
 
 export function translated(error: unknown): never {
   if (error instanceof PlaidRequestError) {
@@ -97,6 +104,7 @@ export async function connectPlaidItem(publicToken: string) {
       providerItemId: itemId,
       institutionId: item.institutionId,
       institutionName: item.institutionName,
+      webhookUrl: process.env.PLAID_WEBHOOK_URL,
     });
   } catch (error) {
     if (!isDuplicateItem(error)) throw error;

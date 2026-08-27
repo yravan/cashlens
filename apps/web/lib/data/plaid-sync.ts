@@ -2,8 +2,16 @@ import "server-only";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
-import { readConnectionCredentialAs } from "@/lib/data/connections";
-import { balanceRow, currencyOf, ProviderError, translated } from "@/lib/data/plaid";
+import { readConnectionCredentialAs, setProviderErrorAs } from "@/lib/data/connections";
+import {
+  balanceRow,
+  currencyOf,
+  LOGIN_REPAIR_CODES,
+  ProviderError,
+  ReauthRequiredError,
+  translated,
+  WARNING_REPAIR_CODES,
+} from "@/lib/data/plaid";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
 import { accountBalances, accounts, connections, transactions } from "@/lib/db/schema";
@@ -13,6 +21,7 @@ import {
   getFreshBalances,
   PlaidRequestError,
   syncTransactions,
+  updateItemWebhook,
   type RemovedTransaction,
   type Transaction,
 } from "@/lib/plaid/client";
@@ -131,7 +140,11 @@ export async function advanceSyncFor(
   const owned = and(eq(connections.id, connectionId), eq(connections.userId, user.id));
   const [connection] = await withRequestScope(user.clerkUserId, (tx) =>
     tx
-      .select({ backfillStatus: connections.backfillStatus, syncCursor: connections.syncCursor })
+      .select({
+        backfillStatus: connections.backfillStatus,
+        syncCursor: connections.syncCursor,
+        webhookUrl: connections.webhookUrl,
+      })
       .from(connections)
       .where(and(owned, eq(connections.provider, "plaid"), eq(connections.status, "active"))),
   );
@@ -157,8 +170,12 @@ export async function advanceSyncFor(
   );
 
   const run = await paginate(credential.expose(), connection.syncCursor).catch(
-    (error: unknown) => {
+    async (error: unknown) => {
       logEvent("plaid_sync.run_failed", { connectionId, ...errorFields(error) });
+      if (error instanceof PlaidRequestError && LOGIN_REPAIR_CODES.has(error.errorCode)) {
+        await setProviderErrorAs(user, connectionId, error.errorCode);
+        throw new ReauthRequiredError();
+      }
       return translated(error);
     },
   );
@@ -210,7 +227,16 @@ export async function advanceSyncFor(
   const committed = await withRequestScope(user.clerkUserId, async (tx) => {
     const cas = await tx
       .update(connections)
-      .set({ syncCursor: run.cursor, backfillStatus, updatedAt: sql`now()` })
+      .set({
+        syncCursor: run.cursor,
+        backfillStatus,
+        // A working sync disproves login-class errors; consent-lapse warnings
+        // stand until the user actually re-consents.
+        providerError: sql`case when ${inArray(connections.providerError, [
+          ...WARNING_REPAIR_CODES,
+        ])} then ${connections.providerError} end`,
+        updatedAt: sql`now()`,
+      })
       .where(
         and(owned, sql`${connections.syncCursor} is not distinct from ${connection.syncCursor}`),
       );
@@ -269,6 +295,8 @@ export async function advanceSyncFor(
     return { backfillStatus: current?.backfillStatus ?? backfillStatus, ...nothing };
   }
 
+  await armWebhook(user, connectionId, connection.webhookUrl, credential);
+
   const activity = counts.added + counts.modified + counts.removed;
   if (run.drained && (activity > 0 || backfillStatus !== previous)) {
     await refreshBalances(user, connectionId, credential, bySourceId);
@@ -283,6 +311,30 @@ export async function advanceSyncFor(
     skippedUnregistered: unregistered,
   });
   return { backfillStatus, drained: run.drained, ...counts, skipped: malformed + unregistered };
+}
+
+// Items linked before PLAID_WEBHOOK_URL existed (or changed) self-arm on their
+// first committed run after the change; in steady state the stored copy matches.
+async function armWebhook(
+  user: SyncUser,
+  connectionId: string,
+  current: string | null,
+  credential: SecretString,
+) {
+  const url = process.env.PLAID_WEBHOOK_URL;
+  if (!url || url === current) return;
+  try {
+    await updateItemWebhook(credential.expose(), url);
+    await withRequestScope(user.clerkUserId, (tx) =>
+      tx
+        .update(connections)
+        .set({ webhookUrl: url, updatedAt: sql`now()` })
+        .where(and(eq(connections.id, connectionId), eq(connections.userId, user.id))),
+    );
+    logEvent("plaid_sync.webhook_armed", { connectionId });
+  } catch (error) {
+    logEvent("plaid_sync.webhook_arm_failed", { connectionId, ...errorFields(error) });
+  }
 }
 
 async function refreshBalances(

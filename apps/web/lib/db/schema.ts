@@ -109,6 +109,8 @@ export const connections = pgTable(
     status: connectionStatus("status").notNull(),
     backfillStatus: backfillStatus("backfill_status").notNull().default("in_progress"),
     syncCursor: text("sync_cursor"),
+    providerError: text("provider_error"),
+    webhookUrl: text("webhook_url"),
     ...timestamps,
   },
   (t) => [

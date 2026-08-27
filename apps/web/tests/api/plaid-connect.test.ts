@@ -32,7 +32,7 @@ const post = (path: string, body?: unknown, headers: Record<string, string> = {}
 
 const postExchange = (publicToken: unknown) => exchange(post("exchange", { publicToken }));
 
-const CONNECTION_KEYS = ["backfillStatus", "createdAt", "id", "institutionId", "institutionName", "provider", "status"];
+const CONNECTION_KEYS = ["backfillStatus", "createdAt", "id", "institutionId", "institutionName", "provider", "providerError", "status"];
 
 test("signed-out requests are rejected before any Plaid call", async () => {
   const { publicToken } = mintSandboxItem();
