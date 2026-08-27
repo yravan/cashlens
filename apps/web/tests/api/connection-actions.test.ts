@@ -35,11 +35,16 @@ const post = (
   route: typeof disconnectRoute,
   connectionId: string,
   body?: Record<string, unknown>,
+  headers: Record<string, string> = {},
 ) =>
   route(
     new Request(`http://localhost/api/connections/${connectionId}/x`, {
       method: "POST",
-      headers: { host: "localhost", ...(body ? { "content-type": "application/json" } : {}) },
+      headers: {
+        host: "localhost",
+        ...(body ? { "content-type": "application/json" } : {}),
+        ...headers,
+      },
       ...(body ? { body: JSON.stringify(body) } : {}),
     }),
     { params: Promise.resolve({ connectionId }) },
@@ -125,13 +130,7 @@ test("every action route requires a session and rejects cross-origin browsers", 
   for (const route of [repairTokenRoute, repairedRoute, disconnectRoute]) {
     expect((await post(route, item.connectionId)).status).toBe(401);
     const crossOrigin = await withAuth(item.clerkUserId, () =>
-      route(
-        new Request(`http://localhost/api/connections/${item.connectionId}/x`, {
-          method: "POST",
-          headers: { host: "localhost", origin: "https://evil.example" },
-        }),
-        { params: Promise.resolve({ connectionId: item.connectionId }) },
-      ),
+      post(route, item.connectionId, undefined, { origin: "https://evil.example" }),
     );
     expect(crossOrigin.status).toBe(403);
   }
@@ -310,44 +309,42 @@ test("an abandoned Link session burns the item at Plaid and stores nothing", asy
 
   expect((await withAuth(clerkUserId, () => postAbandon("garbage"))).status).toBe(400);
   expect((await postAbandon(minted.publicToken)).status).toBe(401);
+
+  // A remove that fails is reported, never reported as a clean backout — the
+  // caller has to know an orphan item may be live at Plaid.
+  const orphaned = mintSandboxItem();
+  failNextRemove("API_ERROR", "INTERNAL_SERVER_ERROR");
+  const failed = await withAuth(clerkUserId, () => postAbandon(orphaned.publicToken));
+  expect(failed.status).toBe(502);
+  await expect(adminDb().$count(connections)).resolves.toBe(0);
 });
 
-test("no connection route response ever carries the access token or any ciphertext", async () => {
+// Headers as well as bodies: a token smuggled into a response header would pass
+// any body-only sweep. The 200 assertion keeps the sweep honest — a route
+// regressing to an error payload would otherwise stay trivially green.
+test("no connection route response — body or headers — ever carries the access token or its ciphertext", async () => {
   const item = await backfilled(fakeClerkUserId());
   await breakLogin(item);
   const [stored] = await adminDb()
     .select({ ciphertext: connectionCredentials.ciphertext })
     .from(connectionCredentials);
 
-  const responses = [
-    ["exchange", JSON.stringify(item.body)],
-    ["sync", JSON.stringify(await (await item.sync()).json())],
-    [
-      "repair-token",
-      JSON.stringify(
-        await (await withAuth(item.clerkUserId, () => post(repairTokenRoute, item.connectionId))).json(),
-      ),
-    ],
-    [
-      "repaired",
-      JSON.stringify(
-        await (await withAuth(item.clerkUserId, () => post(repairedRoute, item.connectionId))).json(),
-      ),
-    ],
-    [
-      "disconnect",
-      JSON.stringify(
-        await (
-          await withAuth(item.clerkUserId, () => post(disconnectRoute, item.connectionId, { purge: true }))
-        ).json(),
-      ),
-    ],
-  ] as const;
+  const served = async (name: string, response: Response): Promise<[string, string]> => {
+    expect(response.status, name).toBe(200);
+    return [name, `${JSON.stringify([...response.headers])}\n${await response.text()}`];
+  };
+  const asUser = (route: typeof disconnectRoute, body?: Record<string, unknown>) =>
+    withAuth(item.clerkUserId, () => post(route, item.connectionId, body));
 
-  for (const [name, body] of responses) {
-    expect(body, name).not.toContain(item.accessToken);
-    expect(body, name).not.toContain(stored.ciphertext);
-    expect(body.toLowerCase(), name).not.toContain("ciphertext");
-    expect(body, name).not.toContain("access-sandbox");
+  const sweep = [
+    await served("sync", await item.sync()),
+    await served("repair-token", await asUser(repairTokenRoute)),
+    await served("repaired", await asUser(repairedRoute)),
+    await served("disconnect", await asUser(disconnectRoute, { purge: true })),
+  ];
+
+  for (const [name, serialized] of sweep) {
+    expect(serialized, name).not.toContain(item.accessToken);
+    expect(serialized, name).not.toContain(stored.ciphertext);
   }
 });

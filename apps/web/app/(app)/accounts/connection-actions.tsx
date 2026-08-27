@@ -15,8 +15,6 @@ export type ActionableConnection = {
   transactions: number;
 };
 
-type Mode = "idle" | "confirming" | "busy";
-
 const dangerButton =
   "rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50";
 const quietButton =
@@ -24,7 +22,8 @@ const quietButton =
 
 export function ConnectionActions({ connection }: { connection: ActionableConnection }) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("idle");
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [purge, setPurge] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [repairToken, setRepairToken] = useState<string | null>(null);
@@ -39,13 +38,13 @@ export function ConnectionActions({ connection }: { connection: ActionableConnec
     } catch {
       setNotice("Reconnected. Imports will catch up shortly.");
     }
-    setMode("idle");
+    setBusy(false);
     router.refresh();
   }, [connection.id, router]);
 
   const abandonRepair = useCallback<PlaidLinkOnExit>((error) => {
     setRepairToken(null);
-    setMode("idle");
+    setBusy(false);
     setNotice(error ? "Reconnecting was interrupted — try again." : null);
   }, []);
 
@@ -59,7 +58,7 @@ export function ConnectionActions({ connection }: { connection: ActionableConnec
   }, [repairToken, ready, open]);
 
   const startRepair = async () => {
-    setMode("busy");
+    setBusy(true);
     setNotice("Opening the bank's sign-in…");
     try {
       const response = await fetch(`/api/connections/${connection.id}/repair-token`, {
@@ -67,7 +66,7 @@ export function ConnectionActions({ connection }: { connection: ActionableConnec
       });
       if (response.status === 410) {
         setNotice("The bank revoked this connection — connect it again from scratch.");
-        setMode("idle");
+        setBusy(false);
         router.refresh();
         return;
       }
@@ -76,12 +75,12 @@ export function ConnectionActions({ connection }: { connection: ActionableConnec
       setRepairToken((await response.json()).linkToken);
     } catch {
       setNotice("Could not start reconnecting. Try again.");
-      setMode("idle");
+      setBusy(false);
     }
   };
 
   const disconnect = async () => {
-    setMode("busy");
+    setBusy(true);
     setNotice(purge ? "Disconnecting and deleting data…" : "Disconnecting…");
     try {
       const response = await fetch(`/api/connections/${connection.id}/disconnect`, {
@@ -91,11 +90,12 @@ export function ConnectionActions({ connection }: { connection: ActionableConnec
       });
       if (!response.ok) throw new Error();
       setNotice(null);
-      setMode("idle");
+      setConfirming(false);
+      setBusy(false);
       router.refresh();
     } catch {
       setNotice("Couldn't revoke access at Plaid — nothing was changed. Try again.");
-      setMode("idle");
+      setBusy(false);
     }
   };
 
@@ -104,14 +104,14 @@ export function ConnectionActions({ connection }: { connection: ActionableConnec
 
   return (
     <div className="mt-3">
-      {mode !== "confirming" && (
+      {!confirming && (
         <div className="flex gap-2">
           {connection.repairable && (
             <button
               type="button"
               data-testid="repair-connection"
               onClick={startRepair}
-              disabled={mode === "busy"}
+              disabled={busy}
               className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
             >
               Reconnect
@@ -123,16 +123,16 @@ export function ConnectionActions({ connection }: { connection: ActionableConnec
             onClick={() => {
               setPurge(alreadyGone);
               setNotice(null);
-              setMode("confirming");
+              setConfirming(true);
             }}
-            disabled={mode === "busy"}
+            disabled={busy}
             className={quietButton}
           >
             {alreadyGone ? "Delete imported data" : "Disconnect"}
           </button>
         </div>
       )}
-      {mode === "confirming" && (
+      {confirming && (
         <div
           data-testid="disconnect-confirm"
           className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950"
@@ -161,11 +161,12 @@ export function ConnectionActions({ connection }: { connection: ActionableConnec
               type="button"
               data-testid="confirm-disconnect"
               onClick={disconnect}
+              disabled={busy}
               className={dangerButton}
             >
               {alreadyGone ? "Delete data" : purge ? "Disconnect and delete" : "Disconnect"}
             </button>
-            <button type="button" onClick={() => setMode("idle")} className={quietButton}>
+            <button type="button" onClick={() => setConfirming(false)} disabled={busy} className={quietButton}>
               Cancel
             </button>
           </div>

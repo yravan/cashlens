@@ -27,7 +27,7 @@ test.describe("connection management (real sandbox)", () => {
 
   test.afterAll(cleanup);
 
-  async function connectSandboxItem(page: import("@playwright/test").Page): Promise<string> {
+  async function connectSandboxItem(page: import("@playwright/test").Page) {
     const minted = await fetch("https://sandbox.plaid.com/sandbox/public_token/create", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -44,7 +44,8 @@ test.describe("connection management (real sandbox)", () => {
       data: { publicToken: public_token },
     });
     expect(exchanged.status()).toBe(200);
-    return (await exchanged.json()).connection.id;
+    const registered = await exchanged.json();
+    return { connectionId: registered.connection.id as string, accounts: registered.accounts.length };
   }
 
   test("the management arc: status states, repair mint, disconnect with /item/remove, purge", async ({
@@ -53,7 +54,7 @@ test.describe("connection management (real sandbox)", () => {
     test.setTimeout(180_000);
     await page.goto("/accounts");
     await cleanup();
-    const connectionId = await connectSandboxItem(page);
+    const { connectionId, accounts } = await connectSandboxItem(page);
     const row = page.getByTestId(`connection-${connectionId}`);
     const status = row.getByTestId("connection-status");
 
@@ -103,7 +104,7 @@ test.describe("connection management (real sandbox)", () => {
       [connectionId],
     );
     expect(afterDisconnect.rows[0].credentials).toBe(0);
-    expect(afterDisconnect.rows[0].accounts).toBeGreaterThanOrEqual(8);
+    expect(afterDisconnect.rows[0].accounts).toBe(accounts);
     expect(afterDisconnect.rows[0].status).toBe("disconnected");
 
     // Purge the imported data: the row disappears once nothing is left.

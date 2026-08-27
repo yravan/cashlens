@@ -90,22 +90,21 @@ export function ConnectButton({ activeInstitutionIds = [] }: { activeInstitution
 
   // Link already created the item at the bank, so backing out must burn it
   // server-side — dropping the token would leave an orphan item at Plaid.
-  const cancelDuplicate = async () => {
-    const abandoned = duplicate;
+  const cancelDuplicate = (publicToken: string) => {
     setDuplicate(null);
     setStatus({ kind: "idle" });
-    if (abandoned) {
-      await fetch("/api/plaid/abandon", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ publicToken: abandoned.publicToken }),
-      }).catch(() => {});
-    }
+    void fetch("/api/plaid/abandon", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ publicToken }),
+    }).catch(() => {});
   };
 
   const onSuccess = useCallback<PlaidLinkOnSuccess>(
     async (publicToken, metadata) => {
       setLinkToken(null);
+      // react-plaid-link types public_token as nullable; without a token there
+      // is nothing to exchange and nothing to abandon.
       if (!publicToken) {
         setStatus({ kind: "error", text: "Connection was interrupted. Try again." });
         return;
@@ -161,9 +160,8 @@ export function ConnectButton({ activeInstitutionIds = [] }: { activeInstitution
               type="button"
               data-testid="duplicate-continue"
               onClick={() => {
-                const confirmed = duplicate;
                 setDuplicate(null);
-                if (confirmed) void exchange(confirmed.publicToken);
+                void exchange(duplicate.publicToken);
               }}
               className="rounded-md bg-zinc-900 px-3 py-1.5 font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
             >
@@ -172,7 +170,7 @@ export function ConnectButton({ activeInstitutionIds = [] }: { activeInstitution
             <button
               type="button"
               data-testid="duplicate-cancel"
-              onClick={cancelDuplicate}
+              onClick={() => cancelDuplicate(duplicate.publicToken)}
               className="rounded-md border border-zinc-300 px-3 py-1.5 font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
             >
               Cancel

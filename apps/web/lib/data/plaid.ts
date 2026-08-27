@@ -57,11 +57,13 @@ export async function createLinkTokenForUser(): Promise<string> {
 
 // The backout for a completed Link session the user chose not to keep (e.g.
 // declining the duplicate-institution warning): the item already exists at
-// Plaid, so the token is exchanged and the item removed, never stored.
+// Plaid, so the token is exchanged and the item removed, never stored. A failed
+// remove is reported, not swallowed — silently leaving the orphan is the one
+// outcome this endpoint exists to prevent.
 export async function abandonPlaidItem(publicToken: string): Promise<void> {
   await requireUser();
   const { accessToken } = await exchangePublicToken(publicToken).catch(translated);
-  await removeItem(accessToken).catch(() => {});
+  await removeItem(accessToken).catch(translated);
 }
 
 // Mint-on-click: update-mode link tokens expire after 30 minutes. A mint
