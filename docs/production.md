@@ -55,6 +55,7 @@ leaf 10.6.
 | `PLAID_CLIENT_ID` | from Plaid Dashboard → Developers → Keys | no |
 | `PLAID_SECRET` | the **production** secret (per-environment; the sandbox secret only works against sandbox) | yes |
 | `PLAID_ENV` | `production` | no |
+| `PLAID_WEBHOOK_URL` | `https://cashlens.org/api/plaid/webhook` — stamped onto items at link time; the receiver (leaf 2.1.4) verifies Plaid's ES256 signature, so it needs no secret of its own | no |
 
 ### Plaid production (leaf 2.1.1 — before real banks connect)
 
@@ -69,6 +70,11 @@ leaf 10.6.
    button — its own follow-up leaf.
 4. CI already runs the real-sandbox e2e spec with repo secrets `PLAID_CLIENT_ID` /
    `PLAID_SECRET` (sandbox values — never put production keys in GitHub).
+5. Set `PLAID_WEBHOOK_URL=https://cashlens.org/api/plaid/webhook` together with the other
+   `PLAID_*` vars — before the first real bank connects, so every production item is born with
+   its webhook armed (the URL is stamped at link time; an item linked without one would need
+   `/item/webhook/update`, which nothing calls yet). Continuous sync still works without
+   webhooks via the accounts-page resume path — webhooks make it prompt, not possible.
 
 `DATABASE_URL_SUPERUSER` is never set on Vercel: the `neondb_owner` credential exists only on the
 founder's machine, for bootstrap.

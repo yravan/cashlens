@@ -39,6 +39,13 @@ export const users = pgTable(
       to: appRole,
       withCheck: sql`clerk_user_id = current_setting('app.clerk_user_id', true)`,
     }),
+    // Webhook owner resolution (2.1.4): scoped by a request-local uuid set only
+    // after a verified provider item id matched a connection row.
+    pgPolicy("users_select_webhook_owner", {
+      for: "select",
+      to: appRole,
+      using: sql`id::text = current_setting('app.plaid_webhook_user_id', true)`,
+    }),
   ],
 );
 
@@ -116,6 +123,13 @@ export const connections = pgTable(
       to: appRole,
       using: ownRow,
       withCheck: ownRow,
+    }),
+    // Webhook item→connection mapping (2.1.4): a session that knows a verified
+    // provider item id may read exactly that item's connection rows.
+    pgPolicy("connections_select_webhook_item", {
+      for: "select",
+      to: appRole,
+      using: sql`provider = 'plaid' and provider_item_id = current_setting('app.plaid_item_id', true)`,
     }),
   ],
 );

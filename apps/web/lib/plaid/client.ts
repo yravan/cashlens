@@ -72,6 +72,7 @@ function domainError(error: unknown): never {
 }
 
 export async function createLinkToken(clientUserId: string): Promise<string> {
+  const webhook = process.env.PLAID_WEBHOOK_URL;
   try {
     const { data } = await client().linkTokenCreate({
       client_name: "Cash Lens",
@@ -80,6 +81,7 @@ export async function createLinkToken(clientUserId: string): Promise<string> {
       products: [Products.Transactions],
       transactions: { days_requested: 730 },
       user: { client_user_id: clientUserId },
+      ...(webhook ? { webhook } : {}),
     });
     return data.link_token;
   } catch (error) {
@@ -156,6 +158,27 @@ export async function getFreshBalances(accessToken: string): Promise<AccountBase
 export async function removeItem(accessToken: string): Promise<void> {
   try {
     await client().itemRemove({ access_token: accessToken });
+  } catch (error) {
+    domainError(error);
+  }
+}
+
+export type WebhookVerificationKey = {
+  kid: string;
+  kty: string;
+  crv: string;
+  alg: string;
+  use: string;
+  x: string;
+  y: string;
+  expiredAt: number | null;
+};
+
+export async function getWebhookVerificationKey(keyId: string): Promise<WebhookVerificationKey> {
+  try {
+    const { data } = await client().webhookVerificationKeyGet({ key_id: keyId });
+    const { kid, kty, crv, alg, use, x, y, expired_at } = data.key;
+    return { kid, kty, crv, alg, use, x, y, expiredAt: expired_at };
   } catch (error) {
     domainError(error);
   }

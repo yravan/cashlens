@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { createHash, generateKeyPairSync, randomUUID, type KeyObject } from "node:crypto";
+import { SignJWT } from "jose";
 
 // vitest.config.mts aliases the `plaid` package to this file for the api suite.
 
@@ -70,6 +71,7 @@ export function resetPlaidSubstitute(): void {
   removedAccessTokens.length = 0;
   syncRequests.length = 0;
   balanceRequests.length = 0;
+  webhookKeyRequests.length = 0;
   syncFailures.length = 0;
   balanceFailures.length = 0;
   syncPageCap = Infinity;
@@ -92,6 +94,45 @@ export function failNextBalanceGet(errorType: string, errorCode: string): void {
 // competing run into the middle of another run's pagination.
 export function onceAfterSyncPage(fn: () => Promise<void>): void {
   afterSyncPage = fn;
+}
+
+// Ephemeral per-run ES256 keypairs mirroring Plaid's webhook signing: `main`
+// is the live key the substitute serves, `retired` is served expired, and
+// `attacker` is never served — signatures made with it must fail.
+const webhookKeys = {
+  main: generateKeyPairSync("ec", { namedCurve: "P-256" }),
+  retired: generateKeyPairSync("ec", { namedCurve: "P-256" }),
+  attacker: generateKeyPairSync("ec", { namedCurve: "P-256" }),
+};
+export const WEBHOOK_KID = "sub-webhook-key-1";
+export const WEBHOOK_RETIRED_KID = "sub-webhook-key-0";
+export const webhookKeyRequests: string[] = [];
+
+const webhookJwk = (key: KeyObject, kid: string, expiredAt: number | null) => ({
+  ...key.export({ format: "jwk" }),
+  kid,
+  alg: "ES256",
+  use: "sig",
+  created_at: 1700000000,
+  expired_at: expiredAt,
+});
+
+export async function signPlaidWebhook(
+  body: string,
+  options: {
+    kid?: string;
+    key?: keyof typeof webhookKeys;
+    iatOffsetSeconds?: number;
+    bodyHashOf?: string;
+  } = {},
+): Promise<string> {
+  const hashed = options.bodyHashOf ?? body;
+  return new SignJWT({
+    request_body_sha256: createHash("sha256").update(hashed, "utf8").digest("hex"),
+  })
+    .setProtectedHeader({ alg: "ES256", kid: options.kid ?? WEBHOOK_KID, typ: "JWT" })
+    .setIssuedAt(Math.floor(Date.now() / 1000) + (options.iatOffsetSeconds ?? 0))
+    .sign(webhookKeys[options.key ?? "main"].privateKey);
 }
 
 export function sandboxTransaction(
@@ -374,6 +415,19 @@ export class PlaidApi {
       accounts: structuredClone(item.accounts),
       item: { item_id: item.item_id, institution_id: item.institution_id },
     });
+  }
+
+  async webhookVerificationKeyGet({ key_id }: { key_id: string }) {
+    webhookKeyRequests.push(key_id);
+    if (key_id === WEBHOOK_KID) {
+      return respond({ key: webhookJwk(webhookKeys.main.publicKey, WEBHOOK_KID, null) });
+    }
+    if (key_id === WEBHOOK_RETIRED_KID) {
+      return respond({
+        key: webhookJwk(webhookKeys.retired.publicKey, WEBHOOK_RETIRED_KID, 1750000000),
+      });
+    }
+    return plaidReject(400, "INVALID_INPUT", "INVALID_WEBHOOK_VERIFICATION_KEY_ID", "invalid key");
   }
 
   async itemRemove({ access_token }: { access_token: string }) {
