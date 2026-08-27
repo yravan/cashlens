@@ -259,6 +259,10 @@ export function revokeAccessToken(accessToken: string): void {
   byAccessToken.delete(accessToken);
 }
 
+export function removeItemRemotely(accessToken: string): void {
+  if (byAccessToken.delete(accessToken)) removedAccessTokens.push(accessToken);
+}
+
 function refuse(surface: string): never {
   throw new Error(
     `${surface} is not implemented by the api-suite Plaid substitute (tests/harness/plaid.ts) — extend it when production code grows a real use`,
