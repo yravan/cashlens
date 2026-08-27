@@ -7,21 +7,26 @@ import { adminQuery, appQuery, appQueryScopedAs } from "./db";
 const PROBE_A = "user_rls_probe_a";
 const PROBE_B = "user_rls_probe_b";
 
+// page.request through a real page, never file-sourced request contexts:
+// static storage-state cookies go stale mid-suite (see plaid.signed-in.spec.ts).
 test("a signed-in user can never read another user's identity", async ({
-  playwright,
-  request,
+  browser,
+  page,
   baseURL,
 }) => {
-  const responseA = await request.get("/api/me");
+  await page.goto("/");
+  const responseA = await page.request.get("/api/me");
   expect(responseA.status()).toBe(200);
   const a = await responseA.json();
 
-  const contextB = await playwright.request.newContext({
+  const contextB = await browser.newContext({
     baseURL,
     storageState: STORAGE_STATE_B,
   });
   try {
-    const responseB = await contextB.get("/api/me");
+    const pageB = await contextB.newPage();
+    await pageB.goto("/");
+    const responseB = await pageB.request.get("/api/me");
     expect(responseB.status()).toBe(200);
     const b = await responseB.json();
 
@@ -32,7 +37,7 @@ test("a signed-in user can never read another user's identity", async ({
     expect(rawB).not.toContain(users.a.clerkUserId);
     expect(rawB).not.toContain(users.a.email);
   } finally {
-    await contextB.dispose();
+    await contextB.close();
   }
 });
 

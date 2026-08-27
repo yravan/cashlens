@@ -71,10 +71,12 @@ leaf 10.6.
 4. CI already runs the real-sandbox e2e spec with repo secrets `PLAID_CLIENT_ID` /
    `PLAID_SECRET` (sandbox values — never put production keys in GitHub).
 5. Set `PLAID_WEBHOOK_URL=https://cashlens.org/api/plaid/webhook` together with the other
-   `PLAID_*` vars — before the first real bank connects, so every production item is born with
-   its webhook armed (the URL is stamped at link time; an item linked without one would need
-   `/item/webhook/update`, which nothing calls yet). Continuous sync still works without
-   webhooks via the accounts-page resume path — webhooks make it prompt, not possible.
+   `PLAID_*` vars — ideally before the first real bank connects, so every production item is
+   born with its webhook armed (the URL is stamped at link time). Items linked earlier are not
+   stranded: since leaf 2.1.5 any committed sync run whose stored `connections.webhook_url`
+   differs from the env var calls `/item/webhook/update` and re-stamps, so setting or changing
+   the URL heals every item on its next sync. Continuous sync still works without webhooks via
+   the accounts-page resume path — webhooks make it prompt, not possible.
 
 `DATABASE_URL_SUPERUSER` is never set on Vercel: the `neondb_owner` credential exists only on the
 founder's machine, for bootstrap.

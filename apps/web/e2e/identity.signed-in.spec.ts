@@ -27,21 +27,25 @@ test("first authenticated page visit creates exactly one user record", async ({
   );
 });
 
+// page.request, never the standalone request fixture: static storage-state
+// cookies go stale mid-suite (see the note in plaid.signed-in.spec.ts), and a
+// bounced request reads as an HTML sign-in page.
 test("provisioning is idempotent across repeated and concurrent requests", async ({
-  request,
+  page,
 }) => {
   const clerkId = clerkIdOf("a");
+  await page.goto("/");
   await adminQuery("delete from users where clerk_user_id = $1", [clerkId]);
 
   const responses = await Promise.all(
-    Array.from({ length: 5 }, () => request.get("/api/me")),
+    Array.from({ length: 5 }, () => page.request.get("/api/me")),
   );
   for (const response of responses) expect(response.status()).toBe(200);
   const ids = new Set<string>();
   for (const response of responses) ids.add((await response.json()).id);
   expect(ids.size).toBe(1);
 
-  const repeat = await request.get("/api/me");
+  const repeat = await page.request.get("/api/me");
   expect((await repeat.json()).id).toBe([...ids][0]);
 
   const count = await adminQuery(
@@ -52,9 +56,10 @@ test("provisioning is idempotent across repeated and concurrent requests", async
 });
 
 test("/api/me returns the caller's identity record and nothing more", async ({
-  request,
+  page,
 }) => {
-  const response = await request.get("/api/me");
+  await page.goto("/");
+  const response = await page.request.get("/api/me");
   expect(response.status()).toBe(200);
   const body = await response.json();
   expect(Object.keys(body).sort()).toEqual(["createdAt", "id"]);
