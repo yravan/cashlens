@@ -124,6 +124,15 @@ test("unverifiable deliveries are rejected before any provider call or database 
   await expect(adminDb().$count(transactions)).resolves.toBe(0);
 });
 
+test("a malformed kid is rejected before any key fetch — garbage cannot drive provider calls", async () => {
+  const body = webhookBody("item-x");
+  for (const kid of ["../../etc", "kid with spaces", "x".repeat(129), ""]) {
+    const response = await postWebhook(body, await signPlaidWebhook(body, { kid }));
+    expect(response.status, JSON.stringify(kid)).toBe(401);
+  }
+  expect(webhookKeyRequests).toHaveLength(0);
+});
+
 test("an HS256 signature never verifies even with the live kid", async () => {
   const { SignJWT } = await import("jose");
   const body = webhookBody("item-x");
