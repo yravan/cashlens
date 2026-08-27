@@ -199,7 +199,6 @@ test.describe("ledger row-level security backstop", () => {
   test("the app role's ledger write surface: inserts, the balance refresh, and the scoped 2.1.4 transaction lifecycle", async () => {
     for (const statement of [
       "update accounts set name = 'overwritten'",
-      "delete from accounts",
       "update transactions set user_id = user_id",
       "update transactions set account_id = account_id",
       "update transactions set source = source",
@@ -237,6 +236,17 @@ test.describe("ledger row-level security backstop", () => {
       [b.userId],
     );
     expect(bSurvives.rows[0].n).toBe(1);
+
+    // Purge (2.1.5): account deletes are granted but RLS-scoped — B's row sits
+    // in the same table and A's delete cannot reach it. Every probe here rolls
+    // back, so cascade completeness (balances and transactions dying with the
+    // account) is pinned committed-state in tests/api/connection-actions.test.ts.
+    const purged = await appQueryScopedAs(
+      PROBE_A,
+      "delete from accounts returning user_id",
+    );
+    expect(purged.rowCount).toBe(1);
+    expect(purged.rows[0].user_id).toBe(a.userId);
   });
 
   test("deleting a user cascades through accounts, balances, and transactions", async () => {
