@@ -24,11 +24,9 @@ export class ProviderError extends Error {
   }
 }
 
-// Item states Link update mode repairs (ITEM_LOCKED and friends are not —
-// those need the user at the bank first). Login-class codes arrive as sync
-// failures or ITEM:ERROR webhooks and mean the connection is broken now;
-// warning-class codes arrive as their own webhooks and mean consent lapses
-// soon while sync still works — so a working sync clears only the former.
+// The item states Link update mode can repair (ITEM_LOCKED and friends need the
+// user at the bank first). Login-class = broken now, so a working sync disproves
+// it; warning-class = consent lapsing while sync still works, so it stands.
 export const LOGIN_REPAIR_CODES = new Set(["ITEM_LOGIN_REQUIRED", "ACCESS_NOT_GRANTED"]);
 export const WARNING_REPAIR_CODES = new Set(["PENDING_EXPIRATION", "PENDING_DISCONNECT"]);
 

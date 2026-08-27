@@ -17,7 +17,7 @@ import {
   WEBHOOK_RETIRED_KID,
   webhookKeyRequests,
 } from "../harness/plaid";
-import { backfilled, CHECKING, ledgerRows, postWebhook, webhookBody } from "./plaid-helpers";
+import { backfilled, CHECKING, ledgerRows, postSignedWebhook, postWebhook, webhookBody } from "./plaid-helpers";
 
 beforeEach(() => {
   resetPlaidSubstitute();
@@ -103,6 +103,9 @@ test("a malformed kid is rejected before any key fetch — garbage cannot drive 
     expect(response.status, JSON.stringify(kid)).toBe(401);
   }
   expect(webhookKeyRequests).toHaveLength(0);
+
+  expect((await postSignedWebhook(body)).status).toBe(200);
+  expect(webhookKeyRequests).toEqual([WEBHOOK_KID]);
 });
 
 test("an HS256 signature never verifies even with the live kid", async () => {
