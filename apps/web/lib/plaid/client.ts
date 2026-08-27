@@ -155,6 +155,14 @@ export async function getFreshBalances(accessToken: string): Promise<AccountBase
   }
 }
 
+export async function updateItemWebhook(accessToken: string, webhook: string): Promise<void> {
+  try {
+    await client().itemWebhookUpdate({ access_token: accessToken, webhook });
+  } catch (error) {
+    domainError(error);
+  }
+}
+
 export async function removeItem(accessToken: string): Promise<void> {
   try {
     await client().itemRemove({ access_token: accessToken });

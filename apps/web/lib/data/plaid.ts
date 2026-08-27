@@ -17,11 +17,23 @@ import {
 export class InvalidPublicTokenError extends Error {}
 export class DuplicateConnectionError extends Error {}
 export class RateLimitedError extends Error {}
+export class ReauthRequiredError extends Error {}
 export class ProviderError extends Error {
   constructor(readonly displayMessage: string | null) {
     super("provider request failed");
   }
 }
+
+// Item states Link update mode repairs. Login-class codes arrive as sync
+// failures or ITEM:ERROR webhooks and mean the connection is broken now;
+// warning-class codes arrive as their own webhooks and mean consent lapses
+// soon while sync still works — so a working sync clears only the former.
+export const LOGIN_REPAIR_CODES = new Set([
+  "ITEM_LOGIN_REQUIRED",
+  "ITEM_LOCKED",
+  "ACCESS_NOT_GRANTED",
+]);
+export const WARNING_REPAIR_CODES = new Set(["PENDING_EXPIRATION", "PENDING_DISCONNECT"]);
 
 export function translated(error: unknown): never {
   if (error instanceof PlaidRequestError) {
@@ -97,6 +109,7 @@ export async function connectPlaidItem(publicToken: string) {
       providerItemId: itemId,
       institutionId: item.institutionId,
       institutionName: item.institutionName,
+      webhookUrl: process.env.PLAID_WEBHOOK_URL,
     });
   } catch (error) {
     if (!isDuplicateItem(error)) throw error;

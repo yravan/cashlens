@@ -16,7 +16,7 @@ import { adminDb } from "../harness/db";
 
 const TOKEN_A = "access-sandbox-11111111-aaaa-4bbb-8ccc-222222222222";
 const TOKEN_B = "access-sandbox-33333333-dddd-4eee-8fff-444444444444";
-const SAFE_KEYS = ["backfillStatus", "createdAt", "id", "institutionId", "institutionName", "provider", "status"];
+const SAFE_KEYS = ["backfillStatus", "createdAt", "id", "institutionId", "institutionName", "provider", "providerError", "status"];
 
 const connect = (credential: string) =>
   createConnection({

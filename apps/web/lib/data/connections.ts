@@ -13,6 +13,7 @@ const safeShape = {
   institutionName: connections.institutionName,
   status: connections.status,
   backfillStatus: connections.backfillStatus,
+  providerError: connections.providerError,
   createdAt: connections.createdAt,
 };
 
@@ -22,6 +23,7 @@ type NewConnection = {
   providerItemId?: string;
   institutionId?: string;
   institutionName?: string;
+  webhookUrl?: string;
 };
 
 function boundedText(value: string | undefined, name: string): string | undefined {
@@ -48,6 +50,7 @@ export async function createConnection(input: NewConnection) {
         providerItemId: boundedText(input.providerItemId, "providerItemId"),
         institutionId: boundedText(input.institutionId, "institutionId"),
         institutionName: boundedText(input.institutionName, "institutionName"),
+        webhookUrl: boundedText(input.webhookUrl, "webhookUrl"),
         status: "active",
       })
       .returning(safeShape);
@@ -98,6 +101,48 @@ export async function readConnectionCredentialAs(
   return new SecretString(
     decryptCredential(rows[0].ciphertext, { userId: user.id, connectionId }),
   );
+}
+
+// lib/data-internal: `user` must come from auth() or the verified webhook
+// item→owner mapping — never from request input. `code` is always one of this
+// codebase's own constants, never provider input verbatim.
+export async function setProviderErrorAs(
+  user: { id: string; clerkUserId: string },
+  connectionId: string,
+  code: string | null,
+): Promise<void> {
+  await withRequestScope(user.clerkUserId, (tx) =>
+    tx
+      .update(connections)
+      .set({ providerError: code, updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(connections.id, connectionId),
+          eq(connections.userId, user.id),
+          eq(connections.status, "active"),
+        ),
+      ),
+  );
+}
+
+// The provider-side revocation (USER_PERMISSION_REVOKED): the item is dead at
+// Plaid, so the credential is deleted immediately and the connection tombstoned
+// with the reason. Imported data stays until the user chooses to purge it.
+export async function revokeConnectionAs(
+  user: { id: string; clerkUserId: string },
+  connectionId: string,
+): Promise<void> {
+  await withRequestScope(user.clerkUserId, async (tx) => {
+    await tx.delete(connectionCredentials).where(ownCredential(connectionId, user.id));
+    await tx
+      .update(connections)
+      .set({
+        status: "disconnected",
+        providerError: "USER_PERMISSION_REVOKED",
+        updatedAt: sql`now()`,
+      })
+      .where(and(eq(connections.id, connectionId), eq(connections.userId, user.id)));
+  });
 }
 
 export async function disconnectConnection(connectionId: string): Promise<boolean> {
