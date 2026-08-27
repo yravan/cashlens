@@ -1,0 +1,1 @@
+CREATE POLICY "accounts_delete_own" ON "accounts" AS PERMISSIVE FOR DELETE TO "cashlens_app" USING (user_id = (select app_current_user_id()));

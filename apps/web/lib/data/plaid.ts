@@ -1,12 +1,20 @@
 import "server-only";
 
-import { createConnection } from "@/lib/data/connections";
+import { UUID_PATTERN } from "@/lib/crypto/credentials";
+import {
+  createConnection,
+  disconnectConnection,
+  readConnectionCredentialAs,
+  revokeConnectionAs,
+  setProviderErrorAs,
+} from "@/lib/data/connections";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
 import { accountBalances, accounts, accountType } from "@/lib/db/schema";
 import { toMinorUnits } from "@/lib/ledger/minor-units";
 import {
   createLinkToken,
+  createUpdateLinkToken,
   exchangePublicToken,
   getItemAccounts,
   PlaidRequestError,
@@ -18,6 +26,7 @@ export class InvalidPublicTokenError extends Error {}
 export class DuplicateConnectionError extends Error {}
 export class RateLimitedError extends Error {}
 export class ReauthRequiredError extends Error {}
+export class ConnectionGoneError extends Error {}
 export class ProviderError extends Error {
   constructor(readonly displayMessage: string | null) {
     super("provider request failed");
@@ -44,6 +53,54 @@ export function translated(error: unknown): never {
 export async function createLinkTokenForUser(): Promise<string> {
   const user = await requireUser();
   return createLinkToken(user.id).catch(translated);
+}
+
+// Mint-on-click: update-mode link tokens expire after 30 minutes. A mint
+// failing with ITEM_NOT_FOUND means the item is already dead at Plaid
+// (removed via portal or support) — revoke the connection on the spot.
+export async function createRepairToken(connectionId: string): Promise<string | null> {
+  const user = await requireUser();
+  if (!UUID_PATTERN.test(connectionId)) return null;
+  const credential = await readConnectionCredentialAs(user, connectionId);
+  if (!credential) return null;
+  try {
+    return await createUpdateLinkToken(user.id, credential.expose());
+  } catch (error) {
+    if (error instanceof PlaidRequestError && error.errorCode === "ITEM_NOT_FOUND") {
+      await revokeConnectionAs(user, connectionId);
+      throw new ConnectionGoneError();
+    }
+    translated(error);
+  }
+}
+
+// The user completed Link update mode. Plaid never webhooks in-app repairs
+// (LOGIN_REPAIRED is out-of-band only), so the completion signal clears the
+// mark; the caller then drives a sync, which re-marks if the repair lied.
+export async function markConnectionRepaired(connectionId: string): Promise<boolean> {
+  const user = await requireUser();
+  if (!UUID_PATTERN.test(connectionId)) return false;
+  return setProviderErrorAs(user, connectionId, null);
+}
+
+// Remote-first, fail-closed: /item/remove must succeed (or the item must
+// already be gone — ITEM_NOT_FOUND) before anything is deleted locally. A
+// credential deleted after a failed remove would leave the item billing
+// forever with no recovery path.
+export async function disconnectPlaidConnection(connectionId: string, purge: boolean) {
+  const user = await requireUser();
+  if (!UUID_PATTERN.test(connectionId)) return null;
+  const credential = await readConnectionCredentialAs(user, connectionId);
+  if (credential) {
+    try {
+      await removeItem(credential.expose());
+    } catch (error) {
+      if (!(error instanceof PlaidRequestError && error.errorCode === "ITEM_NOT_FOUND")) {
+        translated(error);
+      }
+    }
+  }
+  return disconnectConnection(connectionId, { purge });
 }
 
 type AccountType = (typeof accountType.enumValues)[number];

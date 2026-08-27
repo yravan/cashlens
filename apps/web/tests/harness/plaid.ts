@@ -62,6 +62,7 @@ export const webhookUpdateRequests: Array<{ accessToken: string; webhook: string
 let syncPageCap = Infinity;
 const syncFailures: Array<{ errorType: string; errorCode: string; after: number }> = [];
 const balanceFailures: Array<{ errorType: string; errorCode: string }> = [];
+const removeFailures: Array<{ errorType: string; errorCode: string }> = [];
 let afterSyncPage: (() => Promise<void>) | null = null;
 
 export function resetPlaidSubstitute(): void {
@@ -76,6 +77,7 @@ export function resetPlaidSubstitute(): void {
   webhookKeyRequests.length = 0;
   syncFailures.length = 0;
   balanceFailures.length = 0;
+  removeFailures.length = 0;
   syncPageCap = Infinity;
   afterSyncPage = null;
 }
@@ -90,6 +92,10 @@ export function failNextSync(errorType: string, errorCode: string, after = 0): v
 
 export function failNextBalanceGet(errorType: string, errorCode: string): void {
   balanceFailures.push({ errorType, errorCode });
+}
+
+export function failNextRemove(errorType: string, errorCode: string): void {
+  removeFailures.push({ errorType, errorCode });
 }
 
 // Runs once after the next served sync page — lets a test interleave a full
@@ -319,7 +325,22 @@ export class PlaidApi {
   async linkTokenCreate(request: Record<string, unknown>) {
     linkTokenRequests.push(request);
     const user = request.user as { client_user_id?: unknown } | undefined;
-    if (!user?.client_user_id || !Array.isArray(request.products)) {
+    if (!user?.client_user_id) {
+      return plaidReject(400, "INVALID_REQUEST", "MISSING_FIELDS", "missing required fields");
+    }
+    if (typeof request.access_token === "string") {
+      if (request.products !== undefined) {
+        return plaidReject(400, "INVALID_REQUEST", "INVALID_FIELD", "products not allowed in update mode");
+      }
+      if (!byAccessToken.has(request.access_token)) {
+        return plaidReject(400, "ITEM_ERROR", "ITEM_NOT_FOUND", "item does not exist");
+      }
+      return respond({
+        link_token: `link-update-sandbox-${randomUUID()}`,
+        expiration: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      });
+    }
+    if (!Array.isArray(request.products)) {
       return plaidReject(400, "INVALID_REQUEST", "MISSING_FIELDS", "missing required fields");
     }
     return respond({
@@ -442,7 +463,16 @@ export class PlaidApi {
   }
 
   async itemRemove({ access_token }: { access_token: string }) {
+    const failure = removeFailures.shift();
+    if (failure) {
+      return plaidReject(500, failure.errorType, failure.errorCode, "injected remove failure");
+    }
     if (!byAccessToken.delete(access_token)) {
+      // Real Plaid: a second remove is ITEM_NOT_FOUND; INVALID_ACCESS_TOKEN
+      // means the token never named an item in this environment.
+      if (removedAccessTokens.includes(access_token)) {
+        return plaidReject(400, "ITEM_ERROR", "ITEM_NOT_FOUND", "item does not exist");
+      }
       return plaidReject(
         400,
         "INVALID_INPUT",

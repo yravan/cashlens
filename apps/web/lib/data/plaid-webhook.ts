@@ -61,7 +61,7 @@ async function ownersOfItem(itemId: string): Promise<ItemOwner[]> {
 async function forEachOwner(
   itemId: string,
   failEvent: string,
-  act: (owner: ItemOwner) => Promise<void>,
+  act: (owner: ItemOwner) => Promise<unknown>,
 ): Promise<void> {
   const owners = await ownersOfItem(itemId);
   if (owners.length === 0) {

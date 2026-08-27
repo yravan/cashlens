@@ -1,4 +1,5 @@
 import {
+  ConnectionGoneError,
   DuplicateConnectionError,
   InvalidPublicTokenError,
   ProviderError,
@@ -17,6 +18,9 @@ export function plaidErrorResponse(error: unknown): Response {
   }
   if (error instanceof ReauthRequiredError) {
     return Response.json({ error: "reauth_required" }, { status: 409 });
+  }
+  if (error instanceof ConnectionGoneError) {
+    return Response.json({ error: "connection_gone" }, { status: 410 });
   }
   if (error instanceof RateLimitedError) {
     return Response.json(

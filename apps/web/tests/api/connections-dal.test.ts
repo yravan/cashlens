@@ -40,13 +40,13 @@ test("store → list → read → disconnect lifecycle, all scoped to the signed
   const secret = await withAuth(clerkUserId, () => readConnectionCredential(created.id));
   expect(secret?.expose()).toBe(TOKEN_A);
 
-  expect(await withAuth(clerkUserId, () => disconnectConnection(created.id))).toBe(true);
+  expect(await withAuth(clerkUserId, () => disconnectConnection(created.id))).toEqual({ purgedAccounts: 0 });
   expect(await adminDb().$count(connectionCredentials)).toBe(0);
   const [after] = await adminDb().select().from(connections);
   expect(after.status).toBe("disconnected");
   expect(await withAuth(clerkUserId, () => readConnectionCredential(created.id))).toBeNull();
 
-  expect(await withAuth(clerkUserId, () => disconnectConnection(created.id))).toBe(true);
+  expect(await withAuth(clerkUserId, () => disconnectConnection(created.id))).toEqual({ purgedAccounts: 0 });
   expect(await withAuth(clerkUserId, () => listConnections())).toMatchObject([
     { id: created.id, status: "disconnected" },
   ]);
@@ -78,7 +78,7 @@ test("user B can never list, read, or disconnect user A's connection", async () 
 
   expect(await withAuth(clerkB, () => listConnections())).toEqual([]);
   expect(await withAuth(clerkB, () => readConnectionCredential(created.id))).toBeNull();
-  expect(await withAuth(clerkB, () => disconnectConnection(created.id))).toBe(false);
+  expect(await withAuth(clerkB, () => disconnectConnection(created.id))).toBeNull();
 
   expect(await adminDb().$count(connectionCredentials)).toBe(1);
   const [row] = await adminDb().select().from(connections);
@@ -149,5 +149,5 @@ test("every connection function requires a signed-in user", async () => {
 test("garbage connection ids read as not-found, never as errors", async () => {
   const clerkUserId = fakeClerkUserId();
   expect(await withAuth(clerkUserId, () => readConnectionCredential("not-a-uuid"))).toBeNull();
-  expect(await withAuth(clerkUserId, () => disconnectConnection("not-a-uuid"))).toBe(false);
+  expect(await withAuth(clerkUserId, () => disconnectConnection("not-a-uuid"))).toBeNull();
 });
