@@ -145,11 +145,7 @@ async function actOnItemCode(code: string, itemId: string, error: unknown): Prom
     );
 
   if (code === "ERROR") {
-    const errorCode = boundedText(
-      typeof error === "object" && error !== null
-        ? (error as Record<string, unknown>).error_code
-        : null,
-    );
+    const errorCode = boundedText((error as { error_code?: unknown } | null)?.error_code);
     if (errorCode && LOGIN_REPAIR_CODES.has(errorCode)) return mark(errorCode);
     logEvent("plaid_webhook.item_error_unactioned", { errorCode });
     return;
@@ -161,12 +157,9 @@ async function actOnItemCode(code: string, itemId: string, error: unknown): Prom
       revokeConnectionAs(owner.user, owner.connectionId),
     );
   }
-  if (code === "NEW_ACCOUNTS_AVAILABLE") {
-    // Seam: surfacing newly-visible accounts for relink is 2.1.6 territory.
-    logEvent("plaid_webhook.new_accounts_available", {});
-    return;
-  }
-  // WEBHOOK_UPDATE_ACKNOWLEDGED, USER_ACCOUNT_REVOKED (per-account, item still
-  // live — 2.1.6 seam) and anything newer land here.
+  // Seam: NEW_ACCOUNTS_AVAILABLE keeps its own event for 2.1.6. Everything else
+  // — WEBHOOK_UPDATE_ACKNOWLEDGED, the per-account USER_ACCOUNT_REVOKED, and
+  // anything newer — is acked unactioned.
+  if (code === "NEW_ACCOUNTS_AVAILABLE") return logEvent("plaid_webhook.new_accounts_available", {});
   logEvent("plaid_webhook.ignored", { type: "ITEM", code });
 }

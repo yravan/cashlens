@@ -230,12 +230,11 @@ export async function advanceSyncFor(
       .set({
         syncCursor: run.cursor,
         backfillStatus,
-        // A working sync disproves login-class errors; warning-class codes
-        // (consent lapsing soon) stay until the user actually re-consents.
-        providerError: sql`case when ${connections.providerError} in (${sql.join(
-          [...WARNING_REPAIR_CODES].map((code) => sql`${code}`),
-          sql`, `,
-        )}) then ${connections.providerError} else null end`,
+        // A working sync disproves login-class errors; consent-lapse warnings
+        // stand until the user actually re-consents.
+        providerError: sql`case when ${inArray(connections.providerError, [
+          ...WARNING_REPAIR_CODES,
+        ])} then ${connections.providerError} end`,
         updatedAt: sql`now()`,
       })
       .where(
@@ -314,9 +313,8 @@ export async function advanceSyncFor(
   return { backfillStatus, drained: run.drained, ...counts, skipped: malformed + unregistered };
 }
 
-// Items linked before PLAID_WEBHOOK_URL existed (or before it changed) get the
-// current URL stamped on their first committed run after the change; in steady
-// state the stored copy matches and this is a no-op.
+// Items linked before PLAID_WEBHOOK_URL existed (or changed) self-arm on their
+// first committed run after the change; in steady state the stored copy matches.
 async function armWebhook(
   user: SyncUser,
   connectionId: string,

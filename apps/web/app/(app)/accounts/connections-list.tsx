@@ -26,13 +26,14 @@ export function presentation(connection: Connection): {
     };
   }
   if (providerError) {
+    const lapsing = WARNING_REPAIR_CODES.has(providerError);
     return {
       label: "Needs attention",
       tone: "attention",
-      detail: WARNING_REPAIR_CODES.has(providerError)
+      detail: lapsing
         ? "The bank's access approval expires soon. Reconnect to keep imports flowing."
         : "The bank needs you to sign in again before imports can continue.",
-      repairable: LOGIN_REPAIR_CODES.has(providerError) || WARNING_REPAIR_CODES.has(providerError),
+      repairable: lapsing || LOGIN_REPAIR_CODES.has(providerError),
     };
   }
   if (backfillStatus === "in_progress") {
