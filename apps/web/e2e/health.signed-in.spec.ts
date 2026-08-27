@@ -69,11 +69,16 @@ test.describe("fail-fast when the database is unreachable", () => {
     expect(await response.json()).toEqual({ status: "error", db: "error" });
   });
 
+  // The session is refreshed against the healthy app first: static
+  // storage-state cookies go stale mid-suite (see plaid.signed-in.spec.ts),
+  // and a bounced request would measure the sign-in redirect (200, no
+  // database touched) instead of the database timeout.
   test("an authenticated data request fails fast instead of hanging", async ({
-    request,
+    page,
   }) => {
+    await page.goto("http://localhost:3100/");
     const started = Date.now();
-    const response = await request.get("/api/me");
+    const response = await page.request.get(`${BROKEN_DB_APP_URL}/api/me`);
     expect(Date.now() - started).toBeLessThan(FAIL_FAST_BUDGET_MS);
     expect(response.status()).toBe(500);
     const body = await response.text();

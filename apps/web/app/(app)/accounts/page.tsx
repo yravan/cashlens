@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { listConnectionsWithStats } from "@/lib/data/connections";
 import { ledgerCounts } from "@/lib/data/ledger";
 import { listResumableSyncs } from "@/lib/data/plaid-sync";
 import { requireUser } from "@/lib/data/users";
@@ -13,6 +14,10 @@ export default async function AccountsPage() {
   await requireUser();
   const counts = await ledgerCounts();
   const resumable = await listResumableSyncs();
+  const connections = await listConnectionsWithStats();
+  const activeInstitutionIds = connections.flatMap((connection) =>
+    connection.status === "active" && connection.institutionId ? [connection.institutionId] : [],
+  );
 
   return (
     <>
@@ -28,8 +33,8 @@ export default async function AccountsPage() {
       <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
         The accounts overview lands here (leaf 6.3.1).
       </p>
-      <ConnectButton />
-      <ConnectionsList />
+      <ConnectButton activeInstitutionIds={activeInstitutionIds} />
+      <ConnectionsList connections={connections} />
       <SyncResume connectionIds={resumable} />
     </>
   );

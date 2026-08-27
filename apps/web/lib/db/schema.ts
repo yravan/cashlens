@@ -168,6 +168,10 @@ export const accounts = pgTable(
     index("accounts_user_id_idx").on(t.userId),
     check("accounts_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
     ...ownRowPolicies("accounts"),
+    // Purge (2.1.5): deleting an account cascades its transactions and
+    // balances through composite (id, user_id) FKs, so the cascade can never
+    // cross a user boundary.
+    pgPolicy("accounts_delete_own", { for: "delete", to: appRole, using: ownRow }),
   ],
 );
 

@@ -27,7 +27,7 @@ test.describe("connection management (real sandbox)", () => {
 
   test.afterAll(cleanup);
 
-  async function connectSandboxItem(page: import("@playwright/test").Page): Promise<string> {
+  async function connectSandboxItem(page: import("@playwright/test").Page) {
     const minted = await fetch("https://sandbox.plaid.com/sandbox/public_token/create", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -44,16 +44,17 @@ test.describe("connection management (real sandbox)", () => {
       data: { publicToken: public_token },
     });
     expect(exchanged.status()).toBe(200);
-    return (await exchanged.json()).connection.id;
+    const registered = await exchanged.json();
+    return { connectionId: registered.connection.id as string, accounts: registered.accounts.length };
   }
 
-  test("each connection's status is visible: importing, connected, needs attention, disconnected", async ({
+  test("the management arc: status states, repair mint, disconnect with /item/remove, purge", async ({
     page,
   }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(180_000);
     await page.goto("/accounts");
     await cleanup();
-    const connectionId = await connectSandboxItem(page);
+    const { connectionId, accounts } = await connectSandboxItem(page);
     const row = page.getByTestId(`connection-${connectionId}`);
     const status = row.getByTestId("connection-status");
 
@@ -80,12 +81,43 @@ test.describe("connection management (real sandbox)", () => {
     await expect(status).toHaveText("Needs attention");
     await expect(row).toContainText("sign in again");
 
-    await adminQuery(
-      `with gone as (delete from connection_credentials where connection_id = $1)
-       update connections set status = 'disconnected' where id = $1`,
+    // Repair: the button mints a real update-mode link token with the real
+    // vaulted access token, and Plaid Link mounts on it. The Link UI itself is
+    // never driven (house rule) — completion logic is pinned by the api suite.
+    const tokenResponse = page.waitForResponse("**/repair-token");
+    await row.getByTestId("repair-connection").click();
+    expect((await tokenResponse).status()).toBe(200);
+    await expect(
+      page.locator('iframe[id^="plaid-link-"], iframe[title="Plaid Link"]').first(),
+    ).toBeAttached({ timeout: 20_000 });
+    await page.reload();
+
+    // Disconnect, keeping data: the real /item/remove must succeed first.
+    await row.getByTestId("disconnect-connection").click();
+    await expect(row.getByTestId("disconnect-confirm")).toContainText("access at the bank is revoked");
+    await row.getByTestId("confirm-disconnect").click();
+    await expect(status).toHaveText("Disconnected", { timeout: 15_000 });
+    const afterDisconnect = await adminQuery(
+      `select (select count(*)::int from connection_credentials where connection_id = $1) as credentials,
+              (select count(*)::int from accounts where connection_id = $1) as accounts,
+              (select status from connections where id = $1) as status`,
       [connectionId],
     );
-    await page.reload();
-    await expect(status).toHaveText("Disconnected");
+    expect(afterDisconnect.rows[0].credentials).toBe(0);
+    expect(afterDisconnect.rows[0].accounts).toBe(accounts);
+    expect(afterDisconnect.rows[0].status).toBe("disconnected");
+
+    // Purge the imported data: the row disappears once nothing is left.
+    await row.getByTestId("purge-connection").click();
+    await expect(row.getByTestId("disconnect-confirm")).toContainText("cannot be undone");
+    await row.getByTestId("confirm-disconnect").click();
+    await expect(row).toHaveCount(0, { timeout: 15_000 });
+    const purged = await adminQuery(
+      `select (select count(*)::int from accounts where user_id in (select id from users where clerk_user_id = $1)) as accounts,
+              (select count(*)::int from transactions where user_id in (select id from users where clerk_user_id = $1)) as transactions,
+              (select count(*)::int from account_balances where user_id in (select id from users where clerk_user_id = $1)) as balances`,
+      [clerkIdA()],
+    );
+    expect(purged.rows[0]).toEqual({ accounts: 0, transactions: 0, balances: 0 });
   });
 });

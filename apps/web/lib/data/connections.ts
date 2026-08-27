@@ -1,10 +1,10 @@
 import "server-only";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, count, countDistinct, eq, sql } from "drizzle-orm";
 
 import { decryptCredential, encryptCredential, SecretString, UUID_PATTERN } from "@/lib/crypto/credentials";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
-import { connectionCredentials, connections } from "@/lib/db/schema";
+import { accounts, connectionCredentials, connections, transactions } from "@/lib/db/schema";
 
 const safeShape = {
   id: connections.id,
@@ -82,6 +82,31 @@ export async function listConnections() {
   );
 }
 
+export async function listConnectionsWithStats() {
+  const user = await requireUser();
+  const [listed, stats] = await Promise.all([
+    listConnections(),
+    withRequestScope(user.clerkUserId, (tx) =>
+      tx
+        .select({
+          connectionId: accounts.connectionId,
+          accounts: countDistinct(accounts.id),
+          transactions: count(transactions.id),
+        })
+        .from(accounts)
+        .leftJoin(transactions, eq(transactions.accountId, accounts.id))
+        .where(eq(accounts.userId, user.id))
+        .groupBy(accounts.connectionId),
+    ),
+  ]);
+  const byConnection = new Map(stats.map((row) => [row.connectionId, row]));
+  return listed.map((connection) => ({
+    ...connection,
+    accounts: byConnection.get(connection.id)?.accounts ?? 0,
+    transactions: byConnection.get(connection.id)?.transactions ?? 0,
+  }));
+}
+
 export async function readConnectionCredential(
   connectionId: string,
 ): Promise<SecretString | null> {
@@ -114,21 +139,29 @@ export async function setProviderErrorAs(
   user: ConnectionUser,
   connectionId: string,
   code: string | null,
-): Promise<void> {
-  await withRequestScope(user.clerkUserId, (tx) =>
+): Promise<boolean> {
+  const updated = await withRequestScope(user.clerkUserId, (tx) =>
     tx
       .update(connections)
       .set({ providerError: code, updatedAt: sql`now()` })
-      .where(and(ownConnection(connectionId, user.id), eq(connections.status, "active"))),
+      .where(and(ownConnection(connectionId, user.id), eq(connections.status, "active")))
+      .returning({ id: connections.id }),
   );
+  return updated.length > 0;
 }
 
+export type DisconnectResult = { purgedAccounts: number };
+
+// Local state only — the provider-side /item/remove must already have succeeded
+// or been deliberately skipped (lib/data/plaid.ts orchestrates). Purge deletes
+// the connection's accounts; transactions and balances follow through the
+// user-scoped composite-FK cascades.
 async function disconnectConnectionAs(
   user: ConnectionUser,
   connectionId: string,
-  providerError?: string,
-): Promise<boolean> {
-  if (!UUID_PATTERN.test(connectionId)) return false;
+  { purge = false, providerError }: { purge?: boolean; providerError?: string } = {},
+): Promise<DisconnectResult | null> {
+  if (!UUID_PATTERN.test(connectionId)) return null;
   return withRequestScope(user.clerkUserId, async (tx) => {
     await tx.delete(connectionCredentials).where(ownCredential(connectionId, user.id));
     const updated = await tx
@@ -136,7 +169,13 @@ async function disconnectConnectionAs(
       .set({ status: "disconnected", updatedAt: sql`now()`, ...(providerError && { providerError }) })
       .where(ownConnection(connectionId, user.id))
       .returning({ id: connections.id });
-    return updated.length > 0;
+    if (updated.length === 0) return null;
+    if (!purge) return { purgedAccounts: 0 };
+    const purged = await tx
+      .delete(accounts)
+      .where(and(eq(accounts.connectionId, connectionId), eq(accounts.userId, user.id)))
+      .returning({ id: accounts.id });
+    return { purgedAccounts: purged.length };
   });
 }
 
@@ -144,8 +183,9 @@ async function disconnectConnectionAs(
 // goes now and the tombstone carries the reason. Imported data stays until the
 // user chooses to purge it.
 export const revokeConnectionAs = (user: ConnectionUser, connectionId: string) =>
-  disconnectConnectionAs(user, connectionId, "USER_PERMISSION_REVOKED");
+  disconnectConnectionAs(user, connectionId, { providerError: "USER_PERMISSION_REVOKED" });
 
-export async function disconnectConnection(connectionId: string): Promise<boolean> {
-  return disconnectConnectionAs(await requireUser(), connectionId);
-}
+export const disconnectConnection = async (
+  connectionId: string,
+  options: { purge?: boolean } = {},
+) => disconnectConnectionAs(await requireUser(), connectionId, options);

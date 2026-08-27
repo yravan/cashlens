@@ -1,7 +1,9 @@
-import { listConnections } from "@/lib/data/connections";
+import type { listConnectionsWithStats } from "@/lib/data/connections";
 import { LOGIN_REPAIR_CODES, WARNING_REPAIR_CODES } from "@/lib/data/plaid";
+import { ConnectionActions } from "./connection-actions";
 
-export type Connection = Awaited<ReturnType<typeof listConnections>>[number];
+export type ConnectionWithStats = Awaited<ReturnType<typeof listConnectionsWithStats>>[number];
+type Connection = Pick<ConnectionWithStats, "status" | "backfillStatus" | "providerError">;
 
 type Tone = "ok" | "attention" | "muted";
 
@@ -46,8 +48,10 @@ const badgeTone: Record<Tone, string> = {
   muted: "border-zinc-200 text-zinc-400 dark:border-zinc-800 dark:text-zinc-500",
 };
 
-export async function ConnectionsList() {
-  const connections = await listConnections();
+export function ConnectionsList({ connections: all }: { connections: ConnectionWithStats[] }) {
+  const connections = all.filter(
+    (connection) => !(connection.status === "disconnected" && connection.accounts === 0),
+  );
   if (connections.length === 0) return null;
 
   return (
@@ -76,6 +80,16 @@ export async function ConnectionsList() {
               {shown.detail && (
                 <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{shown.detail}</p>
               )}
+              <ConnectionActions
+                connection={{
+                  id: connection.id,
+                  name: connection.institutionName ?? "this bank",
+                  status: connection.status,
+                  repairable: shown.repairable,
+                  accounts: connection.accounts,
+                  transactions: connection.transactions,
+                }}
+              />
             </li>
           );
         })}

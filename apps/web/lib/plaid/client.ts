@@ -89,6 +89,28 @@ export async function createLinkToken(clientUserId: string): Promise<string> {
   }
 }
 
+// Update mode: the presence of access_token is the trigger; products must be
+// omitted and a webhook field would be ignored. The token stays valid and
+// unchanged — the public_token from a completed update session is never
+// exchanged.
+export async function createUpdateLinkToken(
+  clientUserId: string,
+  accessToken: string,
+): Promise<string> {
+  try {
+    const { data } = await client().linkTokenCreate({
+      client_name: "Cash Lens",
+      language: "en",
+      country_codes: [CountryCode.Us],
+      user: { client_user_id: clientUserId },
+      access_token: accessToken,
+    });
+    return data.link_token;
+  } catch (error) {
+    domainError(error);
+  }
+}
+
 export async function exchangePublicToken(
   publicToken: string,
 ): Promise<{ accessToken: string; itemId: string }> {

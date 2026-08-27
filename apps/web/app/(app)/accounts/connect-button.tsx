@@ -42,10 +42,13 @@ async function importHistory(connectionId: string, connected: string, setStatus:
   }
 }
 
-export function ConnectButton() {
+type PendingDuplicate = { publicToken: string; institution: string };
+
+export function ConnectButton({ activeInstitutionIds = [] }: { activeInstitutionIds?: string[] }) {
   const router = useRouter();
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [duplicate, setDuplicate] = useState<PendingDuplicate | null>(null);
 
   const start = async () => {
     setStatus({ kind: "busy", text: "Opening Plaid Link…" });
@@ -58,9 +61,8 @@ export function ConnectButton() {
     }
   };
 
-  const onSuccess = useCallback<PlaidLinkOnSuccess>(
-    async (publicToken) => {
-      setLinkToken(null);
+  const exchange = useCallback(
+    async (publicToken: string) => {
       setStatus({ kind: "busy", text: "Registering accounts…" });
       try {
         const response = await fetch("/api/plaid/exchange", {
@@ -84,6 +86,38 @@ export function ConnectButton() {
       }
     },
     [router],
+  );
+
+  // Link already created the item at the bank, so backing out must burn it
+  // server-side — dropping the token would leave an orphan item at Plaid.
+  const cancelDuplicate = (publicToken: string) => {
+    setDuplicate(null);
+    setStatus({ kind: "idle" });
+    void fetch("/api/plaid/abandon", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ publicToken }),
+    }).catch(() => {});
+  };
+
+  const onSuccess = useCallback<PlaidLinkOnSuccess>(
+    async (publicToken, metadata) => {
+      setLinkToken(null);
+      // react-plaid-link types public_token as nullable; without a token there
+      // is nothing to exchange and nothing to abandon.
+      if (!publicToken) {
+        setStatus({ kind: "error", text: "Connection was interrupted. Try again." });
+        return;
+      }
+      const institution = metadata.institution;
+      if (institution?.institution_id && activeInstitutionIds.includes(institution.institution_id)) {
+        setStatus({ kind: "idle" });
+        setDuplicate({ publicToken, institution: institution.name ?? "This institution" });
+        return;
+      }
+      await exchange(publicToken);
+    },
+    [exchange, activeInstitutionIds],
   );
 
   const onExit = useCallback<PlaidLinkOnExit>((error) => {
@@ -112,6 +146,38 @@ export function ConnectButton() {
       >
         Connect a bank or card
       </button>
+      {duplicate && (
+        <div
+          data-testid="duplicate-warning"
+          className="mt-3 max-w-md rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950"
+        >
+          <p>
+            {duplicate.institution} is already connected. Connect it again anyway? The same
+            accounts would import twice.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              data-testid="duplicate-continue"
+              onClick={() => {
+                setDuplicate(null);
+                void exchange(duplicate.publicToken);
+              }}
+              className="rounded-md bg-zinc-900 px-3 py-1.5 font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            >
+              Connect anyway
+            </button>
+            <button
+              type="button"
+              data-testid="duplicate-cancel"
+              onClick={() => cancelDuplicate(duplicate.publicToken)}
+              className="rounded-md border border-zinc-300 px-3 py-1.5 font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {status.text && (
         <p
           data-testid="connect-status"
