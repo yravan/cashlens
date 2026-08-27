@@ -33,13 +33,20 @@ export type SandboxTransaction = {
   pending_transaction_id: string | null;
 };
 
+export type RemovedRef = { transaction_id: string; account_id: string };
+
+type SyncEvent =
+  | { kind: "added"; txn: SandboxTransaction }
+  | { kind: "modified"; txn: SandboxTransaction }
+  | { kind: "removed"; ref: RemovedRef };
+
 type SandboxItem = {
   access_token: string;
   item_id: string;
   institution_id: string;
   institution_name: string;
   accounts: SandboxAccount[];
-  syncLog: SandboxTransaction[];
+  syncLog: SyncEvent[];
   updateStatus: string;
 };
 
@@ -49,8 +56,11 @@ export const linkTokenRequests: Array<Record<string, unknown>> = [];
 export const exchangeRequests: string[] = [];
 export const removedAccessTokens: string[] = [];
 export const syncRequests: Array<{ cursor?: string; count?: number }> = [];
+export const balanceRequests: Array<{ min_last_updated_datetime?: string }> = [];
 let syncPageCap = Infinity;
 const syncFailures: Array<{ errorType: string; errorCode: string; after: number }> = [];
+const balanceFailures: Array<{ errorType: string; errorCode: string }> = [];
+let afterSyncPage: (() => Promise<void>) | null = null;
 
 export function resetPlaidSubstitute(): void {
   byPublicToken.clear();
@@ -59,8 +69,11 @@ export function resetPlaidSubstitute(): void {
   exchangeRequests.length = 0;
   removedAccessTokens.length = 0;
   syncRequests.length = 0;
+  balanceRequests.length = 0;
   syncFailures.length = 0;
+  balanceFailures.length = 0;
   syncPageCap = Infinity;
+  afterSyncPage = null;
 }
 
 export function capSyncPageSize(size: number): void {
@@ -69,6 +82,16 @@ export function capSyncPageSize(size: number): void {
 
 export function failNextSync(errorType: string, errorCode: string, after = 0): void {
   syncFailures.push({ errorType, errorCode, after });
+}
+
+export function failNextBalanceGet(errorType: string, errorCode: string): void {
+  balanceFailures.push({ errorType, errorCode });
+}
+
+// Runs once after the next served sync page — lets a test interleave a full
+// competing run into the middle of another run's pagination.
+export function onceAfterSyncPage(fn: () => Promise<void>): void {
+  afterSyncPage = fn;
 }
 
 export function sandboxTransaction(
@@ -95,11 +118,21 @@ export function sandboxTransaction(
 
 export function pushSyncUpdates(
   accessToken: string,
-  updates: { added?: SandboxTransaction[]; updateStatus?: string; balances?: Record<string, Partial<SandboxBalances>> },
+  updates: {
+    added?: SandboxTransaction[];
+    modified?: SandboxTransaction[];
+    removed?: RemovedRef[];
+    updateStatus?: string;
+    balances?: Record<string, Partial<SandboxBalances>>;
+  },
 ): void {
   const item = byAccessToken.get(accessToken);
   if (!item) throw new Error("unknown sandbox access token — mint the item first");
-  item.syncLog.push(...(updates.added ?? []));
+  item.syncLog.push(
+    ...(updates.added ?? []).map((txn) => ({ kind: "added", txn }) as const),
+    ...(updates.modified ?? []).map((txn) => ({ kind: "modified", txn }) as const),
+    ...(updates.removed ?? []).map((ref) => ({ kind: "removed", ref }) as const),
+  );
   if (updates.updateStatus) item.updateStatus = updates.updateStatus;
   for (const [accountId, patch] of Object.entries(updates.balances ?? {})) {
     const account = item.accounts.find((candidate) => candidate.account_id === accountId);
@@ -222,6 +255,9 @@ export const PlaidEnvironments: Record<string, string> = {
 export const Products = { Transactions: "transactions" } as const;
 export const CountryCode = { Us: "US" } as const;
 export const TransactionsUpdateStatus = {
+  TransactionsUpdateStatusUnknown: "TRANSACTIONS_UPDATE_STATUS_UNKNOWN",
+  NotReady: "NOT_READY",
+  InitialUpdateComplete: "INITIAL_UPDATE_COMPLETE",
   HistoricalUpdateComplete: "HISTORICAL_UPDATE_COMPLETE",
 } as const;
 
@@ -308,14 +344,35 @@ export class PlaidApi {
     const page = item.syncLog.slice(start, start + Math.min(count ?? 100, syncPageCap));
     const end = start + page.length;
     const primed = item.syncLog.length > 0 || item.updateStatus !== "NOT_READY";
+    if (afterSyncPage) {
+      const hook = afterSyncPage;
+      afterSyncPage = null;
+      await hook();
+    }
     return respond({
-      added: structuredClone(page),
-      modified: [],
-      removed: [],
+      added: structuredClone(page.flatMap((event) => (event.kind === "added" ? [event.txn] : []))),
+      modified: structuredClone(page.flatMap((event) => (event.kind === "modified" ? [event.txn] : []))),
+      removed: structuredClone(page.flatMap((event) => (event.kind === "removed" ? [event.ref] : []))),
       accounts: structuredClone(item.accounts),
       next_cursor: primed ? `sync-cursor-${end}` : "",
       has_more: end < item.syncLog.length,
       transactions_update_status: item.updateStatus,
+    });
+  }
+
+  async accountsBalanceGet({ access_token, options }: { access_token: string; options?: { min_last_updated_datetime?: string } }) {
+    balanceRequests.push({ min_last_updated_datetime: options?.min_last_updated_datetime });
+    const failure = balanceFailures.shift();
+    if (failure) {
+      return plaidReject(400, failure.errorType, failure.errorCode, "injected balance failure");
+    }
+    const item = byAccessToken.get(access_token);
+    if (!item) {
+      return plaidReject(400, "INVALID_INPUT", "INVALID_ACCESS_TOKEN", "could not find matching access token");
+    }
+    return respond({
+      accounts: structuredClone(item.accounts),
+      item: { item_id: item.item_id, institution_id: item.institution_id },
     });
   }
 

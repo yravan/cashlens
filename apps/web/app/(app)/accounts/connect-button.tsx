@@ -8,6 +8,8 @@ import {
   type PlaidLinkOnSuccess,
 } from "react-plaid-link";
 
+import { pollSync } from "./sync-poll";
+
 type Status = { kind: "idle" | "busy" | "done" | "error"; text?: string };
 
 function exchangeFailureText(body: { error?: string; message?: string | null } | null): string {
@@ -18,22 +20,25 @@ function exchangeFailureText(body: { error?: string; message?: string | null } |
 
 async function importHistory(connectionId: string, connected: string, setStatus: (status: Status) => void) {
   let imported = 0;
+  const importing = () =>
+    setStatus({ kind: "busy", text: `${connected}. Importing transaction history… (${imported} so far)` });
   try {
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      setStatus({ kind: "busy", text: `${connected}. Importing transaction history… (${imported} so far)` });
-      const response = await fetch(`/api/connections/${connectionId}/sync`, { method: "POST" });
-      if (!response.ok) throw new Error();
-      const step = await response.json();
-      imported += step.added;
-      if (step.backfillStatus === "complete") {
-        setStatus({ kind: "done", text: `${connected}, ${imported} transactions imported.` });
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-    }
-    setStatus({ kind: "done", text: `${connected}. History is still importing — check back shortly.` });
+    importing();
+    const finished = await pollSync(connectionId, {
+      idleMs: 1500,
+      onStep: (step) => {
+        imported += step.added;
+        importing();
+      },
+    });
+    setStatus({
+      kind: "done",
+      text: finished
+        ? `${connected}, ${imported} transactions imported.`
+        : `${connected}. History is still importing — check back shortly.`,
+    });
   } catch {
-    setStatus({ kind: "error", text: `${connected}, but the history import was interrupted. It will resume on the next sync.` });
+    setStatus({ kind: "error", text: `${connected}, but the history import was interrupted. It will resume next time you open Accounts.` });
   }
 }
 

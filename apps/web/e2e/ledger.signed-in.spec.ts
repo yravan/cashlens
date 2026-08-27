@@ -196,12 +196,14 @@ test.describe("ledger row-level security backstop", () => {
     ).rejects.toMatchObject({ code: "23514" });
   });
 
-  test("the app role's only ledger write paths are inserts and the 2.1.3 balance refresh", async () => {
+  test("the app role's ledger write surface: inserts, the balance refresh, and the scoped 2.1.4 transaction lifecycle", async () => {
     for (const statement of [
       "update accounts set name = 'overwritten'",
       "delete from accounts",
-      "update transactions set amount_minor = 0",
-      "delete from transactions",
+      "update transactions set user_id = user_id",
+      "update transactions set account_id = account_id",
+      "update transactions set source = source",
+      "update transactions set source_id = source_id",
       "update account_balances set user_id = user_id",
       "delete from account_balances",
     ]) {
@@ -215,6 +217,26 @@ test.describe("ledger row-level security backstop", () => {
       "update account_balances set current_minor = 0 returning account_id",
     );
     expect(refresh.rows).toEqual([{ account_id: a.accountId }]);
+
+    const modified = await appQueryScopedAs(
+      PROBE_A,
+      "update transactions set amount_minor = amount_minor - 1 returning user_id",
+    );
+    expect(modified.rowCount).toBe(2);
+    for (const row of modified.rows) expect(row.user_id).toBe(a.userId);
+
+    const removed = await appQueryScopedAs(
+      PROBE_A,
+      "delete from transactions returning user_id",
+    );
+    expect(removed.rowCount).toBe(2);
+    for (const row of removed.rows) expect(row.user_id).toBe(a.userId);
+
+    const bSurvives = await adminQuery(
+      "select count(*)::int as n from transactions where user_id = $1",
+      [b.userId],
+    );
+    expect(bSurvives.rows[0].n).toBe(1);
   });
 
   test("deleting a user cascades through accounts, balances, and transactions", async () => {

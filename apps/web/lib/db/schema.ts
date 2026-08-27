@@ -185,6 +185,13 @@ export const transactions = pgTable(
     index("transactions_account_date_idx").on(t.accountId, t.date),
     check("transactions_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
     ...ownRowPolicies("transactions"),
+    pgPolicy("transactions_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
+    pgPolicy("transactions_delete_own", { for: "delete", to: appRole, using: ownRow }),
   ],
 );
 
