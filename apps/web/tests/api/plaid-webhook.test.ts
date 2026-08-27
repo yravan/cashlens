@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, expect, test } from "vitest";
 
-import { POST as webhookRoute } from "@/app/api/plaid/webhook/route";
 import { POST as linkToken } from "@/app/api/plaid/link-token/route";
 import { resetWebhookKeyCache } from "@/lib/plaid/webhook";
 import { connections, transactions } from "@/lib/db/schema";
@@ -18,39 +17,12 @@ import {
   WEBHOOK_RETIRED_KID,
   webhookKeyRequests,
 } from "../harness/plaid";
-import { backfilled, CHECKING, ledgerRows } from "./plaid-helpers";
+import { backfilled, CHECKING, ledgerRows, postWebhook, webhookBody } from "./plaid-helpers";
 
 beforeEach(() => {
   resetPlaidSubstitute();
   resetWebhookKeyCache();
 });
-
-const postWebhook = (rawBody: string, jwt: string | null) =>
-  webhookRoute(
-    new Request("http://localhost/api/plaid/webhook", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        host: "localhost",
-        ...(jwt === null ? {} : { "plaid-verification": jwt }),
-      },
-      body: rawBody,
-    }),
-  );
-
-const webhookBody = (itemId: string, code = "SYNC_UPDATES_AVAILABLE", type = "TRANSACTIONS") =>
-  JSON.stringify(
-    {
-      webhook_type: type,
-      webhook_code: code,
-      item_id: itemId,
-      initial_update_complete: true,
-      historical_update_complete: true,
-      environment: "sandbox",
-    },
-    null,
-    2,
-  );
 
 const storedCursor = async (connectionId: string) => {
   const [row] = await adminDb()
