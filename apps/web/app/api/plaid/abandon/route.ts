@@ -1,6 +1,6 @@
 import { guardPost } from "@/lib/api/guard";
 import { plaidErrorResponse } from "@/lib/api/plaid-errors";
-import { connectPlaidItem, PUBLIC_TOKEN_PATTERN } from "@/lib/data/plaid";
+import { abandonPlaidItem, PUBLIC_TOKEN_PATTERN } from "@/lib/data/plaid";
 
 export async function POST(request: Request) {
   const denied = await guardPost(request);
@@ -13,7 +13,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    return Response.json(await connectPlaidItem(publicToken));
+    await abandonPlaidItem(publicToken);
+    return Response.json({ abandoned: true });
   } catch (error) {
     return plaidErrorResponse(error);
   }

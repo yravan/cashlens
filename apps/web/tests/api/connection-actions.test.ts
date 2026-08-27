@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { beforeEach, expect, test } from "vitest";
 
+import { POST as abandonRoute } from "@/app/api/plaid/abandon/route";
 import { POST as disconnectRoute } from "@/app/api/connections/[connectionId]/disconnect/route";
 import { POST as repairTokenRoute } from "@/app/api/connections/[connectionId]/repair-token/route";
 import { POST as repairedRoute } from "@/app/api/connections/[connectionId]/repaired/route";
@@ -19,6 +20,7 @@ import {
   linkTokenRequests,
   removedAccessTokens,
   removeItemRemotely,
+  mintSandboxItem,
   resetPlaidSubstitute,
   revokeAccessToken,
   sandboxTransaction,
@@ -285,6 +287,29 @@ test("boundary: malformed purge flags and garbage ids never reach the provider o
   }
   await expect(connectionRow(item.connectionId)).resolves.toMatchObject({ status: "active" });
   expect(removedAccessTokens).toHaveLength(0);
+});
+
+test("an abandoned Link session burns the item at Plaid and stores nothing", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const minted = mintSandboxItem();
+  const postAbandon = (publicToken: string) =>
+    abandonRoute(
+      new Request("http://localhost/api/plaid/abandon", {
+        method: "POST",
+        headers: { "content-type": "application/json", host: "localhost" },
+        body: JSON.stringify({ publicToken }),
+      }),
+    );
+
+  const response = await withAuth(clerkUserId, () => postAbandon(minted.publicToken));
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toEqual({ abandoned: true });
+  expect(removedAccessTokens).toEqual([minted.accessToken]);
+  await expect(adminDb().$count(connections)).resolves.toBe(0);
+  await expect(adminDb().$count(connectionCredentials)).resolves.toBe(0);
+
+  expect((await withAuth(clerkUserId, () => postAbandon("garbage"))).status).toBe(400);
+  expect((await postAbandon(minted.publicToken)).status).toBe(401);
 });
 
 test("no connection route response ever carries the access token or any ciphertext", async () => {
