@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
-import { EXPECTED, SEED_CLERK_IDS } from "../db/seed/dataset";
+import { EXPECTED, SEED_CLERK_IDS, type ExpectedPersona } from "../db/seed/dataset";
+import { formatMinorUnits } from "../lib/ledger/minor-units";
 import { E2E_USERS_FILE, STORAGE_STATE_B } from "../playwright.config";
 import { adminQuery, appQuery, appQueryScopedAs, seedLedgerFixture } from "./db";
 
@@ -275,13 +276,54 @@ test.describe("ledger read seam", () => {
   }
 
   const inLedger = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"} in the ledger`;
+  const groupLabel = {
+    depository: "Cash",
+    credit: "Credit",
+    loan: "Loans",
+    investment: "Investments",
+    other: "Other",
+  } as const;
 
-  async function expectCounts(page: Page, accounts: number, transactions: number) {
+  async function expectOverview(page: Page, expected: ExpectedPersona) {
     await page.goto("/accounts");
-    await expect(page.getByTestId("accounts-count")).toHaveText(inLedger(accounts, "account"));
+    await expect(page.getByTestId("accounts-count")).toHaveText(
+      inLedger(expected.accounts, "account"),
+    );
+    await expect(page.getByTestId("account-row")).toHaveCount(expected.accounts);
+    if (expected.accounts === 0) {
+      await expect(page.getByText("No accounts yet")).toBeVisible();
+      return;
+    }
+    for (const type of new Set(expected.overview.accounts.map((account) => account.type))) {
+      await expect(page.getByTestId(`account-group-${type}`)).toContainText(groupLabel[type]);
+    }
+    for (const account of expected.overview.accounts) {
+      const row = page.getByTestId("account-row").filter({ hasText: account.name });
+      await expect(row).toHaveCount(1);
+      await expect(row).toContainText(
+        account.currentMinor === null
+          ? "Balance unavailable"
+          : formatMinorUnits(account.currentMinor, account.currency),
+      );
+      if (account.mask) await expect(row).toContainText(`•••• ${account.mask}`);
+    }
+    for (const [currency, amount] of Object.entries(expected.overview.cashOnHand)) {
+      await expect(page.getByTestId(`cash-on-hand-${currency}`)).toHaveText(
+        formatMinorUnits(amount, currency),
+      );
+    }
+    for (const [currency, amount] of Object.entries(expected.overview.creditOwed)) {
+      await expect(page.getByTestId(`credit-owed-${currency}`)).toHaveText(
+        formatMinorUnits(amount, currency),
+      );
+    }
+  }
+
+  async function expectLedger(page: Page, expected: ExpectedPersona) {
+    await expectOverview(page, expected);
     await page.goto("/transactions");
     await expect(page.getByTestId("transactions-count")).toHaveText(
-      inLedger(transactions, "transaction"),
+      inLedger(expected.transactions, "transaction"),
     );
   }
 
@@ -300,7 +342,7 @@ test.describe("ledger read seam", () => {
       [clerkIdOf("a")],
     );
 
-    await expectCounts(page, 0, 0);
+    await expectLedger(page, EXPECTED.empty);
   });
 
   test("pages count exactly the signed-in user's ledger, not anyone else's", async ({
@@ -327,7 +369,7 @@ test.describe("ledger read seam", () => {
     ]);
     await seedLedgerFixture({ demo: userA, neighbor: userB });
 
-    await expectCounts(page, EXPECTED.demo.accounts, EXPECTED.demo.transactions);
+    await expectLedger(page, EXPECTED.demo);
 
     const contextB = await browser.newContext({
       baseURL,
@@ -335,7 +377,7 @@ test.describe("ledger read seam", () => {
     });
     try {
       const pageB = await contextB.newPage();
-      await expectCounts(pageB, EXPECTED.neighbor.accounts, EXPECTED.neighbor.transactions);
+      await expectLedger(pageB, EXPECTED.neighbor);
     } finally {
       await contextB.close();
     }
