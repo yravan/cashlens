@@ -92,6 +92,10 @@ export const SEED_BALANCES: SeedRow<typeof accountBalances.$inferInsert>[] = [
 ];
 
 type PostedTotals = { inflowMinor: number; outflowMinor: number; netMinor: number; count: number };
+type OverviewAccount = Pick<
+  (typeof SEED_ACCOUNTS)[number],
+  "name" | "type" | "subtype" | "mask" | "currency"
+> & { currentMinor: number | null };
 
 export type ExpectedPersona = {
   accounts: number;
@@ -99,7 +103,51 @@ export type ExpectedPersona = {
   balances: number;
   pendingCount: number;
   posted: Record<string, PostedTotals>;
+  overview: {
+    accounts: OverviewAccount[];
+    cashOnHand: Record<string, number>;
+    creditOwed: Record<string, number>;
+  };
 };
+
+const ACCOUNT_TYPE_ORDER = ["depository", "credit", "loan", "investment", "other"];
+
+function overviewFor(persona: SeedPersona): ExpectedPersona["overview"] {
+  const balances = new Map(
+    SEED_BALANCES.filter((balance) => balance.persona === persona).map((balance) => [
+      balance.accountId,
+      balance.currentMinor ?? null,
+    ]),
+  );
+  const overviewAccounts = SEED_ACCOUNTS.filter((account) => account.persona === persona)
+    .map(({ name, type, subtype, mask, currency, id }) => ({
+      name,
+      type,
+      subtype: subtype ?? null,
+      mask: mask ?? null,
+      currency,
+      currentMinor: balances.get(id) ?? null,
+    }))
+    .sort(
+      (a, b) =>
+        ACCOUNT_TYPE_ORDER.indexOf(a.type) - ACCOUNT_TYPE_ORDER.indexOf(b.type) ||
+        a.name.localeCompare(b.name),
+    );
+  const total = (type: "depository" | "credit") => {
+    const totals: Record<string, number> = {};
+    for (const account of overviewAccounts) {
+      if (account.type === type && account.currentMinor !== null) {
+        totals[account.currency] = (totals[account.currency] ?? 0) + account.currentMinor;
+      }
+    }
+    return totals;
+  };
+  return {
+    accounts: overviewAccounts,
+    cashOnHand: total("depository"),
+    creditOwed: total("credit"),
+  };
+}
 
 function expectedFor(persona: SeedPersona): ExpectedPersona {
   const mine = SEED_TRANSACTIONS.filter((t) => t.persona === persona);
@@ -118,6 +166,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     balances: SEED_BALANCES.filter((b) => b.persona === persona).length,
     pendingCount: mine.filter((t) => t.status === "pending").length,
     posted,
+    overview: overviewFor(persona),
   };
 }
 

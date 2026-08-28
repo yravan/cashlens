@@ -20,6 +20,17 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
       USD: { inflowMinor: 727112, outflowMinor: -239278, netMinor: 487834, count: 13 },
       EUR: { inflowMinor: 20000, outflowMinor: -5650, netMinor: 14350, count: 2 },
     },
+    overview: {
+      accounts: [
+        { name: "Berlin Checking", type: "depository", subtype: "checking", mask: "0300", currency: "EUR", currentMinor: 120450 },
+        { name: "Everyday Checking", type: "depository", subtype: "checking", mask: "0100", currency: "USD", currentMinor: 235370 },
+        { name: "Rainy Day Savings", type: "depository", subtype: "savings", mask: "0200", currency: "USD", currentMinor: 1500000 },
+        { name: "Cash Rewards Card", type: "credit", subtype: "credit card", mask: "4321", currency: "USD", currentMinor: 51245 },
+        { name: "Cash Wallet", type: "other", subtype: null, mask: null, currency: "USD", currentMinor: 8600 },
+      ],
+      cashOnHand: { EUR: 120450, USD: 1735370 },
+      creditOwed: { USD: 51245 },
+    },
   });
   expect(EXPECTED.neighbor).toEqual({
     accounts: 1,
@@ -27,6 +38,13 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     balances: 1,
     pendingCount: 0,
     posted: { USD: { inflowMinor: 75000, outflowMinor: -12345, netMinor: 62655, count: 2 } },
+    overview: {
+      accounts: [
+        { name: "Neighbor Checking", type: "depository", subtype: "checking", mask: "0900", currency: "USD", currentMinor: 50000 },
+      ],
+      cashOnHand: { USD: 50000 },
+      creditOwed: {},
+    },
   });
   expect(EXPECTED.empty).toEqual({
     accounts: 0,
@@ -34,6 +52,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     balances: 0,
     pendingCount: 0,
     posted: {},
+    overview: { accounts: [], cashOnHand: {}, creditOwed: {} },
   });
 });
 
@@ -67,7 +86,7 @@ test("the dataset's transfer pairs cancel exactly", () => {
   }
 });
 
-async function personaInDb(userId: string): Promise<ExpectedPersona> {
+async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview">> {
   const db = adminDb();
   const mine = eq(transactions.userId, userId);
   const posted = await db
@@ -91,11 +110,24 @@ async function personaInDb(userId: string): Promise<ExpectedPersona> {
   };
 }
 
+function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]) {
+  const expected = EXPECTED[persona];
+  return {
+    accounts: expected.accounts,
+    transactions: expected.transactions,
+    balances: expected.balances,
+    pendingCount: expected.pendingCount,
+    posted: expected.posted,
+  };
+}
+
 test("seeding lands every persona's ledger in the database exactly, and reseeding is idempotent", async () => {
   await seedDataset(adminDb());
   const ids = await seedDataset(adminDb());
 
-  for (const persona of SEED_PERSONAS) expect(await personaInDb(ids[persona])).toEqual(EXPECTED[persona]);
+  for (const persona of SEED_PERSONAS) {
+    expect(await personaInDb(ids[persona])).toEqual(ledgerExpected(persona));
+  }
 
   expect(await adminDb().$count(users, eq(users.clerkUserId, SEED_USERS.demo.clerkUserId))).toBe(1);
 });
@@ -107,8 +139,8 @@ test("seedDataset attaches persona ledgers to caller-provided users", async () =
   const ids = await seedDataset(adminDb(), { demo: realUser.id });
 
   expect(ids.demo).toBe(realUser.id);
-  expect(await personaInDb(realUser.id)).toEqual(EXPECTED.demo);
-  expect(await personaInDb(SEED_USERS.neighbor.id)).toEqual(EXPECTED.neighbor);
+  expect(await personaInDb(realUser.id)).toEqual(ledgerExpected("demo"));
+  expect(await personaInDb(SEED_USERS.neighbor.id)).toEqual(ledgerExpected("neighbor"));
   await expect(withAuth(clerkUserId, () => ledgerCounts())).resolves.toEqual({
     accounts: EXPECTED.demo.accounts,
     transactions: EXPECTED.demo.transactions,
