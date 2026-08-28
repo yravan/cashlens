@@ -113,20 +113,12 @@ export type ExpectedPersona = {
 const ACCOUNT_TYPE_ORDER = ["depository", "credit", "loan", "investment", "other"];
 
 function overviewFor(persona: SeedPersona): ExpectedPersona["overview"] {
-  const balances = new Map(
-    SEED_BALANCES.filter((balance) => balance.persona === persona).map((balance) => [
-      balance.accountId,
-      balance.currentMinor ?? null,
-    ]),
+  const current = new Map(
+    SEED_BALANCES.filter((b) => b.persona === persona).map((b) => [b.accountId, b.currentMinor ?? null]),
   );
-  const overviewAccounts = SEED_ACCOUNTS.filter((account) => account.persona === persona)
-    .map(({ name, type, subtype, mask, currency, id }) => ({
-      name,
-      type,
-      subtype: subtype ?? null,
-      mask: mask ?? null,
-      currency,
-      currentMinor: balances.get(id) ?? null,
+  const accounts = SEED_ACCOUNTS.filter((a) => a.persona === persona)
+    .map(({ id, name, type, subtype, mask, currency }) => ({
+      name, type, subtype: subtype ?? null, mask: mask ?? null, currency, currentMinor: current.get(id) ?? null,
     }))
     .sort(
       (a, b) =>
@@ -135,18 +127,14 @@ function overviewFor(persona: SeedPersona): ExpectedPersona["overview"] {
     );
   const total = (type: "depository" | "credit") => {
     const totals: Record<string, number> = {};
-    for (const account of overviewAccounts) {
-      if (account.type === type && account.currentMinor !== null) {
-        totals[account.currency] = (totals[account.currency] ?? 0) + account.currentMinor;
+    for (const a of accounts) {
+      if (a.type === type && a.currentMinor !== null) {
+        totals[a.currency] = (totals[a.currency] ?? 0) + a.currentMinor;
       }
     }
     return totals;
   };
-  return {
-    accounts: overviewAccounts,
-    cashOnHand: total("depository"),
-    creditOwed: total("credit"),
-  };
+  return { accounts, cashOnHand: total("depository"), creditOwed: total("credit") };
 }
 
 function expectedFor(persona: SeedPersona): ExpectedPersona {

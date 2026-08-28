@@ -5,13 +5,15 @@ type Overview = Awaited<ReturnType<typeof accountOverview>>;
 type Account = Overview["accounts"][number];
 type AccountType = Account["type"];
 
-const GROUPS: { type: AccountType; label: string }[] = [
-  { type: "depository", label: "Cash" },
-  { type: "credit", label: "Credit" },
-  { type: "loan", label: "Loans" },
-  { type: "investment", label: "Investments" },
-  { type: "other", label: "Other" },
-];
+// Record, not a list: a new account_type has to be given a group here or the build fails.
+const GROUP_LABELS: Record<AccountType, string> = {
+  depository: "Cash",
+  credit: "Credit",
+  loan: "Loans",
+  investment: "Investments",
+  other: "Other",
+};
+const GROUPS = Object.entries(GROUP_LABELS) as [AccountType, string][];
 
 function Summary({
   title,
@@ -32,7 +34,10 @@ function Summary({
       </p>
       <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{detail}</p>
       {entries.length === 0 ? (
-        <p className="mt-4 font-mono text-xl text-zinc-400 dark:text-zinc-500">—</p>
+        <p className="mt-4 font-mono text-xl text-zinc-400 dark:text-zinc-500">
+          <span aria-hidden="true">—</span>
+          <span className="sr-only">None</span>
+        </p>
       ) : (
         <ul className="mt-4 space-y-2">
           {entries.map(([currency, amount]) => (
@@ -54,17 +59,13 @@ function Summary({
   );
 }
 
-function accountDetail(account: Account): string[] {
-  const subtype = account.subtype
-    ? account.subtype.charAt(0).toUpperCase() + account.subtype.slice(1)
-    : null;
-  return [subtype, account.mask ? `•••• ${account.mask}` : null].filter(
-    (part): part is string => part !== null,
-  );
-}
-
 function AccountRow({ account }: { account: Account }) {
-  const detail = accountDetail(account);
+  const detail = [
+    account.subtype && account.subtype[0].toUpperCase() + account.subtype.slice(1),
+    account.mask && `•••• ${account.mask}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
     <li
       data-testid="account-row"
@@ -72,9 +73,7 @@ function AccountRow({ account }: { account: Account }) {
     >
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{account.name}</p>
-        {detail.length > 0 && (
-          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{detail.join(" · ")}</p>
-        )}
+        {detail && <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{detail}</p>}
       </div>
       <div className="sm:text-right">
         {account.currentMinor === null ? (
@@ -106,7 +105,7 @@ export function AccountsOverview({ overview }: { overview: Overview }) {
     <>
       <section aria-labelledby="balance-summary" className="mt-10">
         <h2 id="balance-summary" className="sr-only">Balance summary</h2>
-        <div className="grid border-y border-zinc-300 md:grid-cols-2 md:divide-x dark:border-zinc-700 md:dark:divide-zinc-700">
+        <div className="grid border-y border-zinc-300 md:grid-cols-2 md:divide-x md:divide-zinc-300 dark:border-zinc-700 md:dark:divide-zinc-700">
           <Summary
             title="Cash on hand"
             detail="Current cash-account balances"
@@ -123,28 +122,23 @@ export function AccountsOverview({ overview }: { overview: Overview }) {
       </section>
 
       <section aria-labelledby="all-accounts" className="mt-10">
-        <div className="flex items-baseline justify-between gap-4">
-          <h2 id="all-accounts" className="text-lg font-medium tracking-tight">All accounts</h2>
-          <span className="font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
-            {overview.accounts.length.toString().padStart(2, "0")}
-          </span>
-        </div>
+        <h2 id="all-accounts" className="text-lg font-medium tracking-tight">All accounts</h2>
         <div className="mt-5 space-y-8">
-          {GROUPS.map((group) => {
-            const grouped = overview.accounts.filter((account) => account.type === group.type);
+          {GROUPS.map(([type, label]) => {
+            const grouped = overview.accounts.filter((account) => account.type === type);
             if (grouped.length === 0) return null;
             return (
               <section
-                key={group.type}
-                data-testid={`account-group-${group.type}`}
-                aria-labelledby={`account-group-heading-${group.type}`}
+                key={type}
+                data-testid={`account-group-${type}`}
+                aria-labelledby={`account-group-heading-${type}`}
                 className="grid gap-3 md:grid-cols-[8rem_minmax(0,1fr)]"
               >
                 <h3
-                  id={`account-group-heading-${group.type}`}
+                  id={`account-group-heading-${type}`}
                   className="pt-4 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400"
                 >
-                  {group.label}
+                  {label}
                 </h3>
                 <ul className="divide-y divide-zinc-200 border-t border-zinc-300 dark:divide-zinc-800 dark:border-zinc-700">
                   {grouped.map((account) => <AccountRow key={account.id} account={account} />)}

@@ -7,7 +7,7 @@ export default function Loading() {
       </p>
       <div
         aria-hidden="true"
-        className="mt-10 grid border-y border-zinc-200 md:grid-cols-2 md:divide-x dark:border-zinc-800 md:dark:divide-zinc-800"
+        className="mt-10 grid border-y border-zinc-300 md:grid-cols-2 md:divide-x md:divide-zinc-300 dark:border-zinc-700 md:dark:divide-zinc-700"
       >
         {[0, 1].map((item) => (
           <div key={item} className="py-5 md:px-6 md:first:pl-0 md:last:pr-0">

@@ -110,15 +110,9 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
   };
 }
 
-function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]) {
-  const expected = EXPECTED[persona];
-  return {
-    accounts: expected.accounts,
-    transactions: expected.transactions,
-    balances: expected.balances,
-    pendingCount: expected.pendingCount,
-    posted: expected.posted,
-  };
+function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview"> {
+  const { accounts, transactions, balances, pendingCount, posted } = EXPECTED[persona];
+  return { accounts, transactions, balances, pendingCount, posted };
 }
 
 test("seeding lands every persona's ledger in the database exactly, and reseeding is idempotent", async () => {

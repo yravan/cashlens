@@ -298,7 +298,8 @@ test.describe("ledger read seam", () => {
       await expect(page.getByTestId(`account-group-${type}`)).toContainText(groupLabel[type]);
     }
     for (const account of expected.overview.accounts) {
-      const row = page.getByTestId("account-row").filter({ hasText: account.name });
+      const group = page.getByTestId(`account-group-${account.type}`);
+      const row = group.getByTestId("account-row").filter({ hasText: account.name });
       await expect(row).toHaveCount(1);
       await expect(row).toContainText(
         account.currentMinor === null

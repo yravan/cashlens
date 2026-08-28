@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { expect, test } from "vitest";
 
-import { EXPECTED, SEED_PERSONAS, SEED_USERS } from "@/db/seed/dataset";
+import { EXPECTED, SEED_PERSONAS, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
 import { seedDataset } from "@/db/seed/seed";
 import { accountOverview } from "@/lib/data/ledger";
 import { withRequestScope } from "@/lib/db/client";
@@ -9,22 +9,15 @@ import { accountBalances, accounts } from "@/lib/db/schema";
 import { withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 
-const withoutIds = (rows: Awaited<ReturnType<typeof accountOverview>>["accounts"]) =>
-  rows.map((row) => ({
-    name: row.name,
-    type: row.type,
-    subtype: row.subtype,
-    mask: row.mask,
-    currency: row.currency,
-    currentMinor: row.currentMinor,
-  }));
+const withAnyId = (accounts: ExpectedPersona["overview"]["accounts"]) =>
+  accounts.map((account) => ({ ...account, id: expect.any(String) }));
 
 test("the overview is exact for each signed-in persona and never includes a neighbor's accounts", async () => {
   await seedDataset(adminDb());
 
   for (const persona of SEED_PERSONAS) {
     const overview = await withAuth(SEED_USERS[persona].clerkUserId, () => accountOverview());
-    expect(withoutIds(overview.accounts)).toEqual(EXPECTED[persona].overview.accounts);
+    expect(overview.accounts).toEqual(withAnyId(EXPECTED[persona].overview.accounts));
     expect(overview.cashOnHand).toEqual(EXPECTED[persona].overview.cashOnHand);
     expect(overview.creditOwed).toEqual(EXPECTED[persona].overview.creditOwed);
   }
