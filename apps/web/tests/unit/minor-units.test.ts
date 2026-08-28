@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { toMinorUnits } from "@/lib/ledger/minor-units";
+import { formatMinorUnits, toMinorUnits } from "@/lib/ledger/minor-units";
 
 test.each([
   [110, "USD", 11000],
@@ -42,3 +42,34 @@ test("amounts that overflow safe integers are rejected", () => {
   expect(() => toMinorUnits(Number.MAX_SAFE_INTEGER, "USD")).toThrow("safe integer");
   expect(() => toMinorUnits(-Number.MAX_SAFE_INTEGER, "KWD")).toThrow("safe integer");
 });
+
+test.each([
+  [1734120, "USD", "$17,341.20"],
+  [120450, "EUR", "€1,204.50"],
+  [51245, "USD", "$512.45"],
+  [-51245, "USD", "-$512.45"],
+  [0, "USD", "$0.00"],
+  [-0, "USD", "$0.00"],
+  [1, "USD", "$0.01"],
+  [-1, "USD", "-$0.01"],
+  [99, "USD", "$0.99"],
+  [100, "USD", "$1.00"],
+  [5, "EUR", "€0.05"],
+  [123456789, "USD", "$1,234,567.89"],
+  [9007199254740991, "USD", "$90,071,992,547,409.91"],
+  [-9007199254740991, "USD", "-$90,071,992,547,409.91"],
+  [12345, "JPY", "¥12,345"],
+  [-987, "KRW", "-₩987"],
+  [123456, "BHD", "BHD 123.456"],
+  [123456, "IQD", "IQD 123.456"],
+  [9999, "XXX", "¤99.99"],
+])("%s %s formats as %s", (minor, currency, expected) => {
+  expect(formatMinorUnits(minor, currency)).toBe(expected);
+});
+
+test.each([0.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])(
+  "%s minor units are rejected",
+  (minor) => {
+    expect(() => formatMinorUnits(minor, "USD")).toThrow("safe integer");
+  },
+);
