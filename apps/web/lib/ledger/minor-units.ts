@@ -49,5 +49,7 @@ export function formatMinorUnits(minorUnits: number, currency: string): string {
   const units = Math.abs(minorUnits).toString().padStart(digits + 1, "0");
   const whole = units.slice(0, units.length - digits);
   const fraction = units.slice(units.length - digits);
-  return formatter(currency).format(`${sign}${whole}${fraction && `.${fraction}`}`);
+  return formatter(currency).format(
+    `${sign}${whole}${fraction && `.${fraction}`}` as Intl.StringNumericLiteral,
+  );
 }
