@@ -1,8 +1,10 @@
+import { eq } from "drizzle-orm";
 import { expect, test } from "vitest";
 
 import { EXPECTED, SEED_PERSONAS, SEED_USERS } from "@/db/seed/dataset";
 import { seedDataset } from "@/db/seed/seed";
 import { accountOverview } from "@/lib/data/ledger";
+import { withRequestScope } from "@/lib/db/client";
 import { accountBalances, accounts } from "@/lib/db/schema";
 import { withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
@@ -26,6 +28,20 @@ test("the overview is exact for each signed-in persona and never includes a neig
     expect(overview.cashOnHand).toEqual(EXPECTED[persona].overview.cashOnHand);
     expect(overview.creditOwed).toEqual(EXPECTED[persona].overview.creditOwed);
   }
+});
+
+test("the account and balance tables enforce the signed-in scope even without a DAL filter", async () => {
+  await seedDataset(adminDb());
+
+  const rows = await withRequestScope(SEED_USERS.neighbor.clerkUserId, (tx) =>
+    tx
+      .select({ name: accounts.name, currentMinor: accountBalances.currentMinor })
+      .from(accounts)
+      .leftJoin(accountBalances, eq(accountBalances.accountId, accounts.id)),
+  );
+  expect(rows).toEqual(
+    EXPECTED.neighbor.overview.accounts.map(({ name, currentMinor }) => ({ name, currentMinor })),
+  );
 });
 
 test("an unavailable current balance stays unavailable and is excluded from totals", async () => {
