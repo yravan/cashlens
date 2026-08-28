@@ -92,6 +92,10 @@ export const SEED_BALANCES: SeedRow<typeof accountBalances.$inferInsert>[] = [
 ];
 
 type PostedTotals = { inflowMinor: number; outflowMinor: number; netMinor: number; count: number };
+type OverviewAccount = Pick<
+  (typeof SEED_ACCOUNTS)[number],
+  "name" | "type" | "subtype" | "mask" | "currency"
+> & { currentMinor: number | null };
 
 export type ExpectedPersona = {
   accounts: number;
@@ -99,7 +103,39 @@ export type ExpectedPersona = {
   balances: number;
   pendingCount: number;
   posted: Record<string, PostedTotals>;
+  overview: {
+    accounts: OverviewAccount[];
+    cashOnHand: Record<string, number>;
+    creditOwed: Record<string, number>;
+  };
 };
+
+const ACCOUNT_TYPE_ORDER = ["depository", "credit", "loan", "investment", "other"];
+
+function overviewFor(persona: SeedPersona): ExpectedPersona["overview"] {
+  const current = new Map(
+    SEED_BALANCES.filter((b) => b.persona === persona).map((b) => [b.accountId, b.currentMinor ?? null]),
+  );
+  const accounts = SEED_ACCOUNTS.filter((a) => a.persona === persona)
+    .map(({ id, name, type, subtype, mask, currency }) => ({
+      name, type, subtype: subtype ?? null, mask: mask ?? null, currency, currentMinor: current.get(id) ?? null,
+    }))
+    .sort(
+      (a, b) =>
+        ACCOUNT_TYPE_ORDER.indexOf(a.type) - ACCOUNT_TYPE_ORDER.indexOf(b.type) ||
+        a.name.localeCompare(b.name),
+    );
+  const total = (type: "depository" | "credit") => {
+    const totals: Record<string, number> = {};
+    for (const a of accounts) {
+      if (a.type === type && a.currentMinor !== null) {
+        totals[a.currency] = (totals[a.currency] ?? 0) + a.currentMinor;
+      }
+    }
+    return totals;
+  };
+  return { accounts, cashOnHand: total("depository"), creditOwed: total("credit") };
+}
 
 function expectedFor(persona: SeedPersona): ExpectedPersona {
   const mine = SEED_TRANSACTIONS.filter((t) => t.persona === persona);
@@ -118,6 +154,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     balances: SEED_BALANCES.filter((b) => b.persona === persona).length,
     pendingCount: mine.filter((t) => t.status === "pending").length,
     posted,
+    overview: overviewFor(persona),
   };
 }
 
