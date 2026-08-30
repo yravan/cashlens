@@ -1,12 +1,13 @@
 import { and, count, eq, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 
-import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
+import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_CATEGORIES, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
 import { assertLocalDatabaseUrl } from "@/db/seed/local-only";
 import { seedDataset } from "@/db/seed/seed";
 import { ledgerCounts } from "@/lib/data/ledger";
 import { requireUser } from "@/lib/data/users";
-import { accountBalances, accounts, transactions, users } from "@/lib/db/schema";
+import { accountBalances, accounts, categories, transactions, users } from "@/lib/db/schema";
+import { DEFAULT_CATEGORIES } from "@/lib/ledger/default-categories";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 
@@ -16,6 +17,15 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     transactions: 16,
     balances: 5,
     pendingCount: 1,
+    categories: 80,
+    assigned: {
+      Paycheck: 2,
+      Groceries: 1,
+      "Restaurants & Bars": 1,
+      "Coffee Shops": 1,
+      "Streaming & Music": 1,
+      "Public Transit": 1,
+    },
     posted: {
       USD: { inflowMinor: 727112, outflowMinor: -239278, netMinor: 487834, count: 13 },
       EUR: { inflowMinor: 20000, outflowMinor: -5650, netMinor: 14350, count: 2 },
@@ -37,6 +47,8 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     transactions: 2,
     balances: 1,
     pendingCount: 0,
+    categories: 80,
+    assigned: { Electronics: 1 },
     posted: { USD: { inflowMinor: 75000, outflowMinor: -12345, netMinor: 62655, count: 2 } },
     overview: {
       accounts: [
@@ -51,6 +63,8 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     transactions: 0,
     balances: 0,
     pendingCount: 0,
+    categories: 0,
+    assigned: {},
     posted: {},
     overview: { accounts: [], cashOnHand: {}, creditOwed: {} },
   });
@@ -74,6 +88,47 @@ test("the dataset spans every ledger shape the schema supports today", () => {
 
   expect(SEED_ACCOUNTS.some((a) => a.persona === "neighbor")).toBe(true);
   expect(SEED_ACCOUNTS.some((a) => a.persona === "empty")).toBe(false);
+
+  expect(SEED_TRANSACTIONS.some((t) => t.categoryId)).toBe(true);
+  expect(SEED_TRANSACTIONS.some((t) => !t.categoryId)).toBe(true);
+  expect(SEED_TRANSACTIONS.find((t) => t.status === "pending")?.categoryId).toBeTruthy();
+  expect(
+    new Set(SEED_TRANSACTIONS.filter((t) => t.categoryId).map((t) => t.source)).size,
+  ).toBeGreaterThan(1);
+  expect(SEED_TRANSACTIONS.filter((t) => t.categoryId && t.persona === "neighbor")).toHaveLength(1);
+
+  const leafIds = new Set(SEED_CATEGORIES.filter((c) => c.parentId !== null).map((c) => c.id));
+  for (const t of SEED_TRANSACTIONS) {
+    if (t.categoryId) expect(leafIds.has(t.categoryId)).toBe(true);
+  }
+  for (const persona of ["demo", "neighbor"] as const) {
+    const own = new Set(
+      SEED_CATEGORIES.filter((c) => c.persona === persona).map((c) => c.id),
+    );
+    for (const t of SEED_TRANSACTIONS.filter((t) => t.persona === persona && t.categoryId)) {
+      expect(own.has(t.categoryId!)).toBe(true);
+    }
+  }
+  expect(SEED_CATEGORIES.some((c) => c.persona === "empty")).toBe(false);
+});
+
+test("the seeded taxonomy is exactly the default tree, per persona", () => {
+  for (const persona of ["demo", "neighbor"] as const) {
+    const mine = SEED_CATEGORIES.filter((c) => c.persona === persona);
+    const roots = mine.filter((c) => c.parentId === null);
+    expect(roots.map((c) => c.name)).toEqual(DEFAULT_CATEGORIES.map((d) => d.group));
+    for (const root of roots) {
+      expect(mine.filter((c) => c.parentId === root.id).map((c) => c.name)).toEqual(
+        DEFAULT_CATEGORIES.find((d) => d.group === root.name)!.categories,
+      );
+    }
+  }
+});
+
+test("the dataset's transfer-pair rows stay uncategorized (3.3.1 owns transfers)", () => {
+  for (const sourceId of ["seed-txn-2", "seed-txn-3", "seed-txn-4", "seed-txn-5"]) {
+    expect(SEED_TRANSACTIONS.find((t) => t.sourceId === sourceId)?.categoryId).toBeFalsy();
+  }
 });
 
 test("the dataset's transfer pairs cancel exactly", () => {
@@ -101,18 +156,28 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
     .where(and(mine, eq(transactions.status, "posted")))
     .groupBy(transactions.currency);
 
+  const assignedRows = await db
+    .select({ name: categories.name, n: count() })
+    .from(transactions)
+    .innerJoin(categories, eq(categories.id, transactions.categoryId))
+    .where(mine)
+    .groupBy(categories.name);
+
   return {
     accounts: await db.$count(accounts, eq(accounts.userId, userId)),
     transactions: await db.$count(transactions, mine),
     balances: await db.$count(accountBalances, eq(accountBalances.userId, userId)),
     pendingCount: await db.$count(transactions, and(mine, eq(transactions.status, "pending"))),
+    categories: await db.$count(categories, eq(categories.userId, userId)),
+    assigned: Object.fromEntries(assignedRows.map(({ name, n }) => [name, n])),
     posted: Object.fromEntries(posted.map(({ currency, ...totals }) => [currency, totals])),
   };
 }
 
 function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview"> {
-  const { accounts, transactions, balances, pendingCount, posted } = EXPECTED[persona];
-  return { accounts, transactions, balances, pendingCount, posted };
+  const { accounts, transactions, balances, pendingCount, categories, assigned, posted } =
+    EXPECTED[persona];
+  return { accounts, transactions, balances, pendingCount, categories, assigned, posted };
 }
 
 test("seeding lands every persona's ledger in the database exactly, and reseeding is idempotent", async () => {

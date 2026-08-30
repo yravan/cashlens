@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 import { expect, test } from "vitest";
 
 import { POST as categoryRoute } from "@/app/api/transactions/[transactionId]/category/route";
+import { SEED_CATEGORIES, SEED_USERS } from "@/db/seed/dataset";
+import { seedDataset } from "@/db/seed/seed";
 import { listCategoryGroups, setTransactionCategory } from "@/lib/data/categories";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
@@ -151,6 +153,29 @@ test("cross-user transaction and category ids disclose nothing and change nothin
   await expect(
     withAuth(clerkA, () => setTransactionCategory("not-a-uuid", null)),
   ).resolves.toEqual({ error: "transaction_not_found" });
+});
+
+test("seeded personas read exactly their own seeded taxonomy, and nothing is replanted", async () => {
+  await seedDataset(adminDb());
+
+  for (const persona of ["demo", "neighbor"] as const) {
+    const mine = SEED_CATEGORIES.filter((row) => row.persona === persona);
+    const expected = mine
+      .filter((row) => row.parentId === null)
+      .map((root) => ({
+        id: root.id,
+        name: root.name,
+        categories: mine
+          .filter((row) => row.parentId === root.id)
+          .map(({ id, name }) => ({ id, name })),
+      }));
+
+    const groups = await withAuth(SEED_USERS[persona].clerkUserId, () => listCategoryGroups());
+    expect(groups).toEqual(expected);
+    expect(await adminDb().$count(categories, eq(categories.userId, SEED_USERS[persona].id))).toBe(
+      mine.length,
+    );
+  }
 });
 
 test("category reads and writes require a signed-in user", async () => {
