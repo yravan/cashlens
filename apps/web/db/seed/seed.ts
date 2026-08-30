@@ -1,4 +1,4 @@
-import { inArray } from "drizzle-orm";
+import { inArray, or } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { accountBalances, accounts, categories, transactions, users } from "../../lib/db/schema.ts";
@@ -27,7 +27,12 @@ export async function seedDataset(
 
   await db.delete(users).where(inArray(users.clerkUserId, SEED_CLERK_IDS));
   await db.delete(accounts).where(inArray(accounts.id, SEED_ACCOUNTS.map((account) => account.id)));
-  await db.delete(categories).where(inArray(categories.userId, Object.values(ids)));
+  await db.delete(categories).where(
+    or(
+      inArray(categories.userId, Object.values(ids)),
+      inArray(categories.id, SEED_CATEGORIES.map((row) => row.id)),
+    ),
+  );
 
   const created = SEED_PERSONAS.filter((persona) => !userIds[persona]);
   if (created.length) await db.insert(users).values(created.map((persona) => SEED_USERS[persona]));

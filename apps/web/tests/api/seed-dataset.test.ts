@@ -191,6 +191,18 @@ test("seeding lands every persona's ledger in the database exactly, and reseedin
   expect(await adminDb().$count(users, eq(users.clerkUserId, SEED_USERS.demo.clerkUserId))).toBe(1);
 });
 
+test("re-seeding with personas remapped to different users never collides", async () => {
+  const x = await withAuth(fakeClerkUserId(), () => requireUser());
+  const y = await withAuth(fakeClerkUserId(), () => requireUser());
+
+  await seedDataset(adminDb(), { demo: x.id, neighbor: y.id });
+  const ids = await seedDataset(adminDb(), { demo: x.id });
+
+  expect(await personaInDb(x.id)).toEqual(ledgerExpected("demo"));
+  expect(await personaInDb(ids.neighbor)).toEqual(ledgerExpected("neighbor"));
+  expect(await adminDb().$count(categories, eq(categories.userId, y.id))).toBe(0);
+});
+
 test("seedDataset attaches persona ledgers to caller-provided users", async () => {
   const clerkUserId = fakeClerkUserId();
   const realUser = await withAuth(clerkUserId, () => requireUser());
