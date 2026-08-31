@@ -36,9 +36,12 @@ test.describe("category assignment", () => {
     browser,
     baseURL,
   }) => {
-    await request.get("/api/me");
+    // Provision both users before seeding onto them. Storage-state contexts can go
+    // stale mid-suite (see plaid.signed-in.spec.ts), and an unasserted 307 here only
+    // resurfaces as a missing row further down.
+    expect((await request.get("/api/me")).status()).toBe(200);
     const requestB = await playwright.request.newContext({ baseURL, storageState: STORAGE_STATE_B });
-    await requestB.get("/api/me");
+    expect((await requestB.get("/api/me")).status()).toBe(200);
     await requestB.dispose();
 
     const userA = await userIdOf("a");
