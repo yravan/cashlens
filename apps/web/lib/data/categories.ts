@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, count, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, count, eq, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
@@ -18,6 +18,14 @@ export type CategoryAssignment =
   | { error: "transaction_not_found" | "category_not_found" | "category_not_assignable" }
   | { transactionId: string; categoryId: string | null };
 
+function ownCategories(tx: ScopedTx, userId: string) {
+  return tx
+    .select({ id: categories.id, parentId: categories.parentId, name: categories.name })
+    .from(categories)
+    .where(eq(categories.userId, userId))
+    .orderBy(asc(categories.sortOrder), asc(categories.name), asc(categories.id));
+}
+
 // Concurrent first reads may both plant: conflicts no-op on the per-level
 // unique names, and parents are re-read so children attach to whichever
 // insert won.
@@ -26,11 +34,10 @@ async function plantDefaults(tx: ScopedTx, userId: string): Promise<void> {
     .insert(categories)
     .values(DEFAULT_CATEGORIES.map(({ group }, index) => ({ userId, name: group, sortOrder: index })))
     .onConflictDoNothing();
-  const roots = await tx
-    .select({ id: categories.id, name: categories.name })
-    .from(categories)
-    .where(and(eq(categories.userId, userId), isNull(categories.parentId)));
-  const rootId = new Map(roots.map((root) => [root.name, root.id]));
+  const planted = await ownCategories(tx, userId);
+  const rootId = new Map(
+    planted.filter((row) => row.parentId === null).map((row) => [row.name, row.id]),
+  );
   const leaves = DEFAULT_CATEGORIES.flatMap(({ group, categories: names }) => {
     const parentId = rootId.get(group);
     if (!parentId) return [];
@@ -42,17 +49,11 @@ async function plantDefaults(tx: ScopedTx, userId: string): Promise<void> {
 export async function listCategoryGroups(): Promise<CategoryGroup[]> {
   const user = await requireUser();
   return withRequestScope(user.clerkUserId, async (tx) => {
-    const [existing] = await tx
-      .select({ n: count() })
-      .from(categories)
-      .where(eq(categories.userId, user.id));
-    if (existing.n === 0) await plantDefaults(tx, user.id);
-
-    const rows = await tx
-      .select({ id: categories.id, parentId: categories.parentId, name: categories.name })
-      .from(categories)
-      .where(eq(categories.userId, user.id))
-      .orderBy(asc(categories.sortOrder), asc(categories.name), asc(categories.id));
+    let rows = await ownCategories(tx, user.id);
+    if (rows.length === 0) {
+      await plantDefaults(tx, user.id);
+      rows = await ownCategories(tx, user.id);
+    }
 
     const groups = new Map<string, CategoryGroup>(
       rows

@@ -50,7 +50,7 @@ export default async function TransactionsPage() {
               <CategorySelect
                 transactionId={row.id}
                 categoryId={row.categoryId}
-                label={row.merchant ?? row.description}
+                label={`${row.merchant ?? row.description} on ${row.date}`}
                 groups={groups}
               />
             </li>

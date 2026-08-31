@@ -20,6 +20,8 @@ const DEFAULT_TREE = DEFAULT_CATEGORIES.map(({ group, categories: names }) => ({
   categories: names.map((name) => ({ id: expect.any(String), name })),
 }));
 
+const TREE_SIZE = DEFAULT_CATEGORIES.reduce((n, { categories }) => n + 1 + categories.length, 0);
+
 async function provision(clerkUserId: string) {
   const user = await withAuth(clerkUserId, () => requireUser());
   const [account] = await adminDb()
@@ -68,8 +70,21 @@ test("the first category read plants exactly the default tree, and only once", a
   const again = await withAuth(clerkUserId, () => listCategoryGroups());
   expect(again).toEqual(groups);
 
-  const total = DEFAULT_CATEGORIES.reduce((n, { categories }) => n + 1 + categories.length, 0);
-  expect(await adminDb().$count(categories, eq(categories.userId, user.id))).toBe(total);
+  expect(await adminDb().$count(categories, eq(categories.userId, user.id))).toBe(TREE_SIZE);
+});
+
+test("concurrent first reads race to exactly one default tree, never a duplicate", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const { user } = await provision(clerkUserId);
+
+  const [first, second] = await Promise.all([
+    withAuth(clerkUserId, () => listCategoryGroups()),
+    withAuth(clerkUserId, () => listCategoryGroups()),
+  ]);
+
+  expect(first).toEqual(DEFAULT_TREE);
+  expect(second).toEqual(first);
+  expect(await adminDb().$count(categories, eq(categories.userId, user.id))).toBe(TREE_SIZE);
 });
 
 test("planted categories are per-user rows, invisible to anyone else", async () => {
