@@ -6,6 +6,7 @@ import {
   date,
   foreignKey,
   index,
+  integer,
   pgEnum,
   pgPolicy,
   pgRole,
@@ -175,12 +176,47 @@ export const accounts = pgTable(
   ],
 );
 
+export const categories = pgTable(
+  "categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    parentId: uuid("parent_id"),
+    name: text("name").notNull(),
+    sortOrder: integer("sort_order").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    unique("categories_id_user_id_unique").on(t.id, t.userId),
+    foreignKey({
+      name: "categories_parent_user_fk",
+      columns: [t.parentId, t.userId],
+      foreignColumns: [t.id, t.userId],
+    }),
+    uniqueIndex("categories_user_root_name_key")
+      .on(t.userId, t.name)
+      .where(sql`parent_id is null`),
+    uniqueIndex("categories_user_parent_name_key")
+      .on(t.userId, t.parentId, t.name)
+      .where(sql`parent_id is not null`),
+    index("categories_user_id_idx").on(t.userId),
+    check(
+      "categories_name_trimmed",
+      sql`name = btrim(name) and char_length(name) between 1 and 60`,
+    ),
+    ...ownRowPolicies("categories"),
+  ],
+);
+
 export const transactions = pgTable(
   "transactions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id").notNull(),
     accountId: uuid("account_id").notNull(),
+    categoryId: uuid("category_id"),
     amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
     currency: char("currency", { length: 3 }).notNull(),
     date: date("date").notNull(),
@@ -198,6 +234,11 @@ export const transactions = pgTable(
       columns: [t.accountId, t.userId],
       foreignColumns: [accounts.id, accounts.userId],
     }).onDelete("cascade"),
+    foreignKey({
+      name: "transactions_category_user_fk",
+      columns: [t.categoryId, t.userId],
+      foreignColumns: [categories.id, categories.userId],
+    }),
     uniqueIndex("transactions_account_source_row_key")
       .on(t.accountId, t.source, t.sourceId)
       .where(sql`source_id is not null`),

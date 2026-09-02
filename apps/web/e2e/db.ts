@@ -3,9 +3,17 @@ import { Client } from "pg";
 
 import { seedDataset } from "../db/seed/seed";
 
+const LOOPBACK = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
 function envUrl(name: "DATABASE_URL" | "DATABASE_URL_SUPERUSER"): string {
   const raw = process.env[name];
   if (!raw) throw new Error(`${name} is not set — the e2e suite needs the local database (see CLAUDE.md)`);
+  // Loopback, or a dotless docker-network hostname (CI's service container).
+  // A dotted hostname is a remote database — never e2e territory.
+  const { hostname } = new URL(raw);
+  if (!LOOPBACK.has(hostname) && hostname.includes(".")) {
+    throw new Error(`${name} points at "${hostname}" — the e2e suite only ever touches a local database`);
+  }
   return raw;
 }
 

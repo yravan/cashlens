@@ -1,5 +1,5 @@
 import "server-only";
-import { asc, count, eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
 
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
@@ -18,6 +18,27 @@ export async function ledgerCounts() {
       .where(eq(transactions.userId, user.id));
     return { accounts: account.n, transactions: transaction.n };
   });
+}
+
+export async function listTransactions() {
+  const user = await requireUser();
+  return withRequestScope(user.clerkUserId, (tx) =>
+    tx
+      .select({
+        id: transactions.id,
+        date: transactions.date,
+        description: transactions.description,
+        merchant: transactions.merchant,
+        amountMinor: transactions.amountMinor,
+        currency: transactions.currency,
+        status: transactions.status,
+        source: transactions.source,
+        categoryId: transactions.categoryId,
+      })
+      .from(transactions)
+      .where(eq(transactions.userId, user.id))
+      .orderBy(desc(transactions.date), desc(transactions.createdAt), desc(transactions.id)),
+  );
 }
 
 export async function accountOverview() {
