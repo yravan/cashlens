@@ -27,27 +27,6 @@ export async function ledgerCounts() {
   });
 }
 
-export async function listTransactions() {
-  const user = await requireUser();
-  return withRequestScope(user.clerkUserId, (tx) =>
-    tx
-      .select({
-        id: transactions.id,
-        date: transactions.date,
-        description: transactions.description,
-        merchant: transactions.merchant,
-        amountMinor: transactions.amountMinor,
-        currency: transactions.currency,
-        status: transactions.status,
-        source: transactions.source,
-        categoryId: transactions.categoryId,
-      })
-      .from(transactions)
-      .where(eq(transactions.userId, user.id))
-      .orderBy(desc(transactions.date), desc(transactions.createdAt), desc(transactions.id)),
-  );
-}
-
 function historyConditions(userId: string, query: HistoryQuery): SQL {
   const conditions = [eq(transactions.userId, userId)];
   if (query.q !== null) {
