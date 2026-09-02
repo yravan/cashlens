@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import {
   HISTORY_PAGE_SIZE,
+  HISTORY_PARAMS,
   historyQueryString,
   isFiltered,
   parseHistoryQuery,
@@ -78,7 +79,7 @@ test("unknown parameters are rejected, never ignored", () => {
 });
 
 test("a repeated scalar parameter is rejected, never widened", () => {
-  for (const key of ["q", "account", "category", "from", "to", "currency", "min", "max", "page"]) {
+  for (const key of HISTORY_PARAMS) {
     expect(parseHistoryQuery({ currency: "USD", [key]: ["a", "b"] })).toEqual(invalid);
   }
 });

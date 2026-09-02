@@ -6,6 +6,7 @@ import {
   historyQueryString,
   isFiltered,
   parseHistoryQuery,
+  type HistoryParam,
   type HistoryQuery,
 } from "@/lib/ledger/history-query";
 import { formatMinorUnits } from "@/lib/ledger/minor-units";
@@ -64,7 +65,7 @@ export default async function TransactionsPage({
   const params = await searchParams;
   const parsed = parseHistoryQuery(params);
   const history = await transactionHistory(parsed);
-  const values = (key: string) => {
+  const values = (key: HistoryParam) => {
     const value = params[key];
     return typeof value === "string" ? value : "";
   };
@@ -94,11 +95,28 @@ export default async function TransactionsPage({
   }
 
   const { query } = parsed;
-  const filtered = isFiltered(query);
   const ledgerEmpty = history.options.currencies.length === 0;
-  const count = filtered
-    ? `${history.total} matching transaction${history.total === 1 ? "" : "s"}`
-    : `${history.total} transaction${history.total === 1 ? "" : "s"} in the ledger`;
+  const plural = history.total === 1 ? "" : "s";
+  const count = isFiltered(query)
+    ? `${history.total} matching transaction${plural}`
+    : `${history.total} transaction${plural} in the ledger`;
+  const noMatch =
+    history.total === 0
+      ? {
+          message: "No transactions match these filters.",
+          href: "/transactions",
+          label: "Clear filters",
+        }
+      : {
+          message: "Nothing on this page.",
+          href: pageHref(query, 1),
+          label: "Back to the first page",
+        };
+  const pageLink = (rel: "prev" | "next", to: number, label: string) => (
+    <Link rel={rel} href={pageHref(query, to)} className="underline underline-offset-4">
+      {label}
+    </Link>
+  );
 
   return (
     <>
@@ -130,31 +148,15 @@ export default async function TransactionsPage({
 
           {history.rows.length === 0 ? (
             <section data-testid="no-match" className="mt-8 max-w-xl py-4">
-              {history.total === 0 ? (
-                <>
-                  <p className="text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-                    No transactions match these filters.
-                  </p>
-                  <Link
-                    href="/transactions"
-                    className="mt-2 inline-block text-sm underline underline-offset-4"
-                  >
-                    Clear filters
-                  </Link>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-                    Nothing on this page.
-                  </p>
-                  <Link
-                    href={pageHref(query, 1)}
-                    className="mt-2 inline-block text-sm underline underline-offset-4"
-                  >
-                    Back to the first page
-                  </Link>
-                </>
-              )}
+              <p className="text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+                {noMatch.message}
+              </p>
+              <Link
+                href={noMatch.href}
+                className="mt-2 inline-block text-sm underline underline-offset-4"
+              >
+                {noMatch.label}
+              </Link>
             </section>
           ) : (
             <ul
@@ -173,13 +175,7 @@ export default async function TransactionsPage({
               className="mt-6 flex items-center justify-between text-sm"
             >
               {history.page > 1 ? (
-                <Link
-                  rel="prev"
-                  href={pageHref(query, history.page - 1)}
-                  className="underline underline-offset-4"
-                >
-                  Previous
-                </Link>
+                pageLink("prev", history.page - 1, "Previous")
               ) : (
                 <span aria-hidden="true" />
               )}
@@ -187,13 +183,7 @@ export default async function TransactionsPage({
                 Page {history.page} of {history.pageCount}
               </p>
               {history.page < history.pageCount ? (
-                <Link
-                  rel="next"
-                  href={pageHref(query, history.page + 1)}
-                  className="underline underline-offset-4"
-                >
-                  Next
-                </Link>
+                pageLink("next", history.page + 1, "Next")
               ) : (
                 <span aria-hidden="true" />
               )}

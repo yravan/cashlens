@@ -2,6 +2,7 @@ import Form from "next/form";
 import Link from "next/link";
 
 import type { TransactionHistory } from "@/lib/data/ledger";
+import type { HistoryParam } from "@/lib/ledger/history-query";
 
 const field = "block text-xs font-medium text-zinc-600 dark:text-zinc-400";
 const control =
@@ -12,7 +13,7 @@ export function HistoryFilters({
   values,
 }: {
   options: TransactionHistory["options"];
-  values: (key: string) => string;
+  values: (key: HistoryParam) => string;
 }) {
   return (
     <Form

@@ -16,7 +16,20 @@ export type HistoryQuery = {
 
 export type ParsedHistoryQuery = { ok: true; query: HistoryQuery } | { ok: false };
 
-const KEYS = new Set(["q", "account", "category", "from", "to", "currency", "min", "max", "page"]);
+export const HISTORY_PARAMS = [
+  "q",
+  "account",
+  "category",
+  "from",
+  "to",
+  "currency",
+  "min",
+  "max",
+  "page",
+] as const;
+export type HistoryParam = (typeof HISTORY_PARAMS)[number];
+
+const KEYS = new Set<string>(HISTORY_PARAMS);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -123,19 +136,6 @@ export function parseHistoryQuery(
   return { ok: true, query };
 }
 
-export function isFiltered(query: HistoryQuery): boolean {
-  return (
-    query.q !== null ||
-    query.accountId !== null ||
-    query.categoryId !== null ||
-    query.from !== null ||
-    query.to !== null ||
-    query.currency !== null ||
-    query.minMinor !== null ||
-    query.maxMinor !== null
-  );
-}
-
 export function searchPattern(q: string): string {
   return `%${q.replace(/[\\%_]/g, (wildcard) => `\\${wildcard}`)}%`;
 }
@@ -155,3 +155,5 @@ export function historyQueryString(query: HistoryQuery, page: number): string {
   if (page !== 1) params.set("page", String(page));
   return params.toString();
 }
+
+export const isFiltered = (query: HistoryQuery): boolean => historyQueryString(query, 1) !== "";
