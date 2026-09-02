@@ -1,0 +1,17 @@
+export const DEFAULT_CATEGORIES: readonly { group: string; categories: readonly string[] }[] = [
+  { group: "Income", categories: ["Paycheck", "Interest", "Dividends & Capital Gains", "Tax Refund", "Reimbursement", "Other Income"] },
+  { group: "Housing", categories: ["Rent", "Mortgage", "Home Improvement & Repairs", "Furniture & Housewares"] },
+  { group: "Bills & Utilities", categories: ["Gas & Electric", "Water", "Garbage & Sewage", "Internet & Cable", "Phone"] },
+  { group: "Food & Drink", categories: ["Groceries", "Restaurants & Bars", "Coffee Shops", "Fast Food & Takeout", "Alcohol"] },
+  { group: "Shopping", categories: ["Superstores & Wholesale", "Clothing & Accessories", "Electronics", "Books & Stationery", "Pet Supplies", "Other Shopping"] },
+  { group: "Transportation", categories: ["Gas & Fuel", "Public Transit", "Taxis & Ride Shares", "Parking & Tolls", "Auto Payment", "Auto Maintenance"] },
+  { group: "Travel", categories: ["Flights", "Lodging", "Rental Cars", "Other Travel"] },
+  { group: "Health & Wellness", categories: ["Medical", "Dentist", "Vision & Eyewear", "Dermatology", "Mental Health", "Pharmacy", "Fitness"] },
+  { group: "Personal Care", categories: ["Hair & Beauty", "Laundry & Dry Cleaning"] },
+  { group: "Entertainment", categories: ["Streaming & Music", "Movies & Events", "Video Games", "Sports & Recreation", "Hobbies"] },
+  { group: "Family & Education", categories: ["Child Care", "Tuition & Education", "Student Loans"] },
+  { group: "Gifts & Donations", categories: ["Gifts", "Donations"] },
+  { group: "Financial", categories: ["Bank Fees", "Interest Charges", "Loan Payment", "Insurance", "Taxes", "Financial & Legal Services"] },
+  { group: "Transfers", categories: ["Transfer", "Credit Card Payment"] },
+  { group: "Other", categories: ["Cash & ATM", "Miscellaneous"] },
+];

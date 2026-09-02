@@ -2,7 +2,10 @@ import path from "node:path";
 import { loadEnvConfig } from "@next/env";
 import { defineConfig, devices } from "@playwright/test";
 
-loadEnvConfig(__dirname);
+// dev=true: without it, an unset NODE_ENV loads .env.production.local first,
+// silently pointing the whole e2e stack — db helpers, seeding, and the app
+// under test — at production (same footgun as drizzle.config.ts).
+loadEnvConfig(__dirname, true);
 
 const PORT = 3100;
 export const BASE_URL = `http://localhost:${PORT}`;

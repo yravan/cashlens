@@ -30,8 +30,8 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 9. **2.1.4** Continuous sync
 10. **2.1.5** Connection management
 11. **6.3.1** Accounts overview page
-12. **3.6.1** Transaction history page
-13. **4.1.1** Category taxonomy & manual assignment
+12. **4.1.1** Category taxonomy & manual assignment
+13. **3.6.1** Transaction history page
 14. **4.2.1** LLM auto-categorization
 15. **3.3.1** Internal transfer matching
 16. **6.1.1** Cash-flow summary (true spend)
