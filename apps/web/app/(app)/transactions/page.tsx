@@ -68,6 +68,9 @@ export default async function TransactionsPage({
     const value = params[key];
     return typeof value === "string" ? value : "";
   };
+  // Soft navigation reuses uncontrolled inputs' DOM state; keying the form on the
+  // applied query remounts the controls so the URL stays the source of truth.
+  const formKey = parsed.ok ? historyQueryString(parsed.query, 1) : JSON.stringify(params);
 
   const heading = (
     <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
@@ -85,7 +88,7 @@ export default async function TransactionsPage({
           Those filters aren&apos;t valid — dates must be real days in order, amounts need a
           currency and run low to high, and nothing here takes a negative value.
         </p>
-        <HistoryFilters options={history.options} values={values} />
+        <HistoryFilters key={formKey} options={history.options} values={values} />
       </>
     );
   }
@@ -123,7 +126,7 @@ export default async function TransactionsPage({
         </section>
       ) : (
         <>
-          <HistoryFilters options={history.options} values={values} />
+          <HistoryFilters key={formKey} options={history.options} values={values} />
 
           {history.rows.length === 0 ? (
             <section data-testid="no-match" className="mt-8 max-w-xl py-4">

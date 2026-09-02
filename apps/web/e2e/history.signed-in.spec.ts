@@ -99,6 +99,9 @@ test.describe("transaction history", () => {
     await form(page).getByRole("link", { name: "Clear" }).click();
     await expect(page).toHaveURL(/\/transactions$/);
     await expect(rows(page)).toHaveCount(16);
+    await expect(form(page).getByLabel("Search")).toHaveValue("");
+    await expect(form(page).getByLabel("Account")).toHaveValue("");
+    await expect(form(page).getByLabel("From")).toHaveValue("");
   });
 
   test("filters survive pagination and the back button", async ({ page }) => {
