@@ -11,7 +11,8 @@ import {
 import { seedDataset } from "@/db/seed/seed";
 import { transactionHistory } from "@/lib/data/ledger";
 import { requireUser } from "@/lib/data/users";
-import { accounts, transactions } from "@/lib/db/schema";
+import { withRequestScope } from "@/lib/db/client";
+import { accounts, categories, transactions } from "@/lib/db/schema";
 import { DEFAULT_CATEGORIES } from "@/lib/ledger/default-categories";
 import { parseHistoryQuery } from "@/lib/ledger/history-query";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
@@ -337,6 +338,27 @@ test("neither persona's rows or filter options ever surface for the other", asyn
   expect(demoIds.filter((id) => neighborIds.has(id))).toEqual([]);
   expect(JSON.stringify(demo)).not.toContain("Neighbor");
   expect(JSON.stringify(neighbor)).not.toContain("ACME");
+});
+
+test("every table the history page reads enforces the signed-in scope without DAL predicates", async () => {
+  await seedDataset(adminDb());
+  const ownIds = (rows: { id: string }[]) => rows.map((row) => row.id).sort();
+
+  const seen = await withRequestScope(SEED_USERS.neighbor.clerkUserId, async (tx) => ({
+    transactions: await tx.select({ id: transactions.id }).from(transactions),
+    accounts: await tx.select({ id: accounts.id }).from(accounts),
+    categories: await tx.select({ id: categories.id }).from(categories),
+  }));
+
+  expect(ownIds(seen.transactions)).toEqual([...EXPECTED.neighbor.history.order].sort());
+  expect(ownIds(seen.accounts)).toEqual(
+    SEED_ACCOUNTS.filter((a) => a.persona === "neighbor").map((a) => a.id),
+  );
+  expect(ownIds(seen.categories)).toEqual(
+    SEED_CATEGORIES.filter((c) => c.persona === "neighbor")
+      .map((c) => c.id)
+      .sort(),
+  );
 });
 
 test("history reads require a signed-in user", async () => {
