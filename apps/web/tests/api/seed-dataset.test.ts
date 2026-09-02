@@ -170,7 +170,7 @@ test("the dataset's transfer pairs cancel exactly", () => {
   }
 });
 
-async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview">> {
+async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history">> {
   const db = adminDb();
   const mine = eq(transactions.userId, userId);
   const posted = await db
@@ -203,7 +203,7 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
   };
 }
 
-function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview"> {
+function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history"> {
   const { accounts, transactions, balances, pendingCount, categories, assigned, posted } =
     EXPECTED[persona];
   return { accounts, transactions, balances, pendingCount, categories, assigned, posted };
