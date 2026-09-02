@@ -1,8 +1,9 @@
 import fs from "node:fs";
-import { expect, test } from "@playwright/test";
 
-import { E2E_USERS_FILE, STORAGE_STATE_B } from "../playwright.config";
+import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, appQuery, appQueryScopedAs } from "./db";
+import { expect, test } from "./fixtures";
+import { signedInState } from "./session";
 
 const PROBE_A = "user_rls_probe_a";
 const PROBE_B = "user_rls_probe_b";
@@ -21,7 +22,7 @@ test("a signed-in user can never read another user's identity", async ({
 
   const contextB = await browser.newContext({
     baseURL,
-    storageState: STORAGE_STATE_B,
+    storageState: await signedInState(browser, "b"),
   });
   try {
     const pageB = await contextB.newPage();

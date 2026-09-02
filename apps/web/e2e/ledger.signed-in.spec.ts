@@ -1,10 +1,12 @@
 import fs from "node:fs";
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
 
 import { EXPECTED, SEED_CLERK_IDS, type ExpectedPersona } from "../db/seed/dataset";
 import { formatMinorUnits } from "../lib/ledger/minor-units";
-import { E2E_USERS_FILE, STORAGE_STATE_B } from "../playwright.config";
+import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, appQuery, appQueryScopedAs, seedLedgerFixture } from "./db";
+import { expect, test } from "./fixtures";
+import { signedInState } from "./session";
 
 const PROBE_A = "ledger_rls_probe_a";
 const PROBE_B = "ledger_rls_probe_b";
@@ -356,7 +358,7 @@ test.describe("ledger read seam", () => {
     await request.get("/api/me");
     const requestB = await playwright.request.newContext({
       baseURL,
-      storageState: STORAGE_STATE_B,
+      storageState: await signedInState(browser, "b"),
     });
     await requestB.get("/api/me");
     await requestB.dispose();
@@ -374,7 +376,7 @@ test.describe("ledger read seam", () => {
 
     const contextB = await browser.newContext({
       baseURL,
-      storageState: STORAGE_STATE_B,
+      storageState: await signedInState(browser, "b"),
     });
     try {
       const pageB = await contextB.newPage();
