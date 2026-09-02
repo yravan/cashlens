@@ -1,6 +1,5 @@
-import { expect, test } from "@playwright/test";
-
 import { E2E_USER_A_EMAIL } from "../playwright.config";
+import { expect, test } from "./fixtures";
 
 // Fresh browser context carrying only the cookies saved by global.setup.ts —
 // the equivalent of closing the browser and coming back.

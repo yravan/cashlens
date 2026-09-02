@@ -8,7 +8,7 @@ import { defineConfig, devices } from "@playwright/test";
 loadEnvConfig(__dirname, true);
 
 const PORT = 3100;
-const BASE_URL = `http://localhost:${PORT}`;
+export const BASE_URL = `http://localhost:${PORT}`;
 
 export const STORAGE_STATE_A = path.join(
   __dirname,
