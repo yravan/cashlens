@@ -41,6 +41,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
       cashOnHand: { EUR: 120450, USD: 1735370 },
       creditOwed: { USD: 51245 },
     },
+    history: { order: expect.any(Array), currencies: ["EUR", "USD"] },
   });
   expect(EXPECTED.neighbor).toEqual({
     accounts: 1,
@@ -57,6 +58,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
       cashOnHand: { USD: 50000 },
       creditOwed: {},
     },
+    history: { order: expect.any(Array), currencies: ["USD"] },
   });
   expect(EXPECTED.empty).toEqual({
     accounts: 0,
@@ -67,7 +69,34 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     assigned: {},
     posted: {},
     overview: { accounts: [], cashOnHand: {}, creditOwed: {} },
+    history: { order: [], currencies: [] },
   });
+});
+
+test("the history chronology matches the hand-verified order, ties resolved newest-id-first", () => {
+  const label = new Map(SEED_TRANSACTIONS.map((t) => [t.id, `${t.date} ${t.description}`]));
+  expect(EXPECTED.demo.history.order.map((id) => label.get(id))).toEqual([
+    "2026-03-31 INTEREST PAYMENT",
+    "2026-03-29 STREAMFLIX",
+    "2026-03-27 ACME CORP PAYROLL",
+    "2026-03-16 BEAN BARREL COFFEE",
+    "2026-03-14 FARMERS MARKET CASH",
+    "2026-03-12 SKYLINE AIR REFUND",
+    "2026-03-11 AIRBNB PAYOUT",
+    "2026-03-10 BAHN TICKET BERLIN",
+    "2026-03-08 MAPLE MARKET #204",
+    "2026-03-07 PAYMENT RECEIVED - THANK YOU",
+    "2026-03-05 CASH REWARDS CARD PAYMENT",
+    "2026-03-03 NOODLE HOUSE",
+    "2026-03-02 TRANSFER FROM EVERYDAY CHECKING",
+    "2026-03-02 TRANSFER TO RAINY DAY SAVINGS",
+    "2026-02-27 ACME CORP PAYROLL",
+    "2026-02-21 SKYLINE AIR TICKETS",
+  ]);
+  expect(EXPECTED.neighbor.history.order.map((id) => label.get(id))).toEqual([
+    "2026-03-09 ELECTRONICS EMPORIUM",
+    "2026-03-06 NEIGHBOR PAYCHECK",
+  ]);
 });
 
 test("the dataset spans every ledger shape the schema supports today", () => {
