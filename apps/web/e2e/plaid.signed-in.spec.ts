@@ -1,8 +1,8 @@
 import fs from "node:fs";
-import { expect, test } from "@playwright/test";
 
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery } from "./db";
+import { expect, test } from "./fixtures";
 
 // The Link UI itself is never driven — Plaid's own docs say to bypass it in
 // automated suites — so the API suite covers the flow logic and this covers the wire.

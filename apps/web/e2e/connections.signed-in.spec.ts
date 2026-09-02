@@ -1,8 +1,8 @@
 import fs from "node:fs";
-import { expect, test } from "@playwright/test";
 
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery } from "./db";
+import { expect, test } from "./fixtures";
 
 const CONFIGURED =
   !!process.env.PLAID_CLIENT_ID &&

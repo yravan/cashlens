@@ -1,8 +1,8 @@
 import fs from "node:fs";
-import { expect, test } from "@playwright/test";
 
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery } from "./db";
+import { expect, test } from "./fixtures";
 
 function clerkIdOf(key: "a" | "b"): string {
   return JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8"))[key].clerkUserId;

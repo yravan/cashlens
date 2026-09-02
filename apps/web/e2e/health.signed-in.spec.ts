@@ -1,7 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+
+import { expect, test } from "./fixtures";
 
 const BROKEN_DB_PORT = 3101;
 const BROKEN_DB_APP_URL = `http://localhost:${BROKEN_DB_PORT}`;
