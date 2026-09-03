@@ -4,7 +4,7 @@ const EXPONENT_0 = new Set([
 ]);
 const EXPONENT_3 = new Set(["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"]);
 
-const exponent = (currency: string) =>
+export const currencyExponent = (currency: string) =>
   EXPONENT_0.has(currency) ? 0 : EXPONENT_3.has(currency) ? 3 : 2;
 
 // The epsilon absorbs float noise below the half boundary (0.615 * 100 ===
@@ -13,7 +13,7 @@ export function toMinorUnits(amount: number, currency: string): number {
   if (!Number.isFinite(amount)) {
     throw new Error("amount must be a finite number");
   }
-  const scaled = Math.abs(amount) * 10 ** exponent(currency);
+  const scaled = Math.abs(amount) * 10 ** currencyExponent(currency);
   const minor = Math.round(scaled + 1e-7) * Math.sign(amount);
   if (!Number.isSafeInteger(minor)) {
     throw new Error("amount exceeds safe integer range in minor units");
@@ -42,7 +42,7 @@ export function formatMinorUnits(minorUnits: number, currency: string): string {
   if (!Number.isSafeInteger(minorUnits)) {
     throw new Error("minor units must be a safe integer");
   }
-  const digits = exponent(currency);
+  const digits = currencyExponent(currency);
   const units = Math.abs(minorUnits).toString().padStart(digits + 1, "0");
   const point = units.length - digits;
   const decimal = `${minorUnits < 0 ? "-" : ""}${units.slice(0, point)}${digits ? `.${units.slice(point)}` : ""}`;

@@ -46,27 +46,29 @@ async function plantDefaults(tx: ScopedTx, userId: string): Promise<void> {
   await tx.insert(categories).values(leaves).onConflictDoNothing();
 }
 
+export async function categoryGroupsFor(tx: ScopedTx, userId: string): Promise<CategoryGroup[]> {
+  let rows = await ownCategories(tx, userId);
+  if (rows.length === 0) {
+    await plantDefaults(tx, userId);
+    rows = await ownCategories(tx, userId);
+  }
+
+  const groups = new Map<string, CategoryGroup>(
+    rows
+      .filter((row) => row.parentId === null)
+      .map((row) => [row.id, { id: row.id, name: row.name, categories: [] }]),
+  );
+  for (const row of rows) {
+    if (row.parentId !== null) {
+      groups.get(row.parentId)?.categories.push({ id: row.id, name: row.name });
+    }
+  }
+  return [...groups.values()];
+}
+
 export async function listCategoryGroups(): Promise<CategoryGroup[]> {
   const user = await requireUser();
-  return withRequestScope(user.clerkUserId, async (tx) => {
-    let rows = await ownCategories(tx, user.id);
-    if (rows.length === 0) {
-      await plantDefaults(tx, user.id);
-      rows = await ownCategories(tx, user.id);
-    }
-
-    const groups = new Map<string, CategoryGroup>(
-      rows
-        .filter((row) => row.parentId === null)
-        .map((row) => [row.id, { id: row.id, name: row.name, categories: [] }]),
-    );
-    for (const row of rows) {
-      if (row.parentId !== null) {
-        groups.get(row.parentId)?.categories.push({ id: row.id, name: row.name });
-      }
-    }
-    return [...groups.values()];
-  });
+  return withRequestScope(user.clerkUserId, (tx) => categoryGroupsFor(tx, user.id));
 }
 
 export async function setTransactionCategory(

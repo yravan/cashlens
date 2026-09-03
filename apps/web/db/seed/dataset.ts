@@ -151,6 +151,7 @@ export type ExpectedPersona = {
     cashOnHand: Record<string, number>;
     creditOwed: Record<string, number>;
   };
+  history: { order: string[]; currencies: string[] };
 };
 
 const ACCOUNT_TYPE_ORDER = ["depository", "credit", "loan", "investment", "other"];
@@ -199,6 +200,12 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     assigned[name] = (assigned[name] ?? 0) + 1;
   }
 
+  // History order is date desc, created_at desc, id desc; seed rows land in one
+  // insert and share a created_at, so id alone breaks date ties.
+  const order = [...mine]
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
+    .map((t) => t.id);
+
   return {
     accounts: SEED_ACCOUNTS.filter((a) => a.persona === persona).length,
     transactions: mine.length,
@@ -208,6 +215,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     assigned,
     posted,
     overview: overviewFor(persona),
+    history: { order, currencies: [...new Set(mine.map((t) => t.currency))].sort() },
   };
 }
 
