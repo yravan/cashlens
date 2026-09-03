@@ -18,6 +18,8 @@ process.env.CREDENTIAL_ENCRYPTION_KEYS ??= `test:${randomBytes(32).toString("hex
 process.env.PLAID_ENV ??= "sandbox";
 process.env.PLAID_CLIENT_ID ??= "api-suite-client-id";
 process.env.PLAID_SECRET ??= "api-suite-secret";
+// The Anthropic substitute (harness/anthropic.ts) never sends this anywhere.
+process.env.ANTHROPIC_API_KEY ??= "api-suite-anthropic-key";
 
 beforeEach(truncateAll);
 afterAll(closeAdmin);

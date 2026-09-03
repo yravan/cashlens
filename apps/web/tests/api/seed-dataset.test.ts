@@ -1,4 +1,4 @@
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 
 import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_CATEGORIES, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
@@ -222,15 +222,24 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
     balances: await db.$count(accountBalances, eq(accountBalances.userId, userId)),
     pendingCount: await db.$count(transactions, and(mine, eq(transactions.status, "pending"))),
     categories: await db.$count(categories, eq(categories.userId, userId)),
+    uncategorized: await db.$count(transactions, and(mine, isNull(transactions.categoryId))),
+    review: await db.$count(
+      transactions,
+      and(
+        mine,
+        eq(transactions.categorySource, "auto"),
+        eq(transactions.categoryConfidence, "low"),
+      ),
+    ),
     assigned: Object.fromEntries(assignedRows.map(({ name, n }) => [name, n])),
     posted: Object.fromEntries(posted.map(({ currency, ...totals }) => [currency, totals])),
   };
 }
 
 function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history"> {
-  const { accounts, transactions, balances, pendingCount, categories, assigned, posted } =
+  const { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted } =
     EXPECTED[persona];
-  return { accounts, transactions, balances, pendingCount, categories, assigned, posted };
+  return { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted };
 }
 
 test("seeding lands every persona's ledger in the database exactly, and reseeding is idempotent", async () => {
