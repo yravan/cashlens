@@ -282,7 +282,7 @@ test("the model chooses among assignable leaves only — groups are never offere
 test("cross-user isolation: a run never reads, sends, or writes another user's rows", async () => {
   const clerkA = fakeClerkUserId();
   const clerkB = fakeClerkUserId();
-  const a = await provision(clerkA, [{ description: "ALPHA SECRET STORE" }]);
+  await provision(clerkA, [{ description: "ALPHA SECRET STORE" }]);
   const b = await provision(clerkB, [{ description: "BRAVO PRIVATE VENDOR" }]);
 
   primeClassification([
@@ -308,7 +308,6 @@ test("cross-user isolation: a run never reads, sends, or writes another user's r
   );
   expect(probe.rowCount).toBe(0);
   expect(await categoryStateOf(b.ids[0])).toMatchObject({ categoryId: null, source: null });
-  void a;
 });
 
 test("an empty queue returns zeros without ever calling the provider", async () => {

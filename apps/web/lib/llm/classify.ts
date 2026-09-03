@@ -16,7 +16,7 @@ export type ClassifyAssignment = {
 
 export class InvalidClassificationError extends Error {}
 
-export const REASON_MAX_CHARS = 200;
+const REASON_MAX_CHARS = 200;
 
 export const ASSIGNMENT_SCHEMA = {
   type: "object",

@@ -27,7 +27,6 @@ export class RateLimitError extends APIError {
     super(429, "rate limited");
   }
 }
-export class InternalServerError extends APIError {}
 export class APIConnectionError extends APIError {
   constructor() {
     super(undefined, "Connection error.");

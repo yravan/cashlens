@@ -12,9 +12,8 @@ const retryAfterMs = (response: Response) => {
   return (Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds, 60) : 5) * 1000;
 };
 
-// Silent backfill: fills the uncategorized backlog batch by batch whenever the
-// transactions page opens. The engine writes only NULL category_id rows, so a
-// concurrent manual pick always wins; a no-progress batch stops the loop.
+// The engine writes only NULL category_id rows, so re-firing this loop — from a
+// second tab, a refresh, or a fast back-and-forth — can never clobber user work.
 export function AutoCategorize() {
   const router = useRouter();
 

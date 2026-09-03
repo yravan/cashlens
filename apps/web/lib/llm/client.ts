@@ -17,9 +17,8 @@ import {
 } from "./classify";
 
 export { InvalidClassificationError } from "./classify";
-export type { ClassifyAssignment, ClassifyItem, Confidence } from "./classify";
 
-export const CLASSIFY_MODEL = "claude-haiku-4-5";
+const CLASSIFY_MODEL = "claude-haiku-4-5";
 
 export class LlmUnconfiguredError extends Error {}
 export class LlmRateLimitedError extends Error {}
