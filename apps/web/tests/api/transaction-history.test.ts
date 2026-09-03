@@ -45,6 +45,9 @@ const seedRow = (id: string) => {
     accountName: ACCOUNT_NAME.get(t.accountId)!,
     categoryId: t.categoryId ?? null,
     categoryName: t.categoryId ? CATEGORY_NAME.get(t.categoryId)! : null,
+    categorySource: t.categorySource ?? null,
+    categoryConfidence: t.categoryConfidence ?? null,
+    categoryReason: t.categoryReason ?? null,
   };
 };
 

@@ -92,6 +92,9 @@ export async function transactionHistory(parsed: ParsedHistoryQuery) {
         accountName: accounts.name,
         categoryId: transactions.categoryId,
         categoryName: categories.name,
+        categorySource: transactions.categorySource,
+        categoryConfidence: transactions.categoryConfidence,
+        categoryReason: transactions.categoryReason,
       })
       .from(transactions)
       .innerJoin(
