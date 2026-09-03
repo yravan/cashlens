@@ -18,6 +18,8 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     balances: 5,
     pendingCount: 1,
     categories: 80,
+    uncategorized: 9,
+    review: 1,
     assigned: {
       Paycheck: 2,
       Groceries: 1,
@@ -49,6 +51,8 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     balances: 1,
     pendingCount: 0,
     categories: 80,
+    uncategorized: 1,
+    review: 0,
     assigned: { Electronics: 1 },
     posted: { USD: { inflowMinor: 75000, outflowMinor: -12345, netMinor: 62655, count: 2 } },
     overview: {
@@ -66,6 +70,8 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     balances: 0,
     pendingCount: 0,
     categories: 0,
+    uncategorized: 0,
+    review: 0,
     assigned: {},
     posted: {},
     overview: { accounts: [], cashOnHand: {}, creditOwed: {} },
@@ -125,6 +131,24 @@ test("the dataset spans every ledger shape the schema supports today", () => {
     new Set(SEED_TRANSACTIONS.filter((t) => t.categoryId).map((t) => t.source)).size,
   ).toBeGreaterThan(1);
   expect(SEED_TRANSACTIONS.filter((t) => t.categoryId && t.persona === "neighbor")).toHaveLength(1);
+
+  const sources = SEED_TRANSACTIONS.map((t) => t.categorySource ?? null);
+  expect(new Set(sources)).toEqual(new Set(["user", "auto", null]));
+  expect(
+    new Set(
+      SEED_TRANSACTIONS.filter((t) => t.categorySource === "auto").map((t) => t.categoryConfidence),
+    ),
+  ).toEqual(new Set(["low", "high"]));
+  expect(SEED_TRANSACTIONS.some((t) => t.categoryId && !t.categorySource)).toBe(true);
+  for (const t of SEED_TRANSACTIONS) {
+    if (t.categorySource) expect(t.categoryId).toBeTruthy();
+    if (t.categorySource === "auto") {
+      expect(t.categoryReason).toBeTruthy();
+    } else {
+      expect(t.categoryConfidence ?? null).toBeNull();
+      expect(t.categoryReason ?? null).toBeNull();
+    }
+  }
 
   const leafIds = new Set(SEED_CATEGORIES.filter((c) => c.parentId !== null).map((c) => c.id));
   for (const t of SEED_TRANSACTIONS) {

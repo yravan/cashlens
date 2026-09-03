@@ -69,6 +69,14 @@ export const transactionStatus = pgEnum("transaction_status", [
   "posted",
 ]);
 
+export const categorySource = pgEnum("category_source", ["user", "auto"]);
+
+export const categoryConfidence = pgEnum("category_confidence", [
+  "low",
+  "medium",
+  "high",
+]);
+
 const ownRow = sql`user_id = (select app_current_user_id())`;
 
 function ownRowPolicies(table: string) {
@@ -217,6 +225,9 @@ export const transactions = pgTable(
     userId: uuid("user_id").notNull(),
     accountId: uuid("account_id").notNull(),
     categoryId: uuid("category_id"),
+    categorySource: categorySource("category_source"),
+    categoryConfidence: categoryConfidence("category_confidence"),
+    categoryReason: text("category_reason"),
     amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
     currency: char("currency", { length: 3 }).notNull(),
     date: date("date").notNull(),
@@ -245,6 +256,19 @@ export const transactions = pgTable(
     index("transactions_user_date_idx").on(t.userId, t.date),
     index("transactions_account_date_idx").on(t.accountId, t.date),
     check("transactions_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
+    // Rows categorized before provenance tracking keep a NULL source.
+    check(
+      "transactions_category_source_scope",
+      sql`category_id is not null or category_source is null`,
+    ),
+    check(
+      "transactions_auto_fields_scope",
+      sql`(category_confidence is null and category_reason is null) or category_source = 'auto'`,
+    ),
+    check(
+      "transactions_category_reason_bounded",
+      sql`category_reason is null or char_length(category_reason) between 1 and 200`,
+    ),
     ...ownRowPolicies("transactions"),
     pgPolicy("transactions_update_own", {
       for: "update",

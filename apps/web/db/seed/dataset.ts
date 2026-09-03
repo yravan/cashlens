@@ -100,25 +100,27 @@ const txn = (
   ...rest,
 });
 
+// Provenance shapes: manual picks ("user"), machine picks ("auto" high and
+// low, reason attached), and one pre-4.2.1 legacy row (categorized, NULL source).
 export const SEED_TRANSACTIONS: SeedTransaction[] = [
-  txn(1, "demo", A.checking, 250000, "USD", "2026-02-27", "ACME CORP PAYROLL", { merchant: "Acme Corp", categoryId: category("demo", "Paycheck") }),
+  txn(1, "demo", A.checking, 250000, "USD", "2026-02-27", "ACME CORP PAYROLL", { merchant: "Acme Corp", categoryId: category("demo", "Paycheck"), categorySource: "user" }),
   txn(2, "demo", A.checking, -120000, "USD", "2026-03-02", "TRANSFER TO RAINY DAY SAVINGS"),
   txn(3, "demo", A.savings, 120000, "USD", "2026-03-02", "TRANSFER FROM EVERYDAY CHECKING"),
   txn(4, "demo", A.checking, -85000, "USD", "2026-03-05", "CASH REWARDS CARD PAYMENT"),
   txn(5, "demo", A.card, 85000, "USD", "2026-03-07", "PAYMENT RECEIVED - THANK YOU"),
-  txn(6, "demo", A.checking, -6742, "USD", "2026-03-08", "MAPLE MARKET #204", { merchant: "Maple Market", categoryId: category("demo", "Groceries") }),
-  txn(7, "demo", A.checking, -1250, "USD", "2026-03-16", "BEAN BARREL COFFEE", { merchant: "Bean Barrel", status: "pending", categoryId: category("demo", "Coffee Shops") }),
-  txn(8, "demo", A.checking, 250000, "USD", "2026-03-27", "ACME CORP PAYROLL", { merchant: "Acme Corp", categoryId: category("demo", "Paycheck") }),
+  txn(6, "demo", A.checking, -6742, "USD", "2026-03-08", "MAPLE MARKET #204", { merchant: "Maple Market", categoryId: category("demo", "Groceries"), categorySource: "user" }),
+  txn(7, "demo", A.checking, -1250, "USD", "2026-03-16", "BEAN BARREL COFFEE", { merchant: "Bean Barrel", status: "pending", categoryId: category("demo", "Coffee Shops"), categorySource: "auto", categoryConfidence: "high", categoryReason: "Coffee shop merchant" }),
+  txn(8, "demo", A.checking, 250000, "USD", "2026-03-27", "ACME CORP PAYROLL", { merchant: "Acme Corp", categoryId: category("demo", "Paycheck"), categorySource: "user" }),
   txn(9, "demo", A.savings, 3113, "USD", "2026-03-31", "INTEREST PAYMENT"),
   txn(10, "demo", A.card, -18999, "USD", "2026-02-21", "SKYLINE AIR TICKETS", { merchant: "Skyline Air" }),
-  txn(11, "demo", A.card, -4437, "USD", "2026-03-03", "NOODLE HOUSE", { merchant: "Noodle House", categoryId: category("demo", "Restaurants & Bars") }),
+  txn(11, "demo", A.card, -4437, "USD", "2026-03-03", "NOODLE HOUSE", { merchant: "Noodle House", categoryId: category("demo", "Restaurants & Bars"), categorySource: "user" }),
   txn(12, "demo", A.card, 18999, "USD", "2026-03-12", "SKYLINE AIR REFUND", { merchant: "Skyline Air" }),
-  txn(13, "demo", A.card, -2300, "USD", "2026-03-29", "STREAMFLIX", { merchant: "Streamflix", categoryId: category("demo", "Streaming & Music") }),
+  txn(13, "demo", A.card, -2300, "USD", "2026-03-29", "STREAMFLIX", { merchant: "Streamflix", categoryId: category("demo", "Streaming & Music"), categorySource: "auto", categoryConfidence: "low", categoryReason: "Could be video or music streaming" }),
   txn(14, "demo", A.wallet, -1800, "USD", "2026-03-14", "FARMERS MARKET CASH", { source: "manual", sourceId: null }),
   txn(15, "demo", A.euro, -5650, "EUR", "2026-03-10", "BAHN TICKET BERLIN", { source: "import", categoryId: category("demo", "Public Transit") }),
   txn(16, "demo", A.euro, 20000, "EUR", "2026-03-11", "AIRBNB PAYOUT", { merchant: "Airbnb", source: "import" }),
   txn(17, "neighbor", A.neighborChecking, 75000, "USD", "2026-03-06", "NEIGHBOR PAYCHECK"),
-  txn(18, "neighbor", A.neighborChecking, -12345, "USD", "2026-03-09", "ELECTRONICS EMPORIUM", { merchant: "Electronics Emporium", categoryId: category("neighbor", "Electronics") }),
+  txn(18, "neighbor", A.neighborChecking, -12345, "USD", "2026-03-09", "ELECTRONICS EMPORIUM", { merchant: "Electronics Emporium", categoryId: category("neighbor", "Electronics"), categorySource: "user" }),
 ];
 
 const AS_OF = new Date("2026-03-31T12:00:00Z");
@@ -144,6 +146,8 @@ export type ExpectedPersona = {
   balances: number;
   pendingCount: number;
   categories: number;
+  uncategorized: number;
+  review: number;
   assigned: Record<string, number>;
   posted: Record<string, PostedTotals>;
   overview: {
@@ -212,6 +216,9 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     balances: SEED_BALANCES.filter((b) => b.persona === persona).length,
     pendingCount: mine.filter((t) => t.status === "pending").length,
     categories: SEED_CATEGORIES.filter((c) => c.persona === persona).length,
+    uncategorized: mine.filter((t) => !t.categoryId).length,
+    review: mine.filter((t) => t.categorySource === "auto" && t.categoryConfidence === "low")
+      .length,
     assigned,
     posted,
     overview: overviewFor(persona),
