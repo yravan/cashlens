@@ -544,7 +544,7 @@ test("the app role cannot rewrite a pair's identity columns even on its own rows
   ).rejects.toMatchObject({ cause: expect.objectContaining({ code: "42501" }) });
 });
 
-test("the database itself enforces one active pair per transaction and one row per combination", async () => {
+test("the database itself rejects a second active pair for a transaction, a repeat combination, and a self-pair", async () => {
   const clerkUserId = fakeClerkUserId();
   const { user, ids } = await provision(clerkUserId, 3, [
     { account: 0, amountMinor: -8000, date: "2026-03-12" },

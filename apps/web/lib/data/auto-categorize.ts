@@ -25,7 +25,8 @@ export type AutoCategorizeStep = { attempted: number; categorized: number; remai
 // row paired mid-classification is skipped like a concurrent manual pick.
 const unpaired = sql`not exists (
   select 1 from ${transferPairs}
-  where ${transferPairs.dismissedAt} is null
+  where ${transferPairs.userId} = ${transactions.userId}
+    and ${transferPairs.dismissedAt} is null
     and (${transferPairs.outflowTransactionId} = ${transactions.id}
       or ${transferPairs.inflowTransactionId} = ${transactions.id})
 )`;
