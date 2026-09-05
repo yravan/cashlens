@@ -123,6 +123,17 @@ export const SEED_TRANSACTIONS: SeedTransaction[] = [
   txn(18, "neighbor", A.neighborChecking, -12345, "USD", "2026-03-09", "ELECTRONICS EMPORIUM", { merchant: "Electronics Emporium", categoryId: category("neighbor", "Electronics"), categorySource: "user" }),
 ];
 
+// The two zero-sum pairs above (txn 2/3 savings move, txn 4/5 card payment),
+// waiting for 3.3.1's matcher; outflow first, ordered by date distance then date.
+export const SEED_TRANSFER_PAIRS: {
+  persona: SeedPersona;
+  outflowId: string;
+  inflowId: string;
+}[] = [
+  { persona: "demo", outflowId: uid(0x202), inflowId: uid(0x203) },
+  { persona: "demo", outflowId: uid(0x204), inflowId: uid(0x205) },
+];
+
 const AS_OF = new Date("2026-03-31T12:00:00Z");
 
 export const SEED_BALANCES: SeedRow<typeof accountBalances.$inferInsert>[] = [
@@ -156,6 +167,11 @@ export type ExpectedPersona = {
     creditOwed: Record<string, number>;
   };
   history: { order: string[]; currencies: string[] };
+  transfers: {
+    pairs: { outflowId: string; inflowId: string }[];
+    pairedRows: number;
+    autoQueue: number;
+  };
 };
 
 const ACCOUNT_TYPE_ORDER = ["depository", "credit", "loan", "investment", "other"];
@@ -210,6 +226,11 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
     .map((t) => t.id);
 
+  const pairs = SEED_TRANSFER_PAIRS.filter((p) => p.persona === persona).map(
+    ({ outflowId, inflowId }) => ({ outflowId, inflowId }),
+  );
+  const pairedIds = new Set(pairs.flatMap((p) => [p.outflowId, p.inflowId]));
+
   return {
     accounts: SEED_ACCOUNTS.filter((a) => a.persona === persona).length,
     transactions: mine.length,
@@ -223,6 +244,11 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     posted,
     overview: overviewFor(persona),
     history: { order, currencies: [...new Set(mine.map((t) => t.currency))].sort() },
+    transfers: {
+      pairs,
+      pairedRows: pairedIds.size,
+      autoQueue: mine.filter((t) => !t.categoryId && !pairedIds.has(t.id)).length,
+    },
   };
 }
 
