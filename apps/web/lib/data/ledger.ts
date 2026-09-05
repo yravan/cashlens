@@ -1,10 +1,11 @@
 import "server-only";
-import { and, asc, count, desc, eq, gte, ilike, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import { categoryGroupsFor } from "@/lib/data/categories";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope, type ScopedTx } from "@/lib/db/client";
-import { accountBalances, accounts, categories, transactions } from "@/lib/db/schema";
+import { accountBalances, accounts, categories, transactions, transferPairs } from "@/lib/db/schema";
 import {
   HISTORY_PAGE_SIZE,
   searchPattern,
@@ -67,6 +68,9 @@ async function historyOptions(tx: ScopedTx, userId: string) {
   };
 }
 
+const counterpartTransactions = alias(transactions, "counterpart_transactions");
+const counterpartAccounts = alias(accounts, "counterpart_accounts");
+
 export async function transactionHistory(parsed: ParsedHistoryQuery) {
   const user = await requireUser();
   return withRequestScope(user.clerkUserId, async (tx) => {
@@ -95,6 +99,8 @@ export async function transactionHistory(parsed: ParsedHistoryQuery) {
         categorySource: transactions.categorySource,
         categoryConfidence: transactions.categoryConfidence,
         categoryReason: transactions.categoryReason,
+        transferPairId: transferPairs.id,
+        transferCounterpart: counterpartAccounts.name,
       })
       .from(transactions)
       .innerJoin(
@@ -104,6 +110,34 @@ export async function transactionHistory(parsed: ParsedHistoryQuery) {
       .leftJoin(
         categories,
         and(eq(categories.id, transactions.categoryId), eq(categories.userId, user.id)),
+      )
+      .leftJoin(
+        transferPairs,
+        and(
+          eq(transferPairs.userId, user.id),
+          isNull(transferPairs.dismissedAt),
+          or(
+            eq(transferPairs.outflowTransactionId, transactions.id),
+            eq(transferPairs.inflowTransactionId, transactions.id),
+          ),
+        ),
+      )
+      .leftJoin(
+        counterpartTransactions,
+        and(
+          eq(
+            counterpartTransactions.id,
+            sql`case when ${transferPairs.outflowTransactionId} = ${transactions.id} then ${transferPairs.inflowTransactionId} else ${transferPairs.outflowTransactionId} end`,
+          ),
+          eq(counterpartTransactions.userId, user.id),
+        ),
+      )
+      .leftJoin(
+        counterpartAccounts,
+        and(
+          eq(counterpartAccounts.id, counterpartTransactions.accountId),
+          eq(counterpartAccounts.userId, user.id),
+        ),
       )
       .where(where)
       .orderBy(desc(transactions.date), desc(transactions.createdAt), desc(transactions.id))

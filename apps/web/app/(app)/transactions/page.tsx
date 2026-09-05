@@ -14,6 +14,8 @@ import { formatMinorUnits } from "@/lib/ledger/minor-units";
 import { AutoCategorize } from "./auto-categorize";
 import { CategorySelect } from "./category-select";
 import { HistoryFilters } from "./filter-form";
+import { TransferMatch } from "./transfer-match";
+import { TransferUnlink } from "./transfer-unlink";
 
 export const metadata: Metadata = { title: "Transactions" };
 
@@ -70,6 +72,16 @@ function TransactionRow({
             {row.categoryConfidence === "low" && " — check"}
           </span>
         )}
+        {row.transferPairId && (
+          <span data-testid="transfer-marker" className="text-xs text-zinc-500 dark:text-zinc-400">
+            Transfer · {row.amountMinor < 0 ? "to" : "from"}{" "}
+            {row.transferCounterpart ?? "another account"} ·{" "}
+            <TransferUnlink
+              pairId={row.transferPairId}
+              label={`${row.merchant ?? row.description} on ${row.date}`}
+            />
+          </span>
+        )}
       </span>
     </li>
   );
@@ -95,6 +107,7 @@ export default async function TransactionsPage({
   const heading = (
     <>
       <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
+      {history.options.currencies.length > 0 && <TransferMatch />}
       {autoCategorize && <AutoCategorize />}
     </>
   );

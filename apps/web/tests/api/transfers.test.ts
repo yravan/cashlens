@@ -6,8 +6,10 @@ import { POST as unlinkRoute } from "@/app/api/transfers/[pairId]/unlink/route";
 import { EXPECTED, SEED_USERS } from "@/db/seed/dataset";
 import { seedDataset } from "@/db/seed/seed";
 import { autoCategorizeBatch, uncategorizedCount } from "@/lib/data/auto-categorize";
+import { transactionHistory } from "@/lib/data/ledger";
 import { matchTransfers, unlinkTransferPair } from "@/lib/data/transfers";
 import { requireUser } from "@/lib/data/users";
+import { parseHistoryQuery } from "@/lib/ledger/history-query";
 import { withRequestScope } from "@/lib/db/client";
 import { accounts, transactions, transferPairs } from "@/lib/db/schema";
 import {
@@ -366,6 +368,49 @@ test("rows paired while a classification is in flight are skipped by the write",
     .from(transactions)
     .where(and(eq(transactions.userId, user.id), isNull(transactions.categoryId)));
   expect(rows.map((row) => row.id).sort()).toEqual([ids[0], ids[1]].sort());
+});
+
+test("history rows carry the pair id and counterpart account, without fan-out, until unlinked", async () => {
+  const ids = await seedDataset(adminDb());
+  const clerkUserId = SEED_USERS.demo.clerkUserId;
+  await withAuth(clerkUserId, () => matchTransfers());
+
+  const parsed = parseHistoryQuery({});
+  if (!parsed.ok) throw new Error("empty query must parse");
+  const view = await withAuth(clerkUserId, () => transactionHistory(parsed));
+  expect(view.rows).toHaveLength(EXPECTED.demo.transactions);
+  expect(view.total).toBe(EXPECTED.demo.transactions);
+
+  const byDescription = new Map(view.rows.map((row) => [row.description, row]));
+  expect(byDescription.get("TRANSFER TO RAINY DAY SAVINGS")).toMatchObject({
+    transferPairId: expect.any(String),
+    transferCounterpart: "Rainy Day Savings",
+  });
+  expect(byDescription.get("TRANSFER FROM EVERYDAY CHECKING")).toMatchObject({
+    transferCounterpart: "Everyday Checking",
+  });
+  expect(byDescription.get("CASH REWARDS CARD PAYMENT")).toMatchObject({
+    transferCounterpart: "Cash Rewards Card",
+  });
+  expect(byDescription.get("PAYMENT RECEIVED - THANK YOU")).toMatchObject({
+    transferCounterpart: "Everyday Checking",
+  });
+  expect(byDescription.get("SKYLINE AIR REFUND")).toMatchObject({
+    transferPairId: null,
+    transferCounterpart: null,
+  });
+
+  const savingsPair = (await activePairsOf(ids.demo)).find(
+    (pair) => pair.outflowId === EXPECTED.demo.transfers.pairs[0].outflowId,
+  )!;
+  await withAuth(clerkUserId, () => unlinkTransferPair(savingsPair.id));
+  const after = await withAuth(clerkUserId, () => transactionHistory(parsed));
+  const afterBy = new Map(after.rows.map((row) => [row.description, row]));
+  expect(afterBy.get("TRANSFER TO RAINY DAY SAVINGS")).toMatchObject({ transferPairId: null });
+  expect(afterBy.get("TRANSFER FROM EVERYDAY CHECKING")).toMatchObject({ transferPairId: null });
+  expect(afterBy.get("CASH REWARDS CARD PAYMENT")).toMatchObject({
+    transferCounterpart: "Cash Rewards Card",
+  });
 });
 
 const postMatch = (headers: Record<string, string> = {}) =>
