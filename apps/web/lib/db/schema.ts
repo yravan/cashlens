@@ -239,6 +239,7 @@ export const transactions = pgTable(
     ...timestamps,
   },
   (t) => [
+    unique("transactions_id_user_id_unique").on(t.id, t.userId),
     // Composite FK: plain FKs bypass RLS, letting a row reference another user's account.
     foreignKey({
       name: "transactions_account_user_fk",
@@ -277,6 +278,55 @@ export const transactions = pgTable(
       withCheck: ownRow,
     }),
     pgPolicy("transactions_delete_own", { for: "delete", to: appRole, using: ownRow }),
+  ],
+);
+
+// One link row per detected transfer (3.3.1). Active pairs have NULL
+// dismissed_at; a dismissed row is negative memory — the combination is never
+// re-proposed, while both transactions stay free to pair elsewhere.
+export const transferPairs = pgTable(
+  "transfer_pairs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull(),
+    outflowTransactionId: uuid("outflow_transaction_id").notNull(),
+    inflowTransactionId: uuid("inflow_transaction_id").notNull(),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    // Composite FKs: deleting either half (2.1.4 removed path, purge) unpairs by cascade.
+    foreignKey({
+      name: "transfer_pairs_outflow_user_fk",
+      columns: [t.outflowTransactionId, t.userId],
+      foreignColumns: [transactions.id, transactions.userId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "transfer_pairs_inflow_user_fk",
+      columns: [t.inflowTransactionId, t.userId],
+      foreignColumns: [transactions.id, transactions.userId],
+    }).onDelete("cascade"),
+    unique("transfer_pairs_combo_unique").on(t.outflowTransactionId, t.inflowTransactionId),
+    uniqueIndex("transfer_pairs_active_outflow_key")
+      .on(t.outflowTransactionId)
+      .where(sql`dismissed_at is null`),
+    uniqueIndex("transfer_pairs_active_inflow_key")
+      .on(t.inflowTransactionId)
+      .where(sql`dismissed_at is null`),
+    index("transfer_pairs_inflow_idx").on(t.inflowTransactionId),
+    index("transfer_pairs_user_id_idx").on(t.userId),
+    check(
+      "transfer_pairs_distinct_halves",
+      sql`outflow_transaction_id <> inflow_transaction_id`,
+    ),
+    ...ownRowPolicies("transfer_pairs"),
+    pgPolicy("transfer_pairs_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
+    pgPolicy("transfer_pairs_delete_own", { for: "delete", to: appRole, using: ownRow }),
   ],
 );
 
