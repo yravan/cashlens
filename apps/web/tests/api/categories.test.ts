@@ -131,6 +131,88 @@ test("assignment persists, reassigns, and clears back to uncategorized", async (
   expect(await categoryOf(transactionId)).toBeNull();
 });
 
+const provenanceOf = async (transactionId: string) => {
+  const [row] = await adminDb()
+    .select({
+      categoryId: transactions.categoryId,
+      source: transactions.categorySource,
+      confidence: transactions.categoryConfidence,
+      reason: transactions.categoryReason,
+    })
+    .from(transactions)
+    .where(eq(transactions.id, transactionId));
+  return row;
+};
+
+test("manual assignment stamps user provenance and wipes auto fields; clearing wipes everything", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const { transactionId } = await provision(clerkUserId);
+  const groups = await withAuth(clerkUserId, () => listCategoryGroups());
+  const coffee = leafNamed(groups, "Coffee Shops");
+  const groceries = leafNamed(groups, "Groceries");
+
+  await withAuth(clerkUserId, () => setTransactionCategory(transactionId, coffee));
+  expect(await provenanceOf(transactionId)).toEqual({
+    categoryId: coffee,
+    source: "user",
+    confidence: null,
+    reason: null,
+  });
+
+  await adminDb()
+    .update(transactions)
+    .set({
+      categorySource: "auto",
+      categoryConfidence: "low",
+      categoryReason: "Machine guess",
+    })
+    .where(eq(transactions.id, transactionId));
+
+  await withAuth(clerkUserId, () => setTransactionCategory(transactionId, groceries));
+  expect(await provenanceOf(transactionId)).toEqual({
+    categoryId: groceries,
+    source: "user",
+    confidence: null,
+    reason: null,
+  });
+
+  await withAuth(clerkUserId, () => setTransactionCategory(transactionId, null));
+  expect(await provenanceOf(transactionId)).toEqual({
+    categoryId: null,
+    source: null,
+    confidence: null,
+    reason: null,
+  });
+});
+
+test("provenance invariants hold at the schema level, even for privileged writers", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const { transactionId } = await provision(clerkUserId);
+  const groups = await withAuth(clerkUserId, () => listCategoryGroups());
+  const violations: Partial<typeof transactions.$inferInsert>[] = [
+    { categorySource: "auto" },
+    { categoryId: leafNamed(groups, "Groceries"), categorySource: "user", categoryConfidence: "high" },
+    { categoryId: leafNamed(groups, "Groceries"), categorySource: "user", categoryReason: "why" },
+    {
+      categoryId: leafNamed(groups, "Groceries"),
+      categorySource: "auto",
+      categoryConfidence: "low",
+      categoryReason: "x".repeat(201),
+    },
+  ];
+  for (const set of violations) {
+    await expect(
+      adminDb().update(transactions).set(set).where(eq(transactions.id, transactionId)),
+    ).rejects.toMatchObject(pgError("23514"));
+  }
+  expect(await provenanceOf(transactionId)).toEqual({
+    categoryId: null,
+    source: null,
+    confidence: null,
+    reason: null,
+  });
+});
+
 test("a category group is never assignable", async () => {
   const clerkUserId = fakeClerkUserId();
   const { transactionId } = await provision(clerkUserId);

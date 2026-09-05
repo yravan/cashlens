@@ -94,7 +94,13 @@ export async function setTransactionCategory(
 
     const [updated] = await tx
       .update(transactions)
-      .set({ categoryId, updatedAt: sql`now()` })
+      .set({
+        categoryId,
+        categorySource: categoryId === null ? null : "user",
+        categoryConfidence: null,
+        categoryReason: null,
+        updatedAt: sql`now()`,
+      })
       .where(and(eq(transactions.id, transactionId), eq(transactions.userId, user.id)))
       .returning({ id: transactions.id, categoryId: transactions.categoryId });
     if (!updated) return { error: "transaction_not_found" as const };

@@ -1,4 +1,4 @@
-import { and, count, eq, sql } from "drizzle-orm";
+import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 
 import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_CATEGORIES, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
@@ -18,6 +18,8 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     balances: 5,
     pendingCount: 1,
     categories: 80,
+    uncategorized: 9,
+    review: 1,
     assigned: {
       Paycheck: 2,
       Groceries: 1,
@@ -49,6 +51,8 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     balances: 1,
     pendingCount: 0,
     categories: 80,
+    uncategorized: 1,
+    review: 0,
     assigned: { Electronics: 1 },
     posted: { USD: { inflowMinor: 75000, outflowMinor: -12345, netMinor: 62655, count: 2 } },
     overview: {
@@ -66,6 +70,8 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     balances: 0,
     pendingCount: 0,
     categories: 0,
+    uncategorized: 0,
+    review: 0,
     assigned: {},
     posted: {},
     overview: { accounts: [], cashOnHand: {}, creditOwed: {} },
@@ -125,6 +131,24 @@ test("the dataset spans every ledger shape the schema supports today", () => {
     new Set(SEED_TRANSACTIONS.filter((t) => t.categoryId).map((t) => t.source)).size,
   ).toBeGreaterThan(1);
   expect(SEED_TRANSACTIONS.filter((t) => t.categoryId && t.persona === "neighbor")).toHaveLength(1);
+
+  const sources = SEED_TRANSACTIONS.map((t) => t.categorySource ?? null);
+  expect(new Set(sources)).toEqual(new Set(["user", "auto", null]));
+  expect(
+    new Set(
+      SEED_TRANSACTIONS.filter((t) => t.categorySource === "auto").map((t) => t.categoryConfidence),
+    ),
+  ).toEqual(new Set(["low", "high"]));
+  expect(SEED_TRANSACTIONS.some((t) => t.categoryId && !t.categorySource)).toBe(true);
+  for (const t of SEED_TRANSACTIONS) {
+    if (t.categorySource) expect(t.categoryId).toBeTruthy();
+    if (t.categorySource === "auto") {
+      expect(t.categoryReason).toBeTruthy();
+    } else {
+      expect(t.categoryConfidence ?? null).toBeNull();
+      expect(t.categoryReason ?? null).toBeNull();
+    }
+  }
 
   const leafIds = new Set(SEED_CATEGORIES.filter((c) => c.parentId !== null).map((c) => c.id));
   for (const t of SEED_TRANSACTIONS) {
@@ -198,15 +222,24 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
     balances: await db.$count(accountBalances, eq(accountBalances.userId, userId)),
     pendingCount: await db.$count(transactions, and(mine, eq(transactions.status, "pending"))),
     categories: await db.$count(categories, eq(categories.userId, userId)),
+    uncategorized: await db.$count(transactions, and(mine, isNull(transactions.categoryId))),
+    review: await db.$count(
+      transactions,
+      and(
+        mine,
+        eq(transactions.categorySource, "auto"),
+        eq(transactions.categoryConfidence, "low"),
+      ),
+    ),
     assigned: Object.fromEntries(assignedRows.map(({ name, n }) => [name, n])),
     posted: Object.fromEntries(posted.map(({ currency, ...totals }) => [currency, totals])),
   };
 }
 
 function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history"> {
-  const { accounts, transactions, balances, pendingCount, categories, assigned, posted } =
+  const { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted } =
     EXPECTED[persona];
-  return { accounts, transactions, balances, pendingCount, categories, assigned, posted };
+  return { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted };
 }
 
 test("seeding lands every persona's ledger in the database exactly, and reseeding is idempotent", async () => {

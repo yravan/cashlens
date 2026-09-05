@@ -10,9 +10,13 @@ const SECTIONS = [
   { label: "Dashboard", path: "/" },
 ] as const;
 
+// exact: substring name matching lets in-page links ("Go to accounts" on the
+// empty transactions page) collide with the nav labels — whether the walk
+// failed depended on whether the click beat the streamed page content past
+// loading.tsx's identical heading.
 async function walkSections(page: Page) {
   for (const { label, path } of SECTIONS) {
-    await page.getByRole("link", { name: label }).click();
+    await page.getByRole("link", { name: label, exact: true }).click();
 
     await expect(page).toHaveURL(path);
     await expect(

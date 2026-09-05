@@ -56,6 +56,7 @@ leaf 10.6.
 | `PLAID_SECRET` | the **production** secret (per-environment; the sandbox secret only works against sandbox) | yes |
 | `PLAID_ENV` | `production` | no |
 | `PLAID_WEBHOOK_URL` | `https://cashlens.org/api/plaid/webhook` — stamped onto items at link time; the receiver (leaf 2.1.4) verifies Plaid's ES256 signature, so it needs no secret of its own | no |
+| `ANTHROPIC_API_KEY` | from console.anthropic.com → API keys — powers LLM auto-categorization (leaf 4.2.1). Read lazily: until it is set the feature is simply dormant (no trigger renders, the categorize route answers 503) and every deploy stays green | yes |
 
 ### Plaid production (leaf 2.1.1 — before real banks connect)
 
@@ -77,6 +78,18 @@ leaf 10.6.
    differs from the env var calls `/item/webhook/update` and re-stamps, so setting or changing
    the URL heals every item on its next sync. Continuous sync still works without webhooks via
    the accounts-page resume path — webhooks make it prompt, not possible.
+
+### LLM auto-categorization (leaf 4.2.1 — founder provisions the key)
+
+1. console.anthropic.com → create an API key (its own workspace, e.g. `cashlens-prod`, keeps
+   spend legible) and set `ANTHROPIC_API_KEY` (Production scope, Sensitive).
+2. Cost shape: batches of ≤40 uncategorized transactions per call on `claude-haiku-4-5`
+   ($1/$5 per MTok) ≈ $0.01 per batch — a 2,000-row backfill is well under a dollar. Set a
+   monthly spend limit in the Anthropic console anyway.
+3. What leaves the system per transaction: description, merchant, and direction only — no ids,
+   dates, amounts, currencies, or account names. Anthropic's commercial API terms: no training
+   on API data, 30-day retention (docs/leaves/4.2.1-prior-art.md #19).
+4. Nothing else to deploy: triggers run as the signed-in user from the transactions page.
 
 `DATABASE_URL_SUPERUSER` is never set on Vercel: the `neondb_owner` credential exists only on the
 founder's machine, for bootstrap.

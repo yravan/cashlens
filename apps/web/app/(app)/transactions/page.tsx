@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { llmConfigured, uncategorizedCount } from "@/lib/data/auto-categorize";
 import { transactionHistory, type TransactionHistory } from "@/lib/data/ledger";
 import {
   historyQueryString,
@@ -10,6 +11,7 @@ import {
   type HistoryQuery,
 } from "@/lib/ledger/history-query";
 import { formatMinorUnits } from "@/lib/ledger/minor-units";
+import { AutoCategorize } from "./auto-categorize";
 import { CategorySelect } from "./category-select";
 import { HistoryFilters } from "./filter-form";
 
@@ -47,12 +49,28 @@ function TransactionRow({
           {row.currency}
         </span>
       </p>
-      <CategorySelect
-        transactionId={row.id}
-        categoryId={row.categoryId}
-        label={`${row.merchant ?? row.description} on ${row.date}`}
-        groups={groups}
-      />
+      <span className="flex flex-col items-start gap-1">
+        <CategorySelect
+          transactionId={row.id}
+          categoryId={row.categoryId}
+          label={`${row.merchant ?? row.description} on ${row.date}`}
+          groups={groups}
+        />
+        {row.categorySource === "auto" && (
+          <span
+            data-testid="auto-category"
+            title={row.categoryReason ?? undefined}
+            className={`text-xs ${
+              row.categoryConfidence === "low"
+                ? "text-amber-600 dark:text-amber-500"
+                : "text-zinc-500 dark:text-zinc-400"
+            }`}
+          >
+            Auto · {row.categoryConfidence}
+            {row.categoryConfidence === "low" && " — check"}
+          </span>
+        )}
+      </span>
     </li>
   );
 }
@@ -65,6 +83,7 @@ export default async function TransactionsPage({
   const params = await searchParams;
   const parsed = parseHistoryQuery(params);
   const history = await transactionHistory(parsed);
+  const autoCategorize = llmConfigured() && (await uncategorizedCount()) > 0;
   const values = (key: HistoryParam) => {
     const value = params[key];
     return typeof value === "string" ? value : "";
@@ -74,7 +93,10 @@ export default async function TransactionsPage({
   const formKey = parsed.ok ? historyQueryString(parsed.query, 1) : JSON.stringify(params);
 
   const heading = (
-    <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
+    <>
+      <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
+      {autoCategorize && <AutoCategorize />}
+    </>
   );
 
   if (!parsed.ok) {
