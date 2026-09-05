@@ -1,15 +1,11 @@
 import "server-only";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
 import { transactions, transferPairs } from "@/lib/db/schema";
-import {
-  comboKey,
-  matchTransferPairs,
-  TRANSFER_WINDOW_DAYS,
-} from "@/lib/ledger/transfer-matching";
+import { comboKey, matchTransferPairs, pairDistance } from "@/lib/ledger/transfer-matching";
 import { logEvent } from "@/lib/log";
 
 const INSERT_CHUNK = 500;
@@ -27,25 +23,6 @@ export async function matchTransfers(): Promise<TransferMatchStep> {
 // owner mapping — never from request input.
 export async function matchTransfersFor(user: ScopedUser): Promise<TransferMatchStep> {
   const step = await withRequestScope(user.clerkUserId, async (tx) => {
-    // A re-synced half can drift (amount, date, status): active pairs are
-    // re-verified against the full rule and dissolved when it no longer holds.
-    const dissolved = await tx.execute(sql`
-      delete from transfer_pairs pair
-      using transactions outflow, transactions inflow
-      where pair.user_id = ${user.id}
-        and pair.dismissed_at is null
-        and outflow.id = pair.outflow_transaction_id and outflow.user_id = pair.user_id
-        and inflow.id = pair.inflow_transaction_id and inflow.user_id = pair.user_id
-        and not (
-          outflow.status = 'posted' and inflow.status = 'posted'
-          and outflow.amount_minor < 0
-          and inflow.amount_minor = -outflow.amount_minor
-          and outflow.currency = inflow.currency
-          and outflow.account_id <> inflow.account_id
-          and abs(inflow.date - outflow.date) <= ${TRANSFER_WINDOW_DAYS}
-        )
-    `);
-
     const rows = await tx
       .select({
         id: transactions.id,
@@ -59,6 +36,7 @@ export async function matchTransfersFor(user: ScopedUser): Promise<TransferMatch
       .where(and(eq(transactions.userId, user.id), eq(transactions.status, "posted")));
     const known = await tx
       .select({
+        id: transferPairs.id,
         outflowId: transferPairs.outflowTransactionId,
         inflowId: transferPairs.inflowTransactionId,
         dismissedAt: transferPairs.dismissedAt,
@@ -66,10 +44,27 @@ export async function matchTransfersFor(user: ScopedUser): Promise<TransferMatch
       .from(transferPairs)
       .where(eq(transferPairs.userId, user.id));
 
-    const activelyPaired = new Set(
-      known.filter((pair) => pair.dismissedAt === null).flatMap((pair) => [pair.outflowId, pair.inflowId]),
+    // A re-synced half can drift out of the rule (amount, date, currency, account,
+    // status): active pairs are re-checked against it and dissolved when it breaks.
+    const posted = new Map(rows.map((row) => [row.id, row]));
+    const stale = known.filter(
+      (pair) =>
+        pair.dismissedAt === null &&
+        pairDistance(posted.get(pair.outflowId), posted.get(pair.inflowId)) === null,
     );
-    const excluded = new Set(known.map((pair) => comboKey(pair.outflowId, pair.inflowId)));
+    let dissolved = 0;
+    if (stale.length > 0) {
+      const ids = stale.map((pair) => pair.id);
+      const removed = await tx.delete(transferPairs).where(inArray(transferPairs.id, ids));
+      dissolved = removed.rowCount ?? 0;
+    }
+
+    const gone = new Set(stale);
+    const live = known.filter((pair) => !gone.has(pair));
+    const activelyPaired = new Set(
+      live.filter((pair) => pair.dismissedAt === null).flatMap((pair) => [pair.outflowId, pair.inflowId]),
+    );
+    const excluded = new Set(live.map((pair) => comboKey(pair.outflowId, pair.inflowId)));
     const found = matchTransferPairs(
       rows.filter((row) => !activelyPaired.has(row.id)),
       excluded,
@@ -89,7 +84,7 @@ export async function matchTransfersFor(user: ScopedUser): Promise<TransferMatch
         .onConflictDoNothing();
       paired += chunk.rowCount ?? 0;
     }
-    return { paired, dissolved: dissolved.rowCount ?? 0 };
+    return { paired, dissolved };
   });
 
   if (step.paired > 0 || step.dissolved > 0) logEvent("transfer_match.run", step);

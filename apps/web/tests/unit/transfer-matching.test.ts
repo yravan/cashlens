@@ -195,19 +195,37 @@ test("different magnitudes never cross-pair even inside the window", () => {
   ]);
 });
 
-test("the result is identical no matter how the input is ordered", () => {
+const permutations = <T,>(items: T[]): T[][] =>
+  items.length <= 1
+    ? [items]
+    : items.flatMap((item, at) =>
+        permutations([...items.slice(0, at), ...items.slice(at + 1)]).map((rest) => [
+          item,
+          ...rest,
+        ]),
+      );
+
+// Two outflows contend for one inflow at an identical date distance, and the
+// loser cascades — the shape whose outcome flips with the input order unless the
+// candidate ordering is total.
+test("the result is identical for every one of the input's orderings", () => {
   const rows = [
     out(1, { date: "2026-03-10" }),
-    out(2, { date: "2026-03-12", accountId: "acct-c" }),
-    inn(3, { date: "2026-03-11" }),
-    inn(4, { date: "2026-03-12", accountId: "acct-d" }),
-    inn(5, { date: "2026-03-20", accountId: "acct-e" }),
+    out(2, { date: "2026-03-10", accountId: "acct-c" }),
+    inn(3, { date: "2026-03-10" }),
+    inn(4, { date: "2026-03-14", accountId: "acct-d" }),
+    out(5, { date: "2026-03-12", amountMinor: -1200, accountId: "acct-e" }),
+    inn(6, { date: "2026-03-11", amountMinor: 1200, accountId: "acct-f" }),
   ];
   const forward = pairs(rows);
-  const reversed = pairs([...rows].reverse());
-  const shuffled = pairs([rows[3], rows[0], rows[4], rows[2], rows[1]]);
-  expect(reversed).toEqual(forward);
-  expect(shuffled).toEqual(forward);
+  expect(forward).toEqual([
+    [id(1), id(3)],
+    [id(5), id(6)],
+    [id(2), id(4)],
+  ]);
+  const orders = permutations(rows);
+  expect(orders).toHaveLength(720);
+  for (const order of orders) expect(pairs(order)).toEqual(forward);
 });
 
 test("the seeded demo ledger yields exactly the dataset's two hand-verified pairs", () => {

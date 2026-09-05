@@ -247,6 +247,14 @@ test("a re-synced half that breaks the invariant dissolves the pair on the next 
     dissolved: 1,
   });
   expect(await pairsOf(user.id)).toEqual([]);
+
+  // Every dimension of the rule dissolves, not just the amount: heal the amount,
+  // re-pair, then push the halves apart in time and out of the window.
+  await adminDb().update(transactions).set({ amountMinor: 4400 }).where(eq(transactions.id, ids[1]));
+  expect(await withAuth(clerkUserId, () => matchTransfers())).toEqual({ paired: 1, dissolved: 0 });
+  await adminDb().update(transactions).set({ date: "2026-03-13" }).where(eq(transactions.id, ids[1]));
+  expect(await withAuth(clerkUserId, () => matchTransfers())).toEqual({ paired: 0, dissolved: 1 });
+  expect(await pairsOf(user.id)).toEqual([]);
 });
 
 test("a dissolved-and-still-valid combination may re-pair after the data heals", async () => {

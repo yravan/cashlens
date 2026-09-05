@@ -15,6 +15,22 @@ export const comboKey = (outflowId: string, inflowId: string) => `${outflowId}:$
 
 const dayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86_400_000;
 
+// The whole rule, in one place: the matcher builds edges from it and the engine
+// re-checks live pairs against it, so a re-synced half can never drift out of
+// the rule and stay paired.
+export function pairDistance(
+  outflow: MatchableRow | undefined,
+  inflow: MatchableRow | undefined,
+): number | null {
+  if (!outflow || !inflow) return null;
+  if (outflow.status !== "posted" || inflow.status !== "posted") return null;
+  if (outflow.amountMinor >= 0 || inflow.amountMinor !== -outflow.amountMinor) return null;
+  if (outflow.currency !== inflow.currency) return null;
+  if (outflow.accountId === inflow.accountId) return null;
+  const distance = Math.abs(dayNumber(inflow.date) - dayNumber(outflow.date));
+  return distance <= TRANSFER_WINDOW_DAYS ? distance : null;
+}
+
 type Edge = TransferPairCandidate & { dateDistance: number; outflowDate: string };
 
 export function matchTransferPairs(
@@ -34,10 +50,9 @@ export function matchTransferPairs(
   for (const { outs, ins } of byMagnitude.values()) {
     for (const outflow of outs) {
       for (const inflow of ins) {
-        if (inflow.accountId === outflow.accountId) continue;
+        const dateDistance = pairDistance(outflow, inflow);
+        if (dateDistance === null) continue;
         if (excludedCombos.has(comboKey(outflow.id, inflow.id))) continue;
-        const dateDistance = Math.abs(dayNumber(inflow.date) - dayNumber(outflow.date));
-        if (dateDistance > TRANSFER_WINDOW_DAYS) continue;
         edges.push({
           outflowId: outflow.id,
           inflowId: inflow.id,
