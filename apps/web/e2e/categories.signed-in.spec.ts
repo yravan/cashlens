@@ -59,8 +59,11 @@ test.describe("category assignment", () => {
     await expect(streamflix).toHaveCount(1);
     await expect(streamflix.locator("option:checked")).toHaveText("Streaming & Music");
 
+    // The page's machine triggers (transfer match refresh + llm-stub categorize)
+    // may repaint this row auto-categorized at any moment; the manual pick below
+    // must win either order, so no precondition on the starting value.
     const farmers = row(page, "FARMERS MARKET CASH").getByRole("combobox");
-    await expect(farmers.locator("option:checked")).toHaveText("Uncategorized");
+    await expect(farmers).toHaveCount(1);
     const saved = page.waitForResponse(
       (response) =>
         response.url().includes("/api/transactions/") &&
