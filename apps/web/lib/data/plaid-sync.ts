@@ -3,6 +3,7 @@ import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
 import { readConnectionCredentialAs, setProviderErrorAs } from "@/lib/data/connections";
+import { matchTransfersFor } from "@/lib/data/transfers";
 import {
   balanceRow,
   currencyOf,
@@ -298,6 +299,15 @@ export async function advanceSyncFor(
   await armWebhook(user, connectionId, connection.webhookUrl, credential);
 
   const activity = counts.added + counts.modified + counts.removed;
+  if (activity > 0) {
+    // Both halves of a transfer often land in different runs (or different
+    // connections), so every ingesting run re-matches; failures never fail the sync.
+    try {
+      await matchTransfersFor(user);
+    } catch (error) {
+      logEvent("transfer_match.run_failed", { connectionId, errorClass: errorClass(error) });
+    }
+  }
   if (run.drained && (activity > 0 || backfillStatus !== previous)) {
     await refreshBalances(user, connectionId, credential, bySourceId);
   }

@@ -4,7 +4,7 @@ import { and, count, desc, eq, isNull, sql } from "drizzle-orm";
 import { categoryGroupsFor } from "@/lib/data/categories";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope, type ScopedTx } from "@/lib/db/client";
-import { transactions } from "@/lib/db/schema";
+import { transactions, transferPairs } from "@/lib/db/schema";
 import { classifyTransactions } from "@/lib/llm/client";
 import { errorClass, logEvent } from "@/lib/log";
 
@@ -20,8 +20,19 @@ export const BATCH_LIMIT = 40;
 
 export type AutoCategorizeStep = { attempted: number; categorized: number; remaining: number };
 
+// An actively paired row is a transfer (3.3.1), not spend — it needs no
+// category; unlinking re-admits it. The same predicate guards the write, so a
+// row paired mid-classification is skipped like a concurrent manual pick.
+const unpaired = sql`not exists (
+  select 1 from ${transferPairs}
+  where ${transferPairs.userId} = ${transactions.userId}
+    and ${transferPairs.dismissedAt} is null
+    and (${transferPairs.outflowTransactionId} = ${transactions.id}
+      or ${transferPairs.inflowTransactionId} = ${transactions.id})
+)`;
+
 const uncategorized = (userId: string) =>
-  and(eq(transactions.userId, userId), isNull(transactions.categoryId));
+  and(eq(transactions.userId, userId), isNull(transactions.categoryId), unpaired);
 
 async function remainingCount(tx: ScopedTx, userId: string): Promise<number> {
   const [row] = await tx.select({ n: count() }).from(transactions).where(uncategorized(userId));

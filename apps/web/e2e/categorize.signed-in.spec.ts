@@ -88,10 +88,15 @@ test.describe("auto categorization", () => {
     );
     expect(probe.status()).toBe(200);
     await reseed();
+    // Pair the seeded transfers first: on a live page the match and categorize
+    // triggers race, and this test pins the queue the categorizer must see.
+    const match = await page.request.post("/api/transfers/match");
+    expect(match.status()).toBe(200);
+    expect(await match.json()).toEqual({ paired: 2, dissolved: 0 });
 
     await page.goto("/transactions");
 
-    await expect(markers(page)).toHaveCount(EXPECTED.demo.uncategorized + SEEDED_AUTO, {
+    await expect(markers(page)).toHaveCount(EXPECTED.demo.transfers.autoQueue + SEEDED_AUTO, {
       timeout: 45_000,
     });
     await expect
@@ -104,7 +109,7 @@ test.describe("auto categorization", () => {
             ),
         { timeout: 45_000 },
       )
-      .toBe(0);
+      .toBe(EXPECTED.demo.transfers.pairedRows);
 
     const maple = rows(page).filter({ hasText: "Maple Market" });
     await expect(maple.locator("select")).toHaveValue(GROCERIES_ID);

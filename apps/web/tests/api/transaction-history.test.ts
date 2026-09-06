@@ -48,6 +48,8 @@ const seedRow = (id: string) => {
     categorySource: t.categorySource ?? null,
     categoryConfidence: t.categoryConfidence ?? null,
     categoryReason: t.categoryReason ?? null,
+    transferPairId: null,
+    transferCounterpart: null,
   };
 };
 

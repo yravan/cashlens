@@ -1,7 +1,7 @@
 import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 
-import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_CATEGORIES, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
+import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_CATEGORIES, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_TRANSFER_PAIRS, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
 import { assertLocalDatabaseUrl } from "@/db/seed/local-only";
 import { seedDataset } from "@/db/seed/seed";
 import { ledgerCounts } from "@/lib/data/ledger";
@@ -44,6 +44,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
       creditOwed: { USD: 51245 },
     },
     history: { order: expect.any(Array), currencies: ["EUR", "USD"] },
+    transfers: { pairs: expect.any(Array), pairedRows: 4, autoQueue: 5 },
   });
   expect(EXPECTED.neighbor).toEqual({
     accounts: 1,
@@ -63,6 +64,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
       creditOwed: {},
     },
     history: { order: expect.any(Array), currencies: ["USD"] },
+    transfers: { pairs: [], pairedRows: 0, autoQueue: 1 },
   });
   expect(EXPECTED.empty).toEqual({
     accounts: 0,
@@ -76,6 +78,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     posted: {},
     overview: { accounts: [], cashOnHand: {}, creditOwed: {} },
     history: { order: [], currencies: [] },
+    transfers: { pairs: [], pairedRows: 0, autoQueue: 0 },
   });
 });
 
@@ -184,17 +187,32 @@ test("the dataset's transfer-pair rows stay uncategorized (3.3.1 owns transfers)
   }
 });
 
-test("the dataset's transfer pairs cancel exactly", () => {
-  const bySourceId = new Map(SEED_TRANSACTIONS.map((t) => [t.sourceId, t.amountMinor]));
-  for (const [out, back] of [
-    ["seed-txn-2", "seed-txn-3"],
-    ["seed-txn-4", "seed-txn-5"],
-  ]) {
-    expect(bySourceId.get(out)! + bySourceId.get(back)!).toBe(0);
+test("the dataset's transfer pairs are the two hand-verified zero-sum moves, matchable by 3.3.1's rule", () => {
+  const byId = new Map(SEED_TRANSACTIONS.map((t) => [t.id, t]));
+  const label = (id: string) => `${byId.get(id)!.date} ${byId.get(id)!.description}`;
+  expect(
+    EXPECTED.demo.transfers.pairs.map((p) => [label(p.outflowId), label(p.inflowId)]),
+  ).toEqual([
+    ["2026-03-02 TRANSFER TO RAINY DAY SAVINGS", "2026-03-02 TRANSFER FROM EVERYDAY CHECKING"],
+    ["2026-03-05 CASH REWARDS CARD PAYMENT", "2026-03-07 PAYMENT RECEIVED - THANK YOU"],
+  ]);
+  for (const { outflowId, inflowId } of SEED_TRANSFER_PAIRS) {
+    const outflow = byId.get(outflowId)!;
+    const inflow = byId.get(inflowId)!;
+    expect(outflow.amountMinor).toBeLessThan(0);
+    expect(outflow.amountMinor + inflow.amountMinor).toBe(0);
+    expect(outflow.currency).toBe(inflow.currency);
+    expect(outflow.accountId).not.toBe(inflow.accountId);
+    expect(outflow.status).toBe("posted");
+    expect(inflow.status).toBe("posted");
+    const days =
+      Math.abs(Date.parse(`${inflow.date}T00:00:00Z`) - Date.parse(`${outflow.date}T00:00:00Z`)) /
+      86_400_000;
+    expect(days).toBeLessThanOrEqual(4);
   }
 });
 
-async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history">> {
+async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history" | "transfers">> {
   const db = adminDb();
   const mine = eq(transactions.userId, userId);
   const posted = await db
@@ -236,7 +254,7 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
   };
 }
 
-function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history"> {
+function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history" | "transfers"> {
   const { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted } =
     EXPECTED[persona];
   return { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted };
