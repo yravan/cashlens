@@ -146,6 +146,8 @@ export const SEED_BALANCES: SeedRow<typeof accountBalances.$inferInsert>[] = [
 ];
 
 type PostedTotals = { inflowMinor: number; outflowMinor: number; netMinor: number; count: number };
+type MonthFlow = { month: string; inflowMinor: number; outflowMinor: number; netMinor: number };
+type CurrencyFlow = { currency: string; months: MonthFlow[] };
 type OverviewAccount = Pick<
   (typeof SEED_ACCOUNTS)[number],
   "name" | "type" | "subtype" | "mask" | "currency"
@@ -161,6 +163,7 @@ export type ExpectedPersona = {
   review: number;
   assigned: Record<string, number>;
   posted: Record<string, PostedTotals>;
+  flow: CurrencyFlow[];
   overview: {
     accounts: OverviewAccount[];
     cashOnHand: Record<string, number>;
@@ -231,6 +234,24 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
   );
   const pairedIds = new Set(pairs.flatMap((p) => [p.outflowId, p.inflowId]));
 
+  // True spend: posted rows only, active-pair members excluded whatever their category.
+  const buckets = new Map<string, Map<string, MonthFlow>>();
+  for (const t of mine) {
+    if (t.status !== "posted" || pairedIds.has(t.id)) continue;
+    const month = t.date.slice(0, 7);
+    const months = buckets.get(t.currency) ?? new Map<string, MonthFlow>();
+    buckets.set(t.currency, months);
+    const totals = months.get(month) ?? { month, inflowMinor: 0, outflowMinor: 0, netMinor: 0 };
+    months.set(month, totals);
+    if (t.amountMinor >= 0) totals.inflowMinor += t.amountMinor;
+    else totals.outflowMinor += t.amountMinor;
+    totals.netMinor += t.amountMinor;
+  }
+  const flow = [...buckets.keys()].sort().map((currency) => ({
+    currency,
+    months: [...buckets.get(currency)!.values()].sort((a, b) => b.month.localeCompare(a.month)),
+  }));
+
   return {
     accounts: SEED_ACCOUNTS.filter((a) => a.persona === persona).length,
     transactions: mine.length,
@@ -242,6 +263,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
       .length,
     assigned,
     posted,
+    flow,
     overview: overviewFor(persona),
     history: { order, currencies: [...new Set(mine.map((t) => t.currency))].sort() },
     transfers: {
