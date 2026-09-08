@@ -29,6 +29,27 @@ export const HISTORY_PARAMS = [
 ] as const;
 export type HistoryParam = (typeof HISTORY_PARAMS)[number];
 
+export const UNCATEGORIZED = "uncategorized";
+
+export type SpendingQuery = Pick<HistoryQuery, "from" | "to" | "currency">;
+export type ParsedSpendingQuery = { ok: true; query: SpendingQuery } | { ok: false };
+
+export const SPENDING_PARAMS = ["from", "to", "currency"] as const;
+export type SpendingParam = (typeof SPENDING_PARAMS)[number];
+const SPENDING_KEYS = new Set<string>(SPENDING_PARAMS);
+
+export function parseSpendingQuery(
+  params: Record<string, string | string[] | undefined>,
+): ParsedSpendingQuery {
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && !SPENDING_KEYS.has(key)) return { ok: false };
+  }
+  const parsed = parseHistoryQuery(params);
+  if (!parsed.ok) return { ok: false };
+  const { from, to, currency } = parsed.query;
+  return { ok: true, query: { from, to, currency } };
+}
+
 const KEYS = new Set<string>(HISTORY_PARAMS);
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -92,11 +113,16 @@ export function parseHistoryQuery(
     query.q = q;
   }
 
-  for (const [key, field] of [["account", "accountId"], ["category", "categoryId"]] as const) {
-    const value = given.get(key);
-    if (value === undefined) continue;
-    if (!UUID.test(value)) return { ok: false };
-    query[field] = value;
+  const account = given.get("account");
+  if (account !== undefined) {
+    if (!UUID.test(account)) return { ok: false };
+    query.accountId = account;
+  }
+
+  const category = given.get("category");
+  if (category !== undefined) {
+    if (category !== UNCATEGORIZED && !UUID.test(category)) return { ok: false };
+    query.categoryId = category;
   }
 
   for (const key of ["from", "to"] as const) {

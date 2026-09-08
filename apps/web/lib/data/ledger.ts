@@ -9,6 +9,7 @@ import { accountBalances, accounts, categories, transactions, transferPairs } fr
 import {
   HISTORY_PAGE_SIZE,
   searchPattern,
+  UNCATEGORIZED,
   type HistoryQuery,
   type ParsedHistoryQuery,
 } from "@/lib/ledger/history-query";
@@ -37,7 +38,8 @@ function historyConditions(userId: string, query: HistoryQuery): SQL {
     );
   }
   if (query.accountId !== null) conditions.push(eq(transactions.accountId, query.accountId));
-  if (query.categoryId !== null) conditions.push(eq(transactions.categoryId, query.categoryId));
+  if (query.categoryId === UNCATEGORIZED) conditions.push(isNull(transactions.categoryId));
+  else if (query.categoryId !== null) conditions.push(eq(transactions.categoryId, query.categoryId));
   if (query.from !== null) conditions.push(gte(transactions.date, query.from));
   if (query.to !== null) conditions.push(lte(transactions.date, query.to));
   if (query.currency !== null) conditions.push(eq(transactions.currency, query.currency));

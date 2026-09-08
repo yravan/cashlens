@@ -48,6 +48,7 @@ export function HistoryFilters({
         Category
         <select name="category" defaultValue={values("category")} className={control}>
           <option value="">All categories</option>
+          <option value="uncategorized">Uncategorized</option>
           {options.categoryGroups.map((group) => (
             <optgroup key={group.id} label={group.name}>
               {group.categories.map((category) => (

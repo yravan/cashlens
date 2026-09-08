@@ -6,8 +6,11 @@ import {
   historyQueryString,
   isFiltered,
   parseHistoryQuery,
+  parseSpendingQuery,
   searchPattern,
+  UNCATEGORIZED,
   type HistoryQuery,
+  type SpendingQuery,
 } from "@/lib/ledger/history-query";
 
 const ACCOUNT = "00000000-0000-4000-8000-000000000101";
@@ -106,6 +109,56 @@ test("account and category must be UUIDs", () => {
     expect(parseHistoryQuery({ account: value })).toEqual(invalid);
     expect(parseHistoryQuery({ category: value })).toEqual(invalid);
   }
+});
+
+test("category alone accepts the uncategorized sentinel, exactly and case-sensitively", () => {
+  expect(parseHistoryQuery({ category: UNCATEGORIZED })).toEqual(
+    valid({ categoryId: UNCATEGORIZED }),
+  );
+  expect(historyQueryString({ ...EMPTY, categoryId: UNCATEGORIZED }, 1)).toBe(
+    "category=uncategorized",
+  );
+  expect(isFiltered({ ...EMPTY, categoryId: UNCATEGORIZED })).toBe(true);
+  for (const value of ["Uncategorized", "UNCATEGORIZED", "uncategorised", " uncategorized", "none", "null"]) {
+    expect(parseHistoryQuery({ category: value })).toEqual(invalid);
+  }
+  expect(parseHistoryQuery({ account: UNCATEGORIZED })).toEqual(invalid);
+});
+
+const validSpending = (query: Partial<SpendingQuery>) => ({
+  ok: true,
+  query: { from: null, to: null, currency: null, ...query },
+});
+
+test("the spending page accepts only from, to, and currency", () => {
+  expect(parseSpendingQuery({})).toEqual(validSpending({}));
+  expect(parseSpendingQuery({ from: "2026-03-01", to: "2026-03-31", currency: "USD" })).toEqual(
+    validSpending({ from: "2026-03-01", to: "2026-03-31", currency: "USD" }),
+  );
+  expect(parseSpendingQuery({ from: "", to: "", currency: "" })).toEqual(validSpending({}));
+});
+
+test("the spending schema rejects every history-only parameter, valid values included", () => {
+  for (const params of [
+    { q: "coffee" },
+    { account: ACCOUNT },
+    { category: CATEGORY },
+    { category: UNCATEGORIZED },
+    { currency: "USD", min: "10" },
+    { currency: "USD", max: "10" },
+    { page: "2" },
+    { sort: "amount" },
+    { q: "" },
+  ]) {
+    expect(parseSpendingQuery(params)).toEqual(invalid);
+  }
+});
+
+test("the spending schema validates its shared grammar as strictly as history does", () => {
+  expect(parseSpendingQuery({ from: "2026-02-30" })).toEqual(invalid);
+  expect(parseSpendingQuery({ from: "2026-03-02", to: "2026-03-01" })).toEqual(invalid);
+  expect(parseSpendingQuery({ currency: "usd" })).toEqual(invalid);
+  expect(parseSpendingQuery({ from: ["2026-03-01", "2026-03-02"] })).toEqual(invalid);
 });
 
 test("dates are strict real calendar dates", () => {
