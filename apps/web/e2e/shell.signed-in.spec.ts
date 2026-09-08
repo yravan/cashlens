@@ -5,6 +5,7 @@ import { E2E_USER_A_EMAIL } from "../playwright.config";
 import { expect, test } from "./fixtures";
 
 const SECTIONS = [
+  { label: "Spending", path: "/spending" },
   { label: "Transactions", path: "/transactions" },
   { label: "Accounts", path: "/accounts" },
   { label: "Dashboard", path: "/" },
