@@ -32,6 +32,19 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
       USD: { inflowMinor: 727112, outflowMinor: -239278, netMinor: 487834, count: 13 },
       EUR: { inflowMinor: 20000, outflowMinor: -5650, netMinor: 14350, count: 2 },
     },
+    flow: [
+      {
+        currency: "EUR",
+        months: [{ month: "2026-03", inflowMinor: 20000, outflowMinor: -5650, netMinor: 14350 }],
+      },
+      {
+        currency: "USD",
+        months: [
+          { month: "2026-03", inflowMinor: 272112, outflowMinor: -15279, netMinor: 256833 },
+          { month: "2026-02", inflowMinor: 250000, outflowMinor: -18999, netMinor: 231001 },
+        ],
+      },
+    ],
     overview: {
       accounts: [
         { name: "Berlin Checking", type: "depository", subtype: "checking", mask: "0300", currency: "EUR", currentMinor: 120450 },
@@ -56,6 +69,12 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     review: 0,
     assigned: { Electronics: 1 },
     posted: { USD: { inflowMinor: 75000, outflowMinor: -12345, netMinor: 62655, count: 2 } },
+    flow: [
+      {
+        currency: "USD",
+        months: [{ month: "2026-03", inflowMinor: 75000, outflowMinor: -12345, netMinor: 62655 }],
+      },
+    ],
     overview: {
       accounts: [
         { name: "Neighbor Checking", type: "depository", subtype: "checking", mask: "0900", currency: "USD", currentMinor: 50000 },
@@ -76,6 +95,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     review: 0,
     assigned: {},
     posted: {},
+    flow: [],
     overview: { accounts: [], cashOnHand: {}, creditOwed: {} },
     history: { order: [], currencies: [] },
     transfers: { pairs: [], pairedRows: 0, autoQueue: 0 },
@@ -187,6 +207,37 @@ test("the dataset's transfer-pair rows stay uncategorized (3.3.1 owns transfers)
   }
 });
 
+test("true spend: the paired legs count in neither flow direction, and net is invariant to pairing", () => {
+  const marchUsd = EXPECTED.demo.flow.find((f) => f.currency === "USD")!.months[0];
+  expect(marchUsd).toEqual({
+    month: "2026-03",
+    inflowMinor: 272112,
+    outflowMinor: -15279,
+    netMinor: 256833,
+  });
+
+  const marchUsdPosted = SEED_TRANSACTIONS.filter(
+    (t) =>
+      t.persona === "demo" &&
+      t.currency === "USD" &&
+      t.status === "posted" &&
+      t.date.startsWith("2026-03"),
+  );
+  const inflowWithPairs = marchUsdPosted
+    .filter((t) => t.amountMinor >= 0)
+    .reduce((sum, t) => sum + t.amountMinor, 0);
+  const outflowWithPairs = marchUsdPosted
+    .filter((t) => t.amountMinor < 0)
+    .reduce((sum, t) => sum + t.amountMinor, 0);
+  expect(inflowWithPairs).toBe(477112);
+  expect(outflowWithPairs).toBe(-220279);
+
+  const pairedLegTotal = 120000 + 85000;
+  expect(marchUsd.inflowMinor).toBe(inflowWithPairs - pairedLegTotal);
+  expect(marchUsd.outflowMinor).toBe(outflowWithPairs + pairedLegTotal);
+  expect(marchUsd.netMinor).toBe(inflowWithPairs + outflowWithPairs);
+});
+
 test("the dataset's transfer pairs are the two hand-verified zero-sum moves, matchable by 3.3.1's rule", () => {
   const byId = new Map(SEED_TRANSACTIONS.map((t) => [t.id, t]));
   const label = (id: string) => `${byId.get(id)!.date} ${byId.get(id)!.description}`;
@@ -212,7 +263,7 @@ test("the dataset's transfer pairs are the two hand-verified zero-sum moves, mat
   }
 });
 
-async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history" | "transfers">> {
+async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow">> {
   const db = adminDb();
   const mine = eq(transactions.userId, userId);
   const posted = await db
@@ -254,7 +305,7 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
   };
 }
 
-function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history" | "transfers"> {
+function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow"> {
   const { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted } =
     EXPECTED[persona];
   return { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted };

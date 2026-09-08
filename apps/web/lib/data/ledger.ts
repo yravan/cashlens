@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, count, desc, eq, gte, ilike, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, gte, ilike, isNull, lte, notExists, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { categoryGroupsFor } from "@/lib/data/categories";
@@ -155,6 +155,62 @@ export async function transactionHistory(parsed: ParsedHistoryQuery) {
 }
 
 export type TransactionHistory = Awaited<ReturnType<typeof transactionHistory>>;
+
+type MonthFlow = { month: string; inflowMinor: number; outflowMinor: number; netMinor: number };
+
+// True spend = posted rows minus active-pair members, whatever their category
+// (the 3.3.1 contract). Dismissed pairs count again.
+export async function cashFlowSummary() {
+  const user = await requireUser();
+  return withRequestScope(user.clerkUserId, async (tx) => {
+    const activePair = tx
+      .select({ one: sql`1` })
+      .from(transferPairs)
+      .where(
+        and(
+          eq(transferPairs.userId, user.id),
+          isNull(transferPairs.dismissedAt),
+          or(
+            eq(transferPairs.outflowTransactionId, transactions.id),
+            eq(transferPairs.inflowTransactionId, transactions.id),
+          ),
+        ),
+      );
+    const posted = and(eq(transactions.userId, user.id), eq(transactions.status, "posted"))!;
+    const month = sql<string>`to_char(${transactions.date}, 'YYYY-MM')`;
+    const rows = await tx
+      .select({
+        currency: transactions.currency,
+        month,
+        inflowMinor: sql`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} >= 0), 0)`.mapWith(Number),
+        outflowMinor: sql`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} < 0), 0)`.mapWith(Number),
+        netMinor: sql`sum(${transactions.amountMinor})`.mapWith(Number),
+      })
+      .from(transactions)
+      .where(and(posted, notExists(activePair)))
+      .groupBy(transactions.currency, month)
+      .orderBy(asc(transactions.currency), desc(month));
+
+    const [{ pendingCount }] = await tx
+      .select({ pendingCount: count() })
+      .from(transactions)
+      .where(and(eq(transactions.userId, user.id), eq(transactions.status, "pending")));
+    const [{ transferRows }] = await tx
+      .select({ transferRows: count() })
+      .from(transactions)
+      .where(and(posted, exists(activePair)));
+
+    const currencies: { currency: string; months: MonthFlow[] }[] = [];
+    for (const { currency, ...monthFlow } of rows) {
+      const last = currencies.at(-1);
+      if (last?.currency === currency) last.months.push(monthFlow);
+      else currencies.push({ currency, months: [monthFlow] });
+    }
+    return { currencies, pendingCount, transferRows };
+  });
+}
+
+export type CashFlowSummary = Awaited<ReturnType<typeof cashFlowSummary>>;
 
 export async function accountOverview() {
   const user = await requireUser();
