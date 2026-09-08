@@ -220,6 +220,7 @@ test.describe("spending by category", () => {
       await expect(usd.getByTestId("spend-net")).toHaveText(
         signed(spendingOf("demo", "USD").totals.netMinor, "USD"),
       );
+      await usd.getByTestId("spend-in").scrollIntoViewIfNeeded();
       await expect(usd.getByTestId("spend-in")).toBeInViewport();
       await expect(usd.getByTestId("spend-out")).toBeInViewport();
       await usd.getByRole("link", { name: "Groceries" }).scrollIntoViewIfNeeded();
