@@ -370,7 +370,7 @@ test("the dataset's transfer pairs are the two hand-verified zero-sum moves, mat
   }
 });
 
-async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow">> {
+async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending">> {
   const db = adminDb();
   const mine = eq(transactions.userId, userId);
   const posted = await db
@@ -412,7 +412,7 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
   };
 }
 
-function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow"> {
+function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending"> {
   const { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted } =
     EXPECTED[persona];
   return { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted };

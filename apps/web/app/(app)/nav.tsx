@@ -17,6 +17,16 @@ const ITEMS = [
     ),
   },
   {
+    href: "/spending",
+    label: "Spending",
+    icon: (
+      <>
+        <path d="M21.21 15.89A10 10 0 1 1 8 2.83" />
+        <path d="M22 12A10 10 0 0 0 12 2v10z" />
+      </>
+    ),
+  },
+  {
     href: "/transactions",
     label: "Transactions",
     icon: (
@@ -76,7 +86,7 @@ export function TabBar() {
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden dark:border-zinc-800 dark:bg-zinc-950/95"
     >
-      <ul className="grid grid-cols-3">
+      <ul className="grid grid-cols-4">
         {ITEMS.map(({ href, label, icon }) => (
           <li key={href}>
             <Link
