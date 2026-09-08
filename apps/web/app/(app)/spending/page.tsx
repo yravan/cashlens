@@ -9,6 +9,7 @@ import {
   type SpendingQuery,
 } from "@/lib/ledger/history-query";
 import { formatMinorUnits } from "@/lib/ledger/minor-units";
+import { TransferMatch } from "../transactions/transfer-match";
 import { SpendingFilters } from "./spending-filters";
 
 export const metadata: Metadata = { title: "Spending" };
@@ -199,6 +200,7 @@ export default async function SpendingPage({
   const heading = (
     <>
       <h1 className="text-2xl font-semibold tracking-tight">Spending</h1>
+      {summary.options.currencies.length > 0 && <TransferMatch />}
       <p className="mt-2 max-w-xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
         True spend per category from posted transactions, most spent first — money in shows with
         a plus sign. Transfers between your own accounts never count.
