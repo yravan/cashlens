@@ -6,6 +6,7 @@ import { expect, test } from "./fixtures";
 
 const SECTIONS = [
   { label: "Spending", path: "/spending" },
+  { label: "Recurring", path: "/recurring" },
   { label: "Transactions", path: "/transactions" },
   { label: "Accounts", path: "/accounts" },
   { label: "Dashboard", path: "/" },

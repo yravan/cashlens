@@ -55,7 +55,9 @@ test.describe("category assignment", () => {
       `${SEED_TRANSACTIONS.filter((t) => t.persona === "demo").length} transactions in the ledger`,
     );
 
-    const streamflix = row(page, "STREAMFLIX").getByRole("combobox");
+    const streamflix = row(page, "STREAMFLIX")
+      .filter({ hasText: "2026-03-29" })
+      .getByRole("combobox");
     await expect(streamflix).toHaveCount(1);
     await expect(streamflix.locator("option:checked")).toHaveText("Streaming & Music");
 

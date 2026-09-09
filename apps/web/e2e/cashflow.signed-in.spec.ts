@@ -79,10 +79,11 @@ test.describe("cash-flow summary", () => {
     );
 
     const usd = currencySection(page, "USD");
-    await expect(usd.getByTestId("flow-month")).toHaveCount(2);
-    const [march, february] = flowOf("demo", "USD").months;
+    await expect(usd.getByTestId("flow-month")).toHaveCount(3);
+    const [march, february, january] = flowOf("demo", "USD").months;
     await expectMonth(usd, "March 2026", march, "USD");
     await expectMonth(usd, "February 2026", february, "USD");
+    await expectMonth(usd, "January 2026", january, "USD");
     await expect(usd.getByTestId("flow-month").first().getByRole("link")).toHaveText("March 2026");
 
     const eur = currencySection(page, "EUR");

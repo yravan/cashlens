@@ -59,9 +59,9 @@ test.describe("transaction history", () => {
   }) => {
     await page.goto("/transactions");
     await expect(page.getByTestId("transactions-count")).toHaveText(
-      "16 transactions in the ledger",
+      "19 transactions in the ledger",
     );
-    await expect(rows(page)).toHaveCount(16);
+    await expect(rows(page)).toHaveCount(19);
 
     for (const [i, t] of DEMO_PAGE.entries()) {
       const row = rows(page).nth(i);
@@ -98,7 +98,7 @@ test.describe("transaction history", () => {
 
     await form(page).getByRole("link", { name: "Clear" }).click();
     await expect(page).toHaveURL(/\/transactions$/);
-    await expect(rows(page)).toHaveCount(16);
+    await expect(rows(page)).toHaveCount(19);
     await expect(form(page).getByLabel("Search")).toHaveValue("");
     await expect(form(page).getByLabel("Account")).toHaveValue("");
     await expect(form(page).getByLabel("From")).toHaveValue("");
@@ -140,7 +140,7 @@ test.describe("transaction history", () => {
 
   test("a neighbor sees only their own rows and filter choices", async ({ page, browser, baseURL }) => {
     await page.goto("/transactions");
-    await expect(rows(page)).toHaveCount(16);
+    await expect(rows(page)).toHaveCount(19);
     await expect(list(page)).not.toContainText("NEIGHBOR");
     await expect(form(page).getByLabel("Account").locator("option")).toHaveText([
       "All accounts",
@@ -183,7 +183,7 @@ test.describe("transaction history", () => {
     await expect(page.getByTestId("no-match")).toContainText("No transactions match");
     await expect(list(page)).toHaveCount(0);
     await page.getByRole("link", { name: "Clear filters" }).click();
-    await expect(rows(page)).toHaveCount(16);
+    await expect(rows(page)).toHaveCount(19);
 
     await page.goto("/transactions?from=2026-13-01");
     await expect(page.getByTestId("filter-error")).toBeVisible();
