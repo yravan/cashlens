@@ -27,6 +27,18 @@ const ITEMS = [
     ),
   },
   {
+    href: "/recurring",
+    label: "Recurring",
+    icon: (
+      <>
+        <path d="M3 12a9 9 0 0 1 15.36-6.36L21 8" />
+        <path d="M21 3v5h-5" />
+        <path d="M21 12a9 9 0 0 1-15.36 6.36L3 16" />
+        <path d="M3 21v-5h5" />
+      </>
+    ),
+  },
+  {
     href: "/transactions",
     label: "Transactions",
     icon: (
@@ -86,7 +98,7 @@ export function TabBar() {
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden dark:border-zinc-800 dark:bg-zinc-950/95"
     >
-      <ul className="grid grid-cols-4">
+      <ul className="grid grid-cols-5">
         {ITEMS.map(({ href, label, icon }) => (
           <li key={href}>
             <Link
