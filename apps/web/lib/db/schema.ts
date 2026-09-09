@@ -330,6 +330,58 @@ export const transferPairs = pgTable(
   ],
 );
 
+export const recurringStreamStatus = pgEnum("recurring_stream_status", [
+  "confirmed",
+  "dismissed",
+]);
+
+export const flowDirection = pgEnum("flow_direction", ["inflow", "outflow"]);
+
+// Recurring detection (6.4.1) is recomputed from the ledger on every read; a
+// row here exists only once the user acted on a proposed stream, keyed on the
+// stream identity so re-detection reattaches the decision. Absence = proposed.
+export const recurringStreams = pgTable(
+  "recurring_streams",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull(),
+    accountId: uuid("account_id").notNull(),
+    currency: char("currency", { length: 3 }).notNull(),
+    direction: flowDirection("direction").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    status: recurringStreamStatus("status").notNull(),
+    ...timestamps,
+  },
+  (t) => [
+    // Composite FK: purging an account takes its stream decisions with it,
+    // and a row can never reference another user's account.
+    foreignKey({
+      name: "recurring_streams_account_user_fk",
+      columns: [t.accountId, t.userId],
+      foreignColumns: [accounts.id, accounts.userId],
+    }).onDelete("cascade"),
+    uniqueIndex("recurring_streams_identity_key").on(
+      t.accountId,
+      t.currency,
+      t.direction,
+      t.normalizedName,
+    ),
+    index("recurring_streams_user_id_idx").on(t.userId),
+    check("recurring_streams_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
+    check(
+      "recurring_streams_name_bounded",
+      sql`normalized_name = btrim(normalized_name) and char_length(normalized_name) between 1 and 200`,
+    ),
+    ...ownRowPolicies("recurring_streams"),
+    pgPolicy("recurring_streams_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
+  ],
+);
+
 export const connectionCredentials = pgTable(
   "connection_credentials",
   {
