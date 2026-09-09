@@ -58,7 +58,7 @@ const CURRENCY = /^[A-Z]{3}$/;
 const AMOUNT = /^\d+(\.\d+)?$/;
 const PAGE = /^[1-9]\d*$/;
 
-function isRealDate(value: string): boolean {
+export function isRealDate(value: string): boolean {
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return (
