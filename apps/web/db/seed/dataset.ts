@@ -148,6 +148,15 @@ export const SEED_BALANCES: SeedRow<typeof accountBalances.$inferInsert>[] = [
 type PostedTotals = { inflowMinor: number; outflowMinor: number; netMinor: number; count: number };
 type MonthFlow = { month: string; inflowMinor: number; outflowMinor: number; netMinor: number };
 type CurrencyFlow = { currency: string; months: MonthFlow[] };
+type CategoryFlowTotals = { spentMinor: number; receivedMinor: number; netMinor: number };
+type SpendingLeaf = CategoryFlowTotals & { id: string; name: string };
+type SpendingGroup = SpendingLeaf & { categories: SpendingLeaf[] };
+type CurrencySpending = {
+  currency: string;
+  totals: CategoryFlowTotals;
+  groups: SpendingGroup[];
+  uncategorized: CategoryFlowTotals | null;
+};
 type OverviewAccount = Pick<
   (typeof SEED_ACCOUNTS)[number],
   "name" | "type" | "subtype" | "mask" | "currency"
@@ -164,6 +173,7 @@ export type ExpectedPersona = {
   assigned: Record<string, number>;
   posted: Record<string, PostedTotals>;
   flow: CurrencyFlow[];
+  spending: CurrencySpending[];
   overview: {
     accounts: OverviewAccount[];
     cashOnHand: Record<string, number>;
@@ -252,6 +262,56 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     months: [...buckets.get(currency)!.values()].sort((a, b) => b.month.localeCompare(a.month)),
   }));
 
+  // Spending by category: the same posted-unpaired domain as flow, bucketed by
+  // currency then category; groups roll up their leaves plus any direct rows,
+  // uncategorized is its own bucket, everything sorted most-spent-first.
+  const catById = new Map(
+    SEED_CATEGORIES.filter((c) => c.persona === persona).map((c) => [c.id, c]),
+  );
+  const spendBuckets = new Map<string, Map<string | null, CategoryFlowTotals>>();
+  for (const t of mine) {
+    if (t.status !== "posted" || pairedIds.has(t.id)) continue;
+    const perCategory = spendBuckets.get(t.currency) ?? new Map<string | null, CategoryFlowTotals>();
+    spendBuckets.set(t.currency, perCategory);
+    const key = t.categoryId ?? null;
+    const totals = perCategory.get(key) ?? { spentMinor: 0, receivedMinor: 0, netMinor: 0 };
+    perCategory.set(key, totals);
+    if (t.amountMinor >= 0) totals.receivedMinor += t.amountMinor;
+    else totals.spentMinor += t.amountMinor;
+    totals.netMinor += t.amountMinor;
+  }
+  const byNet = (a: SpendingLeaf, b: SpendingLeaf) =>
+    a.netMinor - b.netMinor || a.name.localeCompare(b.name);
+  const spending: CurrencySpending[] = [...spendBuckets.keys()].sort().map((currency) => {
+    const perCategory = spendBuckets.get(currency)!;
+    const groups = new Map<string, SpendingGroup>();
+    const sectionTotals = { spentMinor: 0, receivedMinor: 0, netMinor: 0 };
+    for (const [categoryId, totals] of perCategory) {
+      sectionTotals.spentMinor += totals.spentMinor;
+      sectionTotals.receivedMinor += totals.receivedMinor;
+      sectionTotals.netMinor += totals.netMinor;
+      if (categoryId === null) continue;
+      const row = catById.get(categoryId)!;
+      const parent = row.parentId === null ? row : catById.get(row.parentId)!;
+      const group =
+        groups.get(parent.id) ??
+        ({ id: parent.id, name: parent.name, spentMinor: 0, receivedMinor: 0, netMinor: 0, categories: [] } satisfies SpendingGroup);
+      groups.set(parent.id, group);
+      group.spentMinor += totals.spentMinor;
+      group.receivedMinor += totals.receivedMinor;
+      group.netMinor += totals.netMinor;
+      if (row.parentId !== null) group.categories.push({ id: row.id, name: row.name, ...totals });
+    }
+    return {
+      currency,
+      totals: sectionTotals,
+      groups: [...groups.values()]
+        .map((group) => ({ ...group, categories: [...group.categories].sort(byNet) }))
+        .sort(byNet),
+      uncategorized: perCategory.get(null) ?? null,
+    };
+  });
+
   return {
     accounts: SEED_ACCOUNTS.filter((a) => a.persona === persona).length,
     transactions: mine.length,
@@ -264,6 +324,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     assigned,
     posted,
     flow,
+    spending,
     overview: overviewFor(persona),
     history: { order, currencies: [...new Set(mine.map((t) => t.currency))].sort() },
     transfers: {

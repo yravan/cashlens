@@ -139,6 +139,14 @@ test("account and category filters narrow to exactly the referenced rows", async
   expect(byCategory.rows.length).toBe(1);
 });
 
+test("category=uncategorized narrows to exactly the rows with no category", async () => {
+  await seedDataset(adminDb());
+  const uncategorized = await history("demo", { category: "uncategorized" });
+  expect(uncategorized.rows).toEqual(expectedRows("demo", (row) => !row.categoryId));
+  expect(uncategorized.total).toBe(EXPECTED.demo.uncategorized);
+  expect(uncategorized.rows.length).toBeGreaterThan(1);
+});
+
 test("a cross-user id yields the same empty result as an unknown id", async () => {
   await seedDataset(adminDb());
   const foreignAccount = SEED_ACCOUNTS.find((a) => a.persona === "neighbor")!.id;

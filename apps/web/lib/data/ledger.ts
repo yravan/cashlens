@@ -9,8 +9,10 @@ import { accountBalances, accounts, categories, transactions, transferPairs } fr
 import {
   HISTORY_PAGE_SIZE,
   searchPattern,
+  UNCATEGORIZED,
   type HistoryQuery,
   type ParsedHistoryQuery,
+  type ParsedSpendingQuery,
 } from "@/lib/ledger/history-query";
 
 export async function ledgerCounts() {
@@ -37,7 +39,8 @@ function historyConditions(userId: string, query: HistoryQuery): SQL {
     );
   }
   if (query.accountId !== null) conditions.push(eq(transactions.accountId, query.accountId));
-  if (query.categoryId !== null) conditions.push(eq(transactions.categoryId, query.categoryId));
+  if (query.categoryId === UNCATEGORIZED) conditions.push(isNull(transactions.categoryId));
+  else if (query.categoryId !== null) conditions.push(eq(transactions.categoryId, query.categoryId));
   if (query.from !== null) conditions.push(gte(transactions.date, query.from));
   if (query.to !== null) conditions.push(lte(transactions.date, query.to));
   if (query.currency !== null) conditions.push(eq(transactions.currency, query.currency));
@@ -211,6 +214,144 @@ export async function cashFlowSummary() {
 }
 
 export type CashFlowSummary = Awaited<ReturnType<typeof cashFlowSummary>>;
+
+type CategoryFlowTotals = { spentMinor: number; receivedMinor: number; netMinor: number };
+type SpendingLeaf = CategoryFlowTotals & { id: string; name: string };
+type SpendingGroup = SpendingLeaf & { categories: SpendingLeaf[] };
+
+// The 6.1.1 true-spend law at category granularity: posted rows minus
+// active-pair members, bucketed per currency then category. Group totals are
+// their leaves' rollup (plus any direct rows); uncategorized is its own bucket.
+export async function spendingByCategory(parsed: ParsedSpendingQuery) {
+  const user = await requireUser();
+  return withRequestScope(user.clerkUserId, async (tx) => {
+    const categoryGroups = await categoryGroupsFor(tx, user.id);
+    const known = await tx
+      .selectDistinct({ currency: transactions.currency })
+      .from(transactions)
+      .where(eq(transactions.userId, user.id))
+      .orderBy(asc(transactions.currency));
+    const options = { currencies: known.map((row) => row.currency) };
+    if (!parsed.ok) return { currencies: [], pendingCount: 0, transferRows: 0, options };
+
+    const scope = [eq(transactions.userId, user.id)];
+    const { query } = parsed;
+    if (query.from !== null) scope.push(gte(transactions.date, query.from));
+    if (query.to !== null) scope.push(lte(transactions.date, query.to));
+    if (query.currency !== null) scope.push(eq(transactions.currency, query.currency));
+
+    const activePair = tx
+      .select({ one: sql`1` })
+      .from(transferPairs)
+      .where(
+        and(
+          eq(transferPairs.userId, user.id),
+          isNull(transferPairs.dismissedAt),
+          or(
+            eq(transferPairs.outflowTransactionId, transactions.id),
+            eq(transferPairs.inflowTransactionId, transactions.id),
+          ),
+        ),
+      );
+    const posted = and(...scope, eq(transactions.status, "posted"))!;
+
+    const rows = await tx
+      .select({
+        currency: transactions.currency,
+        categoryId: transactions.categoryId,
+        spentMinor: sql`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} < 0), 0)`.mapWith(Number),
+        receivedMinor: sql`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} >= 0), 0)`.mapWith(Number),
+      })
+      .from(transactions)
+      .where(and(posted, notExists(activePair)))
+      .groupBy(transactions.currency, transactions.categoryId);
+
+    const [{ pendingCount }] = await tx
+      .select({ pendingCount: count() })
+      .from(transactions)
+      .where(and(...scope, eq(transactions.status, "pending")));
+    const [{ transferRows }] = await tx
+      .select({ transferRows: count() })
+      .from(transactions)
+      .where(and(posted, exists(activePair)));
+
+    const groupOf = new Map<string, string>();
+    const nameOf = new Map<string, string>();
+    for (const group of categoryGroups) {
+      nameOf.set(group.id, group.name);
+      for (const leaf of group.categories) {
+        nameOf.set(leaf.id, leaf.name);
+        groupOf.set(leaf.id, group.id);
+      }
+    }
+
+    type Section = {
+      totals: CategoryFlowTotals;
+      groups: Map<string, SpendingGroup>;
+      uncategorized: CategoryFlowTotals | null;
+    };
+    const sections = new Map<string, Section>();
+    const add = (into: CategoryFlowTotals, from: CategoryFlowTotals) => {
+      into.spentMinor += from.spentMinor;
+      into.receivedMinor += from.receivedMinor;
+      into.netMinor += from.netMinor;
+    };
+    for (const row of rows) {
+      const section =
+        sections.get(row.currency) ??
+        ({
+          totals: { spentMinor: 0, receivedMinor: 0, netMinor: 0 },
+          groups: new Map(),
+          uncategorized: null,
+        } satisfies Section);
+      sections.set(row.currency, section);
+      const totals = {
+        spentMinor: row.spentMinor,
+        receivedMinor: row.receivedMinor,
+        netMinor: row.spentMinor + row.receivedMinor,
+      };
+      add(section.totals, totals);
+      if (row.categoryId === null) {
+        section.uncategorized = totals;
+        continue;
+      }
+      const groupId = groupOf.get(row.categoryId) ?? row.categoryId;
+      const group =
+        section.groups.get(groupId) ??
+        ({
+          id: groupId,
+          name: nameOf.get(groupId) ?? "",
+          spentMinor: 0,
+          receivedMinor: 0,
+          netMinor: 0,
+          categories: [],
+        } satisfies SpendingGroup);
+      section.groups.set(groupId, group);
+      add(group, totals);
+      if (groupId !== row.categoryId) {
+        group.categories.push({ id: row.categoryId, name: nameOf.get(row.categoryId) ?? "", ...totals });
+      }
+    }
+
+    const byNet = (a: SpendingLeaf, b: SpendingLeaf) =>
+      a.netMinor - b.netMinor || a.name.localeCompare(b.name);
+    const currencies = [...sections.keys()].sort().map((currency) => {
+      const section = sections.get(currency)!;
+      return {
+        currency,
+        totals: section.totals,
+        groups: [...section.groups.values()]
+          .map((group) => ({ ...group, categories: group.categories.sort(byNet) }))
+          .sort(byNet),
+        uncategorized: section.uncategorized,
+      };
+    });
+    return { currencies, pendingCount, transferRows, options };
+  });
+}
+
+export type SpendingByCategory = Awaited<ReturnType<typeof spendingByCategory>>;
+export type SpendingSection = SpendingByCategory["currencies"][number];
 
 export async function accountOverview() {
   const user = await requireUser();

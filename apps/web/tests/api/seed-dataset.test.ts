@@ -11,6 +11,11 @@ import { DEFAULT_CATEGORIES } from "@/lib/ledger/default-categories";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 
+const seedCategory = (persona: "demo" | "neighbor", name: string, kind: "group" | "leaf") =>
+  SEED_CATEGORIES.find(
+    (c) => c.persona === persona && c.name === name && (c.parentId === null) === (kind === "group"),
+  )!.id;
+
 test("the dataset's exported totals match the hand-verified anchors", () => {
   expect(EXPECTED.demo).toEqual({
     accounts: 5,
@@ -45,6 +50,63 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
         ],
       },
     ],
+    spending: [
+      {
+        currency: "EUR",
+        totals: { spentMinor: -5650, receivedMinor: 20000, netMinor: 14350 },
+        groups: [
+          {
+            id: seedCategory("demo", "Transportation", "group"),
+            name: "Transportation",
+            spentMinor: -5650,
+            receivedMinor: 0,
+            netMinor: -5650,
+            categories: [
+              { id: seedCategory("demo", "Public Transit", "leaf"), name: "Public Transit", spentMinor: -5650, receivedMinor: 0, netMinor: -5650 },
+            ],
+          },
+        ],
+        uncategorized: { spentMinor: 0, receivedMinor: 20000, netMinor: 20000 },
+      },
+      {
+        currency: "USD",
+        totals: { spentMinor: -34278, receivedMinor: 522112, netMinor: 487834 },
+        groups: [
+          {
+            id: seedCategory("demo", "Food & Drink", "group"),
+            name: "Food & Drink",
+            spentMinor: -11179,
+            receivedMinor: 0,
+            netMinor: -11179,
+            categories: [
+              { id: seedCategory("demo", "Groceries", "leaf"), name: "Groceries", spentMinor: -6742, receivedMinor: 0, netMinor: -6742 },
+              { id: seedCategory("demo", "Restaurants & Bars", "leaf"), name: "Restaurants & Bars", spentMinor: -4437, receivedMinor: 0, netMinor: -4437 },
+            ],
+          },
+          {
+            id: seedCategory("demo", "Entertainment", "group"),
+            name: "Entertainment",
+            spentMinor: -2300,
+            receivedMinor: 0,
+            netMinor: -2300,
+            categories: [
+              { id: seedCategory("demo", "Streaming & Music", "leaf"), name: "Streaming & Music", spentMinor: -2300, receivedMinor: 0, netMinor: -2300 },
+            ],
+          },
+          {
+            id: seedCategory("demo", "Income", "group"),
+            name: "Income",
+            spentMinor: 0,
+            receivedMinor: 500000,
+            netMinor: 500000,
+            categories: [
+              { id: seedCategory("demo", "Paycheck", "leaf"), name: "Paycheck", spentMinor: 0, receivedMinor: 500000, netMinor: 500000 },
+            ],
+          },
+        ],
+        uncategorized: { spentMinor: -20799, receivedMinor: 22112, netMinor: 1313 },
+      },
+    ],
     overview: {
       accounts: [
         { name: "Berlin Checking", type: "depository", subtype: "checking", mask: "0300", currency: "EUR", currentMinor: 120450 },
@@ -75,6 +137,25 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
         months: [{ month: "2026-03", inflowMinor: 75000, outflowMinor: -12345, netMinor: 62655 }],
       },
     ],
+    spending: [
+      {
+        currency: "USD",
+        totals: { spentMinor: -12345, receivedMinor: 75000, netMinor: 62655 },
+        groups: [
+          {
+            id: seedCategory("neighbor", "Shopping", "group"),
+            name: "Shopping",
+            spentMinor: -12345,
+            receivedMinor: 0,
+            netMinor: -12345,
+            categories: [
+              { id: seedCategory("neighbor", "Electronics", "leaf"), name: "Electronics", spentMinor: -12345, receivedMinor: 0, netMinor: -12345 },
+            ],
+          },
+        ],
+        uncategorized: { spentMinor: 0, receivedMinor: 75000, netMinor: 75000 },
+      },
+    ],
     overview: {
       accounts: [
         { name: "Neighbor Checking", type: "depository", subtype: "checking", mask: "0900", currency: "USD", currentMinor: 50000 },
@@ -96,6 +177,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     assigned: {},
     posted: {},
     flow: [],
+    spending: [],
     overview: { accounts: [], cashOnHand: {}, creditOwed: {} },
     history: { order: [], currencies: [] },
     transfers: { pairs: [], pairedRows: 0, autoQueue: 0 },
@@ -238,6 +320,31 @@ test("true spend: the paired legs count in neither flow direction, and net is in
   expect(marchUsd.netMinor).toBe(inflowWithPairs + outflowWithPairs);
 });
 
+test("spending reconciles to flow: category rows sum to the period totals, nothing missing", () => {
+  for (const persona of SEED_PERSONAS) {
+    expect(EXPECTED[persona].spending.map((s) => s.currency)).toEqual(
+      EXPECTED[persona].flow.map((f) => f.currency),
+    );
+    for (const section of EXPECTED[persona].spending) {
+      const months = EXPECTED[persona].flow.find((f) => f.currency === section.currency)!.months;
+      expect(section.totals).toEqual({
+        spentMinor: months.reduce((sum, m) => sum + m.outflowMinor, 0),
+        receivedMinor: months.reduce((sum, m) => sum + m.inflowMinor, 0),
+        netMinor: months.reduce((sum, m) => sum + m.netMinor, 0),
+      });
+      const rows = [...section.groups, ...(section.uncategorized ? [section.uncategorized] : [])];
+      expect(rows.reduce((sum, row) => sum + row.netMinor, 0)).toBe(section.totals.netMinor);
+      for (const group of section.groups) {
+        expect({
+          spentMinor: group.categories.reduce((sum, c) => sum + c.spentMinor, 0),
+          receivedMinor: group.categories.reduce((sum, c) => sum + c.receivedMinor, 0),
+          netMinor: group.categories.reduce((sum, c) => sum + c.netMinor, 0),
+        }).toEqual({ spentMinor: group.spentMinor, receivedMinor: group.receivedMinor, netMinor: group.netMinor });
+      }
+    }
+  }
+});
+
 test("the dataset's transfer pairs are the two hand-verified zero-sum moves, matchable by 3.3.1's rule", () => {
   const byId = new Map(SEED_TRANSACTIONS.map((t) => [t.id, t]));
   const label = (id: string) => `${byId.get(id)!.date} ${byId.get(id)!.description}`;
@@ -263,7 +370,7 @@ test("the dataset's transfer pairs are the two hand-verified zero-sum moves, mat
   }
 });
 
-async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow">> {
+async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending">> {
   const db = adminDb();
   const mine = eq(transactions.userId, userId);
   const posted = await db
@@ -305,7 +412,7 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
   };
 }
 
-function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow"> {
+function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending"> {
   const { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted } =
     EXPECTED[persona];
   return { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted };
