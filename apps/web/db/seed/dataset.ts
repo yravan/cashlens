@@ -1,5 +1,6 @@
 import type { accountBalances, accounts, categories, transactions, users } from "../../lib/db/schema.ts";
 import { DEFAULT_CATEGORIES } from "../../lib/ledger/default-categories.ts";
+import type { RecurringStream } from "../../lib/ledger/recurring-detection.ts";
 
 export const SEED_PERSONAS = ["demo", "neighbor", "empty"] as const;
 export type SeedPersona = (typeof SEED_PERSONAS)[number];
@@ -119,6 +120,11 @@ export const SEED_TRANSACTIONS: SeedTransaction[] = [
   txn(14, "demo", A.wallet, -1800, "USD", "2026-03-14", "FARMERS MARKET CASH", { source: "manual", sourceId: null }),
   txn(15, "demo", A.euro, -5650, "EUR", "2026-03-10", "BAHN TICKET BERLIN", { source: "import", categoryId: category("demo", "Public Transit") }),
   txn(16, "demo", A.euro, 20000, "EUR", "2026-03-11", "AIRBNB PAYOUT", { merchant: "Airbnb", source: "import" }),
+  // 6.4.1 recurring history: third occurrences for the Acme paycheck (27th,
+  // monthly) and Streamflix (29th, monthly — Feb clamps to the 28th).
+  txn(19, "demo", A.checking, 250000, "USD", "2026-01-27", "ACME CORP PAYROLL", { merchant: "Acme Corp", categoryId: category("demo", "Paycheck"), categorySource: "user" }),
+  txn(20, "demo", A.card, -2300, "USD", "2026-01-29", "STREAMFLIX", { merchant: "Streamflix", categoryId: category("demo", "Streaming & Music"), categorySource: "user" }),
+  txn(21, "demo", A.card, -2300, "USD", "2026-02-28", "STREAMFLIX", { merchant: "Streamflix", categoryId: category("demo", "Streaming & Music"), categorySource: "user" }),
   txn(17, "neighbor", A.neighborChecking, 75000, "USD", "2026-03-06", "NEIGHBOR PAYCHECK"),
   txn(18, "neighbor", A.neighborChecking, -12345, "USD", "2026-03-09", "ELECTRONICS EMPORIUM", { merchant: "Electronics Emporium", categoryId: category("neighbor", "Electronics"), categorySource: "user" }),
 ];
@@ -133,6 +139,19 @@ export const SEED_TRANSFER_PAIRS: {
   { persona: "demo", outflowId: uid(0x202), inflowId: uid(0x203) },
   { persona: "demo", outflowId: uid(0x204), inflowId: uid(0x205) },
 ];
+
+// Hand-derived, never computed by the detector (that would assert code against
+// itself): each stream has three on-time occurrences at identical amounts —
+// Acme on the 27th (gaps 31, 28), Streamflix on the 29th with the February
+// clamp (gaps 30, 29) — and nothing else repeats three times.
+const SEED_RECURRING_STREAMS: Record<SeedPersona, RecurringStream[]> = {
+  demo: [
+    { accountId: A.card, currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", typicalAmountMinor: -2300, lastAmountMinor: -2300, firstDate: "2026-01-29", lastDate: "2026-03-29", occurrences: 3, confidence: "high" },
+    { accountId: A.checking, currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", typicalAmountMinor: 250000, lastAmountMinor: 250000, firstDate: "2026-01-27", lastDate: "2026-03-27", occurrences: 3, confidence: "high" },
+  ],
+  neighbor: [],
+  empty: [],
+};
 
 const AS_OF = new Date("2026-03-31T12:00:00Z");
 
@@ -185,6 +204,7 @@ export type ExpectedPersona = {
     pairedRows: number;
     autoQueue: number;
   };
+  recurring: RecurringStream[];
 };
 
 const ACCOUNT_TYPE_ORDER = ["depository", "credit", "loan", "investment", "other"];
@@ -332,6 +352,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
       pairedRows: pairedIds.size,
       autoQueue: mine.filter((t) => !t.categoryId && !pairedIds.has(t.id)).length,
     },
+    recurring: SEED_RECURRING_STREAMS[persona],
   };
 }
 

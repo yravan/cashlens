@@ -8,6 +8,7 @@ import { ledgerCounts } from "@/lib/data/ledger";
 import { requireUser } from "@/lib/data/users";
 import { accountBalances, accounts, categories, transactions, users } from "@/lib/db/schema";
 import { DEFAULT_CATEGORIES } from "@/lib/ledger/default-categories";
+import { detectRecurringStreams } from "@/lib/ledger/recurring-detection";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 
@@ -16,25 +17,28 @@ const seedCategory = (persona: "demo" | "neighbor", name: string, kind: "group" 
     (c) => c.persona === persona && c.name === name && (c.parentId === null) === (kind === "group"),
   )!.id;
 
+const seedAccount = (persona: "demo" | "neighbor", name: string) =>
+  SEED_ACCOUNTS.find((a) => a.persona === persona && a.name === name)!.id;
+
 test("the dataset's exported totals match the hand-verified anchors", () => {
   expect(EXPECTED.demo).toEqual({
     accounts: 5,
-    transactions: 16,
+    transactions: 19,
     balances: 5,
     pendingCount: 1,
     categories: 80,
     uncategorized: 9,
     review: 1,
     assigned: {
-      Paycheck: 2,
+      Paycheck: 3,
       Groceries: 1,
       "Restaurants & Bars": 1,
       "Coffee Shops": 1,
-      "Streaming & Music": 1,
+      "Streaming & Music": 3,
       "Public Transit": 1,
     },
     posted: {
-      USD: { inflowMinor: 727112, outflowMinor: -239278, netMinor: 487834, count: 13 },
+      USD: { inflowMinor: 977112, outflowMinor: -243878, netMinor: 733234, count: 16 },
       EUR: { inflowMinor: 20000, outflowMinor: -5650, netMinor: 14350, count: 2 },
     },
     flow: [
@@ -46,7 +50,8 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
         currency: "USD",
         months: [
           { month: "2026-03", inflowMinor: 272112, outflowMinor: -15279, netMinor: 256833 },
-          { month: "2026-02", inflowMinor: 250000, outflowMinor: -18999, netMinor: 231001 },
+          { month: "2026-02", inflowMinor: 250000, outflowMinor: -21299, netMinor: 228701 },
+          { month: "2026-01", inflowMinor: 250000, outflowMinor: -2300, netMinor: 247700 },
         ],
       },
     ],
@@ -70,7 +75,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
       },
       {
         currency: "USD",
-        totals: { spentMinor: -34278, receivedMinor: 522112, netMinor: 487834 },
+        totals: { spentMinor: -38878, receivedMinor: 772112, netMinor: 733234 },
         groups: [
           {
             id: seedCategory("demo", "Food & Drink", "group"),
@@ -86,21 +91,21 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
           {
             id: seedCategory("demo", "Entertainment", "group"),
             name: "Entertainment",
-            spentMinor: -2300,
+            spentMinor: -6900,
             receivedMinor: 0,
-            netMinor: -2300,
+            netMinor: -6900,
             categories: [
-              { id: seedCategory("demo", "Streaming & Music", "leaf"), name: "Streaming & Music", spentMinor: -2300, receivedMinor: 0, netMinor: -2300 },
+              { id: seedCategory("demo", "Streaming & Music", "leaf"), name: "Streaming & Music", spentMinor: -6900, receivedMinor: 0, netMinor: -6900 },
             ],
           },
           {
             id: seedCategory("demo", "Income", "group"),
             name: "Income",
             spentMinor: 0,
-            receivedMinor: 500000,
-            netMinor: 500000,
+            receivedMinor: 750000,
+            netMinor: 750000,
             categories: [
-              { id: seedCategory("demo", "Paycheck", "leaf"), name: "Paycheck", spentMinor: 0, receivedMinor: 500000, netMinor: 500000 },
+              { id: seedCategory("demo", "Paycheck", "leaf"), name: "Paycheck", spentMinor: 0, receivedMinor: 750000, netMinor: 750000 },
             ],
           },
         ],
@@ -120,6 +125,10 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     },
     history: { order: expect.any(Array), currencies: ["EUR", "USD"] },
     transfers: { pairs: expect.any(Array), pairedRows: 4, autoQueue: 5 },
+    recurring: [
+      { accountId: seedAccount("demo", "Cash Rewards Card"), currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", typicalAmountMinor: -2300, lastAmountMinor: -2300, firstDate: "2026-01-29", lastDate: "2026-03-29", occurrences: 3, confidence: "high" },
+      { accountId: seedAccount("demo", "Everyday Checking"), currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", typicalAmountMinor: 250000, lastAmountMinor: 250000, firstDate: "2026-01-27", lastDate: "2026-03-27", occurrences: 3, confidence: "high" },
+    ],
   });
   expect(EXPECTED.neighbor).toEqual({
     accounts: 1,
@@ -165,6 +174,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     },
     history: { order: expect.any(Array), currencies: ["USD"] },
     transfers: { pairs: [], pairedRows: 0, autoQueue: 1 },
+    recurring: [],
   });
   expect(EXPECTED.empty).toEqual({
     accounts: 0,
@@ -181,6 +191,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     overview: { accounts: [], cashOnHand: {}, creditOwed: {} },
     history: { order: [], currencies: [] },
     transfers: { pairs: [], pairedRows: 0, autoQueue: 0 },
+    recurring: [],
   });
 });
 
@@ -201,8 +212,11 @@ test("the history chronology matches the hand-verified order, ties resolved newe
     "2026-03-03 NOODLE HOUSE",
     "2026-03-02 TRANSFER FROM EVERYDAY CHECKING",
     "2026-03-02 TRANSFER TO RAINY DAY SAVINGS",
+    "2026-02-28 STREAMFLIX",
     "2026-02-27 ACME CORP PAYROLL",
     "2026-02-21 SKYLINE AIR TICKETS",
+    "2026-01-29 STREAMFLIX",
+    "2026-01-27 ACME CORP PAYROLL",
   ]);
   expect(EXPECTED.neighbor.history.order.map((id) => label.get(id))).toEqual([
     "2026-03-09 ELECTRONICS EMPORIUM",
@@ -342,6 +356,28 @@ test("spending reconciles to flow: category rows sum to the period totals, nothi
         }).toEqual({ spentMinor: group.spentMinor, receivedMinor: group.receivedMinor, netMinor: group.netMinor });
       }
     }
+  }
+});
+
+test("the dataset's recurring streams are exactly what 6.4.1's detector finds in the rows", () => {
+  for (const persona of SEED_PERSONAS) {
+    const rows = SEED_TRANSACTIONS.filter((t) => t.persona === persona).map((t) => ({
+      id: t.id,
+      accountId: t.accountId,
+      amountMinor: t.amountMinor,
+      currency: t.currency,
+      date: t.date,
+      description: t.description,
+      merchant: t.merchant ?? null,
+      status: t.status ?? "posted",
+    }));
+    const excluded = new Set(
+      SEED_TRANSFER_PAIRS.filter((p) => p.persona === persona).flatMap((p) => [
+        p.outflowId,
+        p.inflowId,
+      ]),
+    );
+    expect(detectRecurringStreams(rows, excluded)).toEqual(EXPECTED[persona].recurring);
   }
 });
 
