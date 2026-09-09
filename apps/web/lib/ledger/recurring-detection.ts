@@ -120,7 +120,6 @@ function toStream(group: GroupIdentity, members: readonly RecurringRow[]): Recur
   }
   let occurrences: Occurrence[] = [...byDate]
     .map(([date, amountMinor]) => ({ date, amountMinor }))
-    .filter((occurrence) => occurrence.amountMinor !== 0)
     .sort((a, b) => a.date.localeCompare(b.date));
   if (occurrences.length < MIN_OCCURRENCES) return null;
 

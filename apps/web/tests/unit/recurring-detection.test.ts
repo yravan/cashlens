@@ -45,6 +45,7 @@ test("normalization strips per-charge descriptor noise, keeps identity", () => {
   );
   expect(normalizeRecurringName("  Uber\t*Trip   ")).toBe("UBER TRIP");
   expect(normalizeRecurringName("7-ELEVEN")).toBe("7-ELEVEN");
+  expect(normalizeRecurringName("7-ELEVEN*RT4KZ8")).toBe("7-ELEVEN");
   expect(normalizeRecurringName("STORE 1234")).toBe("STORE");
   expect(normalizeRecurringName("***")).toBe("");
   expect(normalizeRecurringName("!!!")).toBe("");
@@ -116,6 +117,41 @@ test("annual cadence detects across leap-year lengths", () => {
     ]),
   );
   expect(stream).toMatchObject({ cadence: "annual", confidence: "high" });
+});
+
+// Windows are repeated as literals on purpose: importing CADENCE_WINDOWS would
+// move the assertion with any edit and prove nothing.
+test("each cadence window is inclusive at both edges, and its double is the missed-occurrence window", () => {
+  const streamsForGaps = (...gaps: number[]) => {
+    const offsets = gaps.reduce((acc, gap) => [...acc, acc[acc.length - 1] + gap], [0]);
+    return detectRecurringStreams(
+      offsets.map((offset) =>
+        row(new Date(Date.UTC(2026, 0, 1 + offset)).toISOString().slice(0, 10), -2300),
+      ),
+    );
+  };
+  const classOf = (...gaps: number[]) => {
+    const stream = only(streamsForGaps(...gaps));
+    return [stream.cadence, stream.confidence];
+  };
+  for (const { cadence, lo, hi, mid } of [
+    { cadence: "weekly", lo: 5, hi: 9, mid: 7 },
+    { cadence: "biweekly", lo: 11, hi: 17, mid: 14 },
+    { cadence: "monthly", lo: 26, hi: 35, mid: 30 },
+    { cadence: "annual", lo: 330, hi: 400, mid: 365 },
+  ] as const) {
+    expect([classOf(lo, lo), classOf(hi, hi)]).toEqual([
+      [cadence, "high"],
+      [cadence, "high"],
+    ]);
+    expect([streamsForGaps(lo - 1, lo - 1), streamsForGaps(hi + 1, hi + 1)]).toEqual([[], []]);
+
+    expect([classOf(mid, 2 * lo), classOf(mid, 2 * hi)]).toEqual([
+      [cadence, "medium"],
+      [cadence, "medium"],
+    ]);
+    expect(streamsForGaps(mid, 2 * hi + 1)).toEqual([]);
+  }
 });
 
 test("a gap outside every class window and its double kills the group", () => {
@@ -204,6 +240,18 @@ test("amounts within the 7.5% stable band keep high confidence, median is typica
     typicalAmountMinor: -2050,
     lastAmountMinor: -2050,
   });
+});
+
+test("typical amount medians an even count over the middle pair, truncating toward zero", () => {
+  const stream = only(
+    detectRecurringStreams([
+      row("2026-01-10", -2000),
+      row("2026-02-10", -2101),
+      row("2026-03-10", -2200),
+      row("2026-04-10", -2300),
+    ]),
+  );
+  expect(stream).toMatchObject({ typicalAmountMinor: -2150, occurrences: 4, confidence: "high" });
 });
 
 test("amount drift beyond 7.5% but inside 25% demotes to medium, stream survives", () => {
@@ -333,19 +381,27 @@ test("pending rows never count as evidence", () => {
   ).toEqual([]);
 });
 
-test("zero amounts and excluded transfer-pair members never count as evidence", () => {
+test("excluded transfer-pair members never count as evidence", () => {
   const excluded = row("2026-03-27", 250000);
   expect(
     detectRecurringStreams(
-      [
-        row("2026-01-27", 250000),
-        row("2026-02-27", 250000),
-        row("2026-03-20", 0),
-        excluded,
-      ],
+      [row("2026-01-27", 250000), row("2026-02-27", 250000), excluded],
       new Set([excluded.id]),
     ),
   ).toEqual([]);
+});
+
+test("a zero-amount row is never an occurrence, alone on a date or beside a charge", () => {
+  const stream = only(
+    detectRecurringStreams([
+      row("2026-01-10", -2300),
+      row("2026-02-10", -2300),
+      row("2026-02-10", 0),
+      row("2026-03-10", -2300),
+      row("2026-03-25", 0),
+    ]),
+  );
+  expect(stream).toMatchObject({ occurrences: 3, lastDate: "2026-03-10", confidence: "high" });
 });
 
 test("directions split: outflow charges and a same-name refund never mix", () => {
@@ -435,6 +491,17 @@ test("detection is deterministic under input order and sorts by recency", () => 
   expect(backward).toEqual(forward);
   expect(interleaved).toEqual(forward);
   expect(forward.map((s) => s.normalizedName)).toEqual(["STREAMFLIX", "ACME CORP PAYROLL"]);
+});
+
+test("streams alike but for their name sort by name, whatever order rows arrive in", () => {
+  const dates = ["2026-01-10", "2026-02-10", "2026-03-10"];
+  const rows = [
+    ...dates.map((date) => row(date, -2300, { merchant: "Zebra Club" })),
+    ...dates.map((date) => row(date, -4400, { merchant: "Alpha Gym" })),
+  ];
+  const names = (input: RecurringRow[]) => detectRecurringStreams(input).map((s) => s.name);
+  expect(names(rows)).toEqual(["Alpha Gym", "Zebra Club"]);
+  expect(names([...rows].reverse())).toEqual(["Alpha Gym", "Zebra Club"]);
 });
 
 test("nextExpectedDate: fixed-interval cadences add exact days", () => {
