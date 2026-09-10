@@ -121,6 +121,9 @@ test.describe("transaction history", () => {
       await expect(form(page).locator(`[name="${name}"]`)).toHaveValue("");
     }
     await form(page).getByRole("button", { name: "Apply" }).click();
+    await expect(page).toHaveURL(
+      "/transactions?q=&account=&category=&from=&to=&currency=&min=&max=",
+    );
     await expect(page.getByTestId("transactions-count")).toHaveText("19 transactions in the ledger");
     await expect(rows(page)).toHaveCount(DEMO_PAGE.length);
     for (const [index, transaction] of DEMO_PAGE.entries()) {
