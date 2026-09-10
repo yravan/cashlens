@@ -88,16 +88,11 @@ export function ConnectButton({ activeInstitutionIds = [] }: { activeInstitution
     [router],
   );
 
-  // Link already created the item at the bank, so backing out must burn it
-  // server-side — dropping the token would leave an orphan item at Plaid.
-  const cancelDuplicate = (publicToken: string) => {
+  // Plaid says a detected duplicate must not be exchanged. Dropping the
+  // in-memory public token creates no Item to remove.
+  const cancelDuplicate = () => {
     setDuplicate(null);
     setStatus({ kind: "idle" });
-    void fetch("/api/plaid/abandon", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ publicToken }),
-    }).catch(() => {});
   };
 
   const onSuccess = useCallback<PlaidLinkOnSuccess>(
@@ -170,7 +165,7 @@ export function ConnectButton({ activeInstitutionIds = [] }: { activeInstitution
             <button
               type="button"
               data-testid="duplicate-cancel"
-              onClick={() => cancelDuplicate(duplicate.publicToken)}
+              onClick={cancelDuplicate}
               className="rounded-md border border-zinc-300 px-3 py-1.5 font-medium transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
             >
               Cancel

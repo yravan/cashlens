@@ -37,6 +37,20 @@ export function adminQuery(text: string, params: unknown[] = []) {
   return withClient(adminUrl(), (client) => client.query(text, params));
 }
 
+export function adminTransaction<T>(fn: (client: Client) => Promise<T>): Promise<T> {
+  return withClient(adminUrl(), async (client) => {
+    await client.query("begin");
+    try {
+      const result = await fn(client);
+      await client.query("commit");
+      return result;
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    }
+  });
+}
+
 export function seedLedgerFixture(userIds: { demo: string; neighbor: string }) {
   return withClient(adminUrl(), (client) => seedDataset(drizzle({ client }), userIds));
 }

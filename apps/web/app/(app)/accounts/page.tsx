@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 
-import { listConnectionsWithStats } from "@/lib/data/connections";
+import { listConnectionsWithStats, listPlaidCleanupIds } from "@/lib/data/connections";
 import { accountOverview } from "@/lib/data/ledger";
 import { listResumableSyncs } from "@/lib/data/plaid-sync";
 import { AccountsOverview } from "./accounts-overview";
+import { CleanupResume } from "./cleanup-resume";
 import { ConnectButton } from "./connect-button";
 import { ConnectionsList } from "./connections-list";
 import { SyncResume } from "./sync-resume";
@@ -11,9 +12,10 @@ import { SyncResume } from "./sync-resume";
 export const metadata: Metadata = { title: "Accounts" };
 
 export default async function AccountsPage() {
-  const [overview, resumable, connections] = await Promise.all([
+  const [overview, resumable, cleanupIds, connections] = await Promise.all([
     accountOverview(),
     listResumableSyncs(),
+    listPlaidCleanupIds(),
     listConnectionsWithStats(),
   ]);
   const activeInstitutionIds = connections.flatMap((connection) =>
@@ -38,6 +40,7 @@ export default async function AccountsPage() {
       <AccountsOverview overview={overview} />
       <ConnectionsList connections={connections} />
       <SyncResume connectionIds={resumable} />
+      <CleanupResume connectionIds={cleanupIds} />
     </>
   );
 }
