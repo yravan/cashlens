@@ -77,12 +77,47 @@ export const categoryConfidence = pgEnum("category_confidence", [
   "high",
 ]);
 
+export const classificationRunKind = pgEnum("classification_run_kind", [
+  "automatic_initial",
+  "automatic_reclassification",
+]);
+
+export const classificationRunStatus = pgEnum("classification_run_status", [
+  "inferring",
+  "succeeded",
+  "proposed",
+  "applied",
+  "partially_applied",
+  "rolled_back",
+  "partially_rolled_back",
+  "expired",
+  "cancelled",
+  "failed",
+]);
+
+export const classificationProposalState = pgEnum("classification_proposal_state", [
+  "proposed",
+  "applied",
+  "skipped",
+  "conflicted",
+  "rolled_back",
+  "rollback_conflict",
+]);
+
 const ownRow = sql`user_id = (select app_current_user_id())`;
+const ownOwnerRow = sql`owner_user_id = (select app_current_user_id())`;
 
 function ownRowPolicies(table: string) {
   return [
     pgPolicy(`${table}_select_own`, { for: "select", to: appRole, using: ownRow }),
     pgPolicy(`${table}_insert_own`, { for: "insert", to: appRole, withCheck: ownRow }),
+  ];
+}
+
+function ownerRowPolicies(table: string) {
+  return [
+    pgPolicy(`${table}_select_own`, { for: "select", to: appRole, using: ownOwnerRow }),
+    pgPolicy(`${table}_insert_own`, { for: "insert", to: appRole, withCheck: ownOwnerRow }),
   ];
 }
 
@@ -218,6 +253,95 @@ export const categories = pgTable(
   ],
 );
 
+export const classificationRuns = pgTable(
+  "classification_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: uuid("owner_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: classificationRunKind("kind").notNull(),
+    status: classificationRunStatus("status").notNull(),
+    requestedModel: text("requested_model").notNull(),
+    responseModel: text("response_model"),
+    promptVersion: text("prompt_version").notNull(),
+    assignmentSchemaVersion: text("assignment_schema_version").notNull(),
+    taxonomyFingerprint: text("taxonomy_fingerprint").notNull(),
+    providerPolicyFingerprint: text("provider_policy_fingerprint").notNull(),
+    proposalSetHash: text("proposal_set_hash"),
+    resultSetHash: text("result_set_hash"),
+    batchSize: integer("batch_size").notNull(),
+    attempted: integer("attempted").notNull().default(0),
+    proposed: integer("proposed").notNull().default(0),
+    applied: integer("applied").notNull().default(0),
+    skipped: integer("skipped").notNull().default(0),
+    conflicted: integer("conflicted").notNull().default(0),
+    providerInputTokens: integer("provider_input_tokens"),
+    providerOutputTokens: integer("provider_output_tokens"),
+    providerGenerationId: text("provider_generation_id"),
+    operatorActor: text("operator_actor"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    inferenceLeaseUntil: timestamp("inference_lease_until", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    unique("classification_runs_id_owner_unique").on(t.id, t.ownerUserId),
+    unique("classification_runs_id_owner_kind_unique").on(t.id, t.ownerUserId, t.kind),
+    uniqueIndex("classification_runs_owner_inferring_key")
+      .on(t.ownerUserId)
+      .where(sql`status = 'inferring'`),
+    index("classification_runs_owner_created_idx").on(t.ownerUserId, t.createdAt),
+    check("classification_runs_batch_size_bounded", sql`batch_size between 1 and 40`),
+    check(
+      "classification_runs_counts_nonnegative",
+      sql`attempted >= 0 and proposed >= 0 and applied >= 0 and skipped >= 0 and conflicted >= 0`,
+    ),
+    check(
+      "classification_runs_usage_nonnegative",
+      sql`(provider_input_tokens is null or provider_input_tokens >= 0)
+        and (provider_output_tokens is null or provider_output_tokens >= 0)`,
+    ),
+    check(
+      "classification_runs_identity_bounded",
+      sql`char_length(requested_model) between 1 and 200
+        and (response_model is null or char_length(response_model) between 1 and 200)
+        and char_length(prompt_version) between 1 and 100
+        and char_length(assignment_schema_version) between 1 and 100
+        and (provider_generation_id is null or char_length(provider_generation_id) between 1 and 200)
+        and (operator_actor is null or char_length(operator_actor) between 1 and 200)`,
+    ),
+    check(
+      "classification_runs_fingerprints_valid",
+      sql`taxonomy_fingerprint ~ '^[0-9a-f]{64}$'
+        and provider_policy_fingerprint ~ '^[0-9a-f]{64}$'
+        and (proposal_set_hash is null or proposal_set_hash ~ '^[0-9a-f]{64}$')
+        and (result_set_hash is null or result_set_hash ~ '^[0-9a-f]{64}$')`,
+    ),
+    check(
+      "classification_runs_kind_scope",
+      sql`(kind = 'automatic_initial' and operator_actor is null and expires_at is null)
+        or (kind = 'automatic_reclassification' and operator_actor is not null and expires_at is not null)`,
+    ),
+    check(
+      "classification_runs_status_scope",
+      sql`(kind = 'automatic_initial'
+          and status in ('inferring', 'succeeded', 'expired', 'cancelled', 'failed'))
+        or (kind = 'automatic_reclassification'
+          and status in ('inferring', 'proposed', 'applied', 'partially_applied',
+            'rolled_back', 'partially_rolled_back', 'expired', 'cancelled', 'failed'))`,
+    ),
+    ...ownerRowPolicies("classification_runs"),
+    pgPolicy("classification_runs_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownOwnerRow,
+      withCheck: ownOwnerRow,
+    }),
+  ],
+);
+
 export const transactions = pgTable(
   "transactions",
   {
@@ -228,6 +352,8 @@ export const transactions = pgTable(
     categorySource: categorySource("category_source"),
     categoryConfidence: categoryConfidence("category_confidence"),
     categoryReason: text("category_reason"),
+    categoryRunId: uuid("category_run_id"),
+    categoryRevision: bigint("category_revision", { mode: "number" }).notNull().default(0),
     amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
     currency: char("currency", { length: 3 }).notNull(),
     date: date("date").notNull(),
@@ -251,6 +377,12 @@ export const transactions = pgTable(
       columns: [t.categoryId, t.userId],
       foreignColumns: [categories.id, categories.userId],
     }),
+    // The journal grant migration defers provenance FK checks until commit.
+    foreignKey({
+      name: "transactions_category_run_user_fk",
+      columns: [t.categoryRunId, t.userId],
+      foreignColumns: [classificationRuns.id, classificationRuns.ownerUserId],
+    }),
     uniqueIndex("transactions_account_source_row_key")
       .on(t.accountId, t.source, t.sourceId)
       .where(sql`source_id is not null`),
@@ -270,6 +402,11 @@ export const transactions = pgTable(
       "transactions_category_reason_bounded",
       sql`category_reason is null or char_length(category_reason) between 1 and 200`,
     ),
+    check(
+      "transactions_category_run_scope",
+      sql`category_run_id is null or category_source is not distinct from 'auto'`,
+    ),
+    check("transactions_category_revision_nonnegative", sql`category_revision >= 0`),
     ...ownRowPolicies("transactions"),
     pgPolicy("transactions_update_own", {
       for: "update",
@@ -278,6 +415,130 @@ export const transactions = pgTable(
       withCheck: ownRow,
     }),
     pgPolicy("transactions_delete_own", { for: "delete", to: appRole, using: ownRow }),
+  ],
+);
+
+export const classificationProposals = pgTable(
+  "classification_proposals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id").notNull(),
+    ownerUserId: uuid("owner_user_id").notNull(),
+    runKind: classificationRunKind("run_kind").notNull().default("automatic_reclassification"),
+    transactionId: uuid("transaction_id").notNull(),
+    proposedCategoryId: uuid("proposed_category_id").notNull(),
+    proposedConfidence: categoryConfidence("proposed_confidence").notNull(),
+    proposedReason: text("proposed_reason").notNull(),
+    beforeCategoryId: uuid("before_category_id").notNull(),
+    beforeCategorySource: categorySource("before_category_source").notNull(),
+    beforeCategoryConfidence: categoryConfidence("before_category_confidence"),
+    beforeCategoryReason: text("before_category_reason"),
+    beforeCategoryRunId: uuid("before_category_run_id"),
+    beforeCategoryRevision: bigint("before_category_revision", { mode: "number" }).notNull(),
+    beforeUpdatedAt: timestamp("before_updated_at", { withTimezone: true, mode: "string" }).notNull(),
+    appliedCategoryId: uuid("applied_category_id"),
+    appliedCategorySource: categorySource("applied_category_source"),
+    appliedCategoryConfidence: categoryConfidence("applied_category_confidence"),
+    appliedCategoryReason: text("applied_category_reason"),
+    appliedCategoryRunId: uuid("applied_category_run_id"),
+    appliedCategoryRevision: bigint("applied_category_revision", { mode: "number" }),
+    appliedUpdatedAt: timestamp("applied_updated_at", { withTimezone: true, mode: "string" }),
+    state: classificationProposalState("state").notNull().default("proposed"),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    skippedAt: timestamp("skipped_at", { withTimezone: true }),
+    conflictedAt: timestamp("conflicted_at", { withTimezone: true }),
+    rolledBackAt: timestamp("rolled_back_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    foreignKey({
+      name: "classification_proposals_run_owner_fk",
+      columns: [t.runId, t.ownerUserId, t.runKind],
+      foreignColumns: [classificationRuns.id, classificationRuns.ownerUserId, classificationRuns.kind],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "classification_proposals_transaction_owner_fk",
+      columns: [t.transactionId, t.ownerUserId],
+      foreignColumns: [transactions.id, transactions.userId],
+    }).onDelete("cascade"),
+    foreignKey({
+      name: "classification_proposals_category_owner_fk",
+      columns: [t.proposedCategoryId, t.ownerUserId],
+      foreignColumns: [categories.id, categories.userId],
+    }),
+    foreignKey({
+      name: "classification_proposals_before_category_owner_fk",
+      columns: [t.beforeCategoryId, t.ownerUserId],
+      foreignColumns: [categories.id, categories.userId],
+    }),
+    foreignKey({
+      name: "classification_proposals_before_run_owner_fk",
+      columns: [t.beforeCategoryRunId, t.ownerUserId],
+      foreignColumns: [classificationRuns.id, classificationRuns.ownerUserId],
+    }),
+    foreignKey({
+      name: "classification_proposals_applied_category_owner_fk",
+      columns: [t.appliedCategoryId, t.ownerUserId],
+      foreignColumns: [categories.id, categories.userId],
+    }),
+    foreignKey({
+      name: "classification_proposals_applied_run_owner_fk",
+      columns: [t.appliedCategoryRunId, t.ownerUserId],
+      foreignColumns: [classificationRuns.id, classificationRuns.ownerUserId],
+    }),
+    unique("classification_proposals_run_transaction_unique").on(t.runId, t.transactionId),
+    index("classification_proposals_owner_run_idx").on(t.ownerUserId, t.runId),
+    index("classification_proposals_transaction_idx").on(t.transactionId),
+    check("classification_proposals_before_auto", sql`before_category_source = 'auto'`),
+    check(
+      "classification_proposals_run_kind",
+      sql`run_kind = 'automatic_reclassification'`,
+    ),
+    check(
+      "classification_proposals_before_reason_bounded",
+      sql`before_category_reason is null or char_length(before_category_reason) between 1 and 200`,
+    ),
+    check(
+      "classification_proposals_proposed_reason_bounded",
+      sql`char_length(proposed_reason) between 1 and 200`,
+    ),
+    check(
+      "classification_proposals_applied_reason_bounded",
+      sql`applied_category_reason is null or char_length(applied_category_reason) between 1 and 200`,
+    ),
+    check(
+      "classification_proposals_applied_tuple_scope",
+      sql`(applied_category_id is null and applied_category_source is null
+          and applied_category_confidence is null and applied_category_reason is null
+          and applied_category_run_id is null and applied_category_revision is null
+          and applied_updated_at is null)
+        or (applied_category_id is not null
+          and applied_category_id is not distinct from proposed_category_id
+          and applied_category_source is not distinct from 'auto'
+          and applied_category_confidence is not distinct from proposed_confidence
+          and applied_category_reason is not distinct from proposed_reason
+          and applied_category_run_id is not null
+          and applied_category_run_id is not distinct from run_id
+          and applied_category_revision is not null
+          and applied_updated_at is not null)`,
+    ),
+    check(
+      "classification_proposals_state_scope",
+      sql`(state in ('proposed', 'skipped', 'conflicted') and applied_category_id is null)
+        or (state in ('applied', 'rolled_back', 'rollback_conflict') and applied_category_id is not null)`,
+    ),
+    check(
+      "classification_proposals_revisions_nonnegative",
+      sql`before_category_revision >= 0
+        and (applied_category_revision is null or applied_category_revision > before_category_revision)`,
+    ),
+    ...ownerRowPolicies("classification_proposals"),
+    pgPolicy("classification_proposals_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownOwnerRow,
+      withCheck: ownOwnerRow,
+    }),
   ],
 );
 

@@ -176,6 +176,20 @@
       "when": 1788939628322,
       "tag": "0024_recurring_streams_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789037081704,
+      "tag": "0025_classification_journal",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789037088239,
+      "tag": "0026_classification_journal_grants",
+      "breakpoints": true
     }
   ]
 }
