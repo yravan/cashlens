@@ -1,4 +1,6 @@
 import { createHash, generateKeyPairSync, randomUUID, type KeyObject } from "node:crypto";
+import { createRequire } from "node:module";
+import path from "node:path";
 import { SignJWT } from "jose";
 
 // vitest.config.mts aliases the `plaid` package to this file for the api suite.
@@ -75,6 +77,12 @@ export function resetPlaidSubstitute(): void {
   balanceRequests.length = 0;
   webhookUpdateRequests.length = 0;
   webhookKeyRequests.length = 0;
+  webhookKeyFailures.length = 0;
+  servedWebhookKids.clear();
+  releaseWebhookKeyGate?.();
+  webhookKeyGate = null;
+  releaseWebhookKeyGate = null;
+  webhookKeyForwardUrl = null;
   syncFailures.length = 0;
   balanceFailures.length = 0;
   removeFailures.length = 0;
@@ -115,6 +123,11 @@ const webhookKeys = {
 export const WEBHOOK_KID = "sub-webhook-key-1";
 export const WEBHOOK_RETIRED_KID = "sub-webhook-key-0";
 export const webhookKeyRequests: string[] = [];
+const webhookKeyFailures: Array<{ errorType: string; errorCode: string }> = [];
+const servedWebhookKids = new Map<string, Record<string, unknown>>();
+let webhookKeyGate: Promise<void> | null = null;
+let releaseWebhookKeyGate: (() => void) | null = null;
+let webhookKeyForwardUrl: string | null = null;
 
 const webhookJwk = (key: KeyObject, kid: string, expiredAt: number | null) => ({
   ...key.export({ format: "jwk" }),
@@ -124,6 +137,29 @@ const webhookJwk = (key: KeyObject, kid: string, expiredAt: number | null) => ({
   created_at: 1700000000,
   expired_at: expiredAt,
 });
+
+export function serveWebhookKey(kid: string, overrides: Record<string, unknown> = {}): void {
+  servedWebhookKids.set(kid, { ...webhookJwk(webhookKeys.main.publicKey, kid, null), ...overrides });
+}
+
+export function failNextWebhookKey(errorType: string, errorCode: string): void {
+  webhookKeyFailures.push({ errorType, errorCode });
+}
+
+export function holdWebhookKeyRequests(): () => void {
+  webhookKeyGate = new Promise((resolve) => {
+    releaseWebhookKeyGate = resolve;
+  });
+  return () => {
+    releaseWebhookKeyGate?.();
+    webhookKeyGate = null;
+    releaseWebhookKeyGate = null;
+  };
+}
+
+export function forwardWebhookKeyRequestsTo(url: string | null): void {
+  webhookKeyForwardUrl = url;
+}
 
 export async function signPlaidWebhook(
   body: string,
@@ -444,8 +480,40 @@ export class PlaidApi {
     });
   }
 
-  async webhookVerificationKeyGet({ key_id }: { key_id: string }) {
+  async webhookVerificationKeyGet(
+    { key_id }: { key_id: string },
+    options: Record<string, unknown> = {},
+  ) {
     webhookKeyRequests.push(key_id);
+    if (webhookKeyForwardUrl) {
+      const load = createRequire(path.join(process.cwd(), "package.json"));
+      const actual = load("plaid") as {
+        Configuration: new (input: Record<string, unknown>) => unknown;
+        PlaidApi: new (configuration: unknown) => {
+          webhookVerificationKeyGet(
+            request: { key_id: string },
+            requestOptions: Record<string, unknown>,
+          ): Promise<unknown>;
+        };
+      };
+      const configuration = new actual.Configuration({
+        basePath: webhookKeyForwardUrl,
+        baseOptions: {
+          headers: {
+            "PLAID-CLIENT-ID": "loopback-client",
+            "PLAID-SECRET": "loopback-secret",
+          },
+        },
+      });
+      return new actual.PlaidApi(configuration).webhookVerificationKeyGet({ key_id }, options);
+    }
+    await webhookKeyGate;
+    const failure = webhookKeyFailures.shift();
+    if (failure) {
+      return plaidReject(500, failure.errorType, failure.errorCode, "injected key failure");
+    }
+    const served = servedWebhookKids.get(key_id);
+    if (served) return respond({ key: structuredClone(served) });
     if (key_id === WEBHOOK_KID) {
       return respond({ key: webhookJwk(webhookKeys.main.publicKey, WEBHOOK_KID, null) });
     }
