@@ -29,3 +29,4 @@ test-results/
 .idea/
 .vscode/
 .claude/settings.local.json
+.vercel

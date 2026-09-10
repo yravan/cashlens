@@ -39,6 +39,20 @@ const ITEMS = [
     ),
   },
   {
+    href: "/upcoming",
+    label: "Upcoming",
+    icon: (
+      <>
+        <rect width="18" height="18" x="3" y="4" rx="2" />
+        <path d="M16 2v4" />
+        <path d="M8 2v4" />
+        <path d="M3 10h18" />
+        <path d="M12 14v4" />
+        <path d="M10 16h4" />
+      </>
+    ),
+  },
+  {
     href: "/transactions",
     label: "Transactions",
     icon: (
@@ -98,7 +112,7 @@ export function TabBar() {
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden dark:border-zinc-800 dark:bg-zinc-950/95"
     >
-      <ul className="grid grid-cols-5">
+      <ul className="grid grid-cols-6">
         {ITEMS.map(({ href, label, icon }) => (
           <li key={href}>
             <Link
