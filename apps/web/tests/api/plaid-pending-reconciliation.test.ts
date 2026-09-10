@@ -231,6 +231,38 @@ test("null, unknown, and cross-account links never guess a replacement", async (
   ]);
 });
 
+test("a replay over a legacy pending-plus-posted duplicate converges without a unique error", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const item = await backfilled(clerkUserId, pending());
+  const user = await internalUser(clerkUserId);
+  const [legacyPosted] = await adminDb()
+    .insert(transactions)
+    .values({
+      userId: user.id,
+      accountId: item.accountId.get(CHECKING)!,
+      amountMinor: -1840,
+      currency: "USD",
+      date: "2026-08-23",
+      description: "LEGACY POSTED",
+      status: "posted",
+      source: "plaid",
+      sourceId: "posted-source",
+    })
+    .returning({ id: transactions.id });
+  pushSyncUpdates(item.accessToken, {
+    added: [posted()],
+    removed: [removed("pending-source")],
+  });
+
+  const response = await item.sync();
+
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toEqual(step("complete", 0, { removed: 1 }));
+  await expect(rowsFor(user.id)).resolves.toMatchObject([
+    { id: legacyPosted.id, sourceId: "posted-source", status: "posted" },
+  ]);
+});
+
 test("replaying the complete provider history cannot resurrect the pending duplicate", async () => {
   const clerkUserId = fakeClerkUserId();
   const item = await backfilled(clerkUserId, pending());
