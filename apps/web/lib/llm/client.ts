@@ -1,10 +1,4 @@
 import "server-only";
-import Anthropic, {
-  APIConnectionError,
-  APIError,
-  AuthenticationError,
-  RateLimitError,
-} from "@anthropic-ai/sdk";
 
 import { errorClass } from "@/lib/log";
 import {
@@ -18,57 +12,102 @@ import {
 
 export { InvalidClassificationError } from "./classify";
 
-const CLASSIFY_MODEL = "claude-haiku-4-5";
+const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
+const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
+const TIMEOUT_MS = 30_000;
 
 export class LlmUnconfiguredError extends Error {}
 export class LlmRateLimitedError extends Error {}
 export class LlmUnavailableError extends Error {}
 
 export function llmConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return Boolean(process.env.OPENROUTER_API_KEY);
 }
 
-// Raw provider errors may carry request configuration; only these sanitized
-// classes — never the provider's error object or message — leave this module.
-function sanitized(error: unknown): Error {
-  if (error instanceof AuthenticationError) {
-    return new LlmUnconfiguredError("provider rejected the credentials");
-  }
-  if (error instanceof RateLimitError) return new LlmRateLimitedError("provider rate limit");
-  if (error instanceof APIConnectionError) return new LlmUnavailableError("provider unreachable");
-  if (error instanceof APIError) {
-    return error.status === 529
-      ? new LlmRateLimitedError("provider overloaded")
-      : new LlmUnavailableError(`provider error ${error.status ?? "unknown"}`);
-  }
-  return new LlmUnavailableError(errorClass(error));
+// Provider error bodies may quote user input back (moderation metadata) and
+// carry upstream detail; only these sanitized classes — never a provider
+// message, body, or metadata — leave this module.
+function errorForCode(code: unknown): Error {
+  if (code === 401) return new LlmUnconfiguredError("provider rejected the credentials");
+  if (code === 402) return new LlmUnconfiguredError("provider account is out of credits");
+  if (code === 429) return new LlmRateLimitedError("provider rate limit");
+  return new LlmUnavailableError(`provider error ${typeof code === "number" ? code : "unknown"}`);
+}
+
+type ChatCompletion = {
+  error?: { code?: unknown };
+  choices?: {
+    error?: { code?: unknown };
+    finish_reason?: unknown;
+    message?: { content?: unknown };
+  }[];
+};
+
+function contentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .flatMap((part: unknown) => {
+      const text = (part as { text?: unknown } | null)?.text;
+      return typeof text === "string" ? [text] : [];
+    })
+    .join("");
 }
 
 export async function classifyTransactions(
   items: ClassifyItem[],
   categoryLabels: string[],
 ): Promise<ClassifyAssignment[]> {
-  if (!llmConfigured()) throw new LlmUnconfiguredError("ANTHROPIC_API_KEY is not set");
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new LlmUnconfiguredError("OPENROUTER_API_KEY is not set");
   const { system, user } = classificationPrompt(items, categoryLabels);
-  const client = new Anthropic({ maxRetries: 1, timeout: 30_000 });
-  let response;
+
+  let response: Response;
   try {
-    response = await client.messages.create({
-      model: CLASSIFY_MODEL,
-      max_tokens: 200 + items.length * 60,
-      temperature: 0,
-      system,
-      messages: [{ role: "user", content: user }],
-      output_config: { format: { type: "json_schema", schema: ASSIGNMENT_SCHEMA } },
-    });
+    response = await fetch(
+      `${process.env.OPENROUTER_BASE_URL || DEFAULT_BASE_URL}/chat/completions`,
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        body: JSON.stringify({
+          model: process.env.LLM_MODEL || DEFAULT_MODEL,
+          max_tokens: 200 + items.length * 60,
+          temperature: 0,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "transaction_classification",
+              strict: true,
+              schema: ASSIGNMENT_SCHEMA,
+            },
+          },
+          provider: { data_collection: "deny", require_parameters: true },
+        }),
+      },
+    );
   } catch (error) {
-    throw sanitized(error);
+    throw new LlmUnavailableError(errorClass(error));
   }
-  if (response.stop_reason !== "end_turn") {
-    throw new InvalidClassificationError(`classification stopped on ${response.stop_reason}`);
+  if (!response.ok) throw errorForCode(response.status);
+
+  let completion: ChatCompletion;
+  try {
+    completion = (await response.json()) as ChatCompletion;
+  } catch {
+    throw new LlmUnavailableError("malformed provider response");
   }
-  const text = response.content
-    .flatMap((block) => (block.type === "text" ? [block.text] : []))
-    .join("");
-  return parseAssignments(text, items.length, categoryLabels.length);
+  const choice = completion.choices?.[0];
+  // A provider failure after headers arrives as a 200 whose body carries only
+  // an error object, or a choice with an embedded error (OpenRouter errors doc).
+  if (!choice) throw errorForCode(completion.error?.code);
+  if (choice.error) throw errorForCode(choice.error.code);
+  if (choice.finish_reason !== "stop") {
+    throw new InvalidClassificationError(`classification stopped on ${String(choice.finish_reason)}`);
+  }
+  return parseAssignments(contentText(choice.message?.content), items.length, categoryLabels.length);
 }

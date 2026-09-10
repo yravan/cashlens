@@ -18,8 +18,11 @@ process.env.CREDENTIAL_ENCRYPTION_KEYS ??= `test:${randomBytes(32).toString("hex
 process.env.PLAID_ENV ??= "sandbox";
 process.env.PLAID_CLIENT_ID ??= "api-suite-client-id";
 process.env.PLAID_SECRET ??= "api-suite-secret";
-// The Anthropic substitute (harness/anthropic.ts) never sends this anywhere.
-process.env.ANTHROPIC_API_KEY ??= "api-suite-anthropic-key";
+// The OpenRouter substitute (harness/openrouter.ts) repoints the base URL at
+// its loopback server; this default fails closed so an unsubstituted call can
+// never leave the machine.
+process.env.OPENROUTER_API_KEY ??= "api-suite-openrouter-key";
+process.env.OPENROUTER_BASE_URL = "http://127.0.0.1:9/api/v1";
 
 beforeEach(truncateAll);
 afterAll(closeAdmin);

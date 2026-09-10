@@ -10,23 +10,21 @@ import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
 import { accounts, transactions } from "@/lib/db/schema";
 import { DEFAULT_CATEGORIES } from "@/lib/ledger/default-categories";
+import { ASSIGNMENT_SCHEMA } from "@/lib/llm/classify";
 import {
-  APIConnectionError,
-  APIError,
-  AuthenticationError,
   classificationRequests,
-  clientOptions,
+  dropNextClassification,
   failNextClassification,
   onceBeforeClassificationResponse,
   primeClassification,
+  primeClassificationBody,
   primeClassificationText,
-  RateLimitError,
-  resetAnthropicSubstitute,
-} from "../harness/anthropic";
+  resetOpenRouterSubstitute,
+} from "../harness/openrouter";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 
-beforeEach(resetAnthropicSubstitute);
+beforeEach(resetOpenRouterSubstitute);
 
 const LABELS = DEFAULT_CATEGORIES.flatMap(({ group, categories }) =>
   categories.map((name) => `${group} > ${name}`),
@@ -94,7 +92,9 @@ const leafNamed = (groups: Awaited<ReturnType<typeof listCategoryGroups>>, name:
 };
 
 const promptPayload = (at = 0) =>
-  JSON.parse(classificationRequests[at].messages[0].content) as {
+  JSON.parse(
+    classificationRequests[at].body.messages.find((message) => message.role === "user")!.content,
+  ) as {
     categories: { id: number; name: string }[];
     transactions: Record<string, unknown>[];
   };
@@ -136,12 +136,19 @@ test("a batch classifies uncategorized rows through the model and stamps auto pr
   });
 
   expect(classificationRequests).toHaveLength(1);
-  const request = classificationRequests[0];
-  expect(request.model).toBe("claude-haiku-4-5");
-  expect(request.temperature).toBe(0);
-  expect(request.output_config?.format?.type).toBe("json_schema");
-  expect(request.max_tokens).toBeGreaterThan(0);
-  expect(request.max_tokens).toBeLessThanOrEqual(4096);
+  const { method, path, authorization, body } = classificationRequests[0];
+  expect(method).toBe("POST");
+  expect(path).toBe("/api/v1/chat/completions");
+  expect(authorization).toBe(`Bearer ${process.env.OPENROUTER_API_KEY}`);
+  expect(body.model).toBe("anthropic/claude-haiku-4.5");
+  expect(body.temperature).toBe(0);
+  expect(body.max_tokens).toBeGreaterThan(0);
+  expect(body.max_tokens).toBeLessThanOrEqual(4096);
+  expect(body.messages.map((message) => message.role)).toEqual(["system", "user"]);
+  expect(body.response_format?.type).toBe("json_schema");
+  expect(body.response_format?.json_schema?.strict).toBe(true);
+  expect(body.response_format?.json_schema?.schema).toEqual(ASSIGNMENT_SCHEMA);
+  expect(body.provider).toEqual({ data_collection: "deny", require_parameters: true });
 
   const payload = promptPayload();
   expect(payload.categories.map((category) => category.name)).toEqual(LABELS);
@@ -150,7 +157,28 @@ test("a batch classifies uncategorized rows through the model and stamps auto pr
     { id: 1, direction: "out", merchant: "Maple Market", description: "MAPLE MARKET #204" },
     { id: 2, direction: "in", merchant: "Acme Corp", description: "ACME CORP PAYROLL" },
   ]);
-  expect(clientOptions.every((options) => !("apiKey" in options))).toBe(true);
+});
+
+test("LLM_MODEL switches the model per request without code changes", async () => {
+  const saved = process.env.LLM_MODEL;
+  process.env.LLM_MODEL = "openai/gpt-5-nano";
+  try {
+    const clerkUserId = fakeClerkUserId();
+    await provision(clerkUserId, [{ description: "SWITCHED MODEL VENDOR" }]);
+    primeClassification([
+      { item: 0, category: labelIndex("Miscellaneous"), confidence: "low", reason: "Fallback" },
+    ]);
+    const step = await withAuth(clerkUserId, () => autoCategorizeBatch());
+    expect(step.categorized).toBe(1);
+    expect(classificationRequests[0].body.model).toBe("openai/gpt-5-nano");
+    expect(classificationRequests[0].body.provider).toEqual({
+      data_collection: "deny",
+      require_parameters: true,
+    });
+  } finally {
+    if (saved === undefined) delete process.env.LLM_MODEL;
+    else process.env.LLM_MODEL = saved;
+  }
 });
 
 test("least data: nothing beyond description, merchant, and direction ever reaches the provider", async () => {
@@ -402,8 +430,8 @@ test("the route rejects signed-out and cross-origin callers before any work", as
 });
 
 test("an unconfigured provider answers 503 and never attempts a call", async () => {
-  const saved = process.env.ANTHROPIC_API_KEY;
-  delete process.env.ANTHROPIC_API_KEY;
+  const saved = process.env.OPENROUTER_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
   try {
     const clerkUserId = fakeClerkUserId();
     const { ids } = await provision(clerkUserId, [{ description: "DORMANT VENDOR" }]);
@@ -414,7 +442,7 @@ test("an unconfigured provider answers 503 and never attempts a call", async () 
     expect(classificationRequests).toHaveLength(0);
     expect(await categoryStateOf(ids[0])).toMatchObject({ categoryId: null });
   } finally {
-    process.env.ANTHROPIC_API_KEY = saved;
+    process.env.OPENROUTER_API_KEY = saved;
   }
 });
 
@@ -423,25 +451,39 @@ test("provider failures map to honest statuses and leak no provider detail", asy
   const { ids } = await provision(clerkUserId, [{ description: "FLAKY VENDOR" }]);
 
   const cases: { prime: () => void; status: number; error: string }[] = [
-    { prime: () => failNextClassification(new RateLimitError()), status: 429, error: "llm_rate_limited" },
+    { prime: () => failNextClassification(429), status: 429, error: "llm_rate_limited" },
     {
-      prime: () => failNextClassification(new APIError(529, "overloaded upstream detail")),
+      // Provider failure after headers: OpenRouter answers 200 with an error body.
+      prime: () => primeClassificationBody({ error: { code: 429, message: "upstream provider detail" } }),
       status: 429,
       error: "llm_rate_limited",
     },
+    { prime: () => failNextClassification(401), status: 503, error: "llm_unconfigured" },
+    { prime: () => failNextClassification(402), status: 503, error: "llm_unconfigured" },
     {
-      prime: () => failNextClassification(new APIError(500, "internal provider detail")),
+      // Moderation blocks quote the flagged input back in error.metadata.
+      prime: () =>
+        failNextClassification(403, {
+          error: {
+            code: 403,
+            message: "input flagged detail",
+            metadata: { reasons: ["detail"], flagged_input: "FLAKY VENDOR" },
+          },
+        }),
       status: 502,
       error: "llm_unavailable",
     },
-    { prime: () => failNextClassification(new APIConnectionError()), status: 502, error: "llm_unavailable" },
-    { prime: () => failNextClassification(new AuthenticationError()), status: 503, error: "llm_unconfigured" },
+    { prime: () => failNextClassification(408), status: 502, error: "llm_unavailable" },
+    { prime: () => failNextClassification(500), status: 502, error: "llm_unavailable" },
+    { prime: () => failNextClassification(503), status: 502, error: "llm_unavailable" },
+    { prime: () => dropNextClassification(), status: 502, error: "llm_unavailable" },
+    { prime: () => primeClassificationBody({ object: "chat.completion" }), status: 502, error: "llm_unavailable" },
     { prime: () => primeClassificationText("not json at all"), status: 502, error: "llm_unavailable" },
     {
       prime: () =>
         primeClassification(
           [{ item: 0, category: labelIndex("Miscellaneous"), confidence: "low", reason: "cut" }],
-          "max_tokens",
+          "length",
         ),
       status: 502,
       error: "llm_unavailable",
@@ -455,6 +497,7 @@ test("provider failures map to honest statuses and leak no provider detail", asy
     const body = await response.text();
     expect(JSON.parse(body)).toEqual({ error });
     expect(body).not.toContain("detail");
+    expect(body).not.toContain("FLAKY VENDOR");
     if (status === 429) expect(response.headers.get("retry-after")).toBe("30");
     expect(await categoryStateOf(ids[0])).toMatchObject({ categoryId: null, source: null });
   }
