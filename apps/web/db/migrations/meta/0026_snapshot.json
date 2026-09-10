@@ -632,38 +632,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "applied_category_id": {
-          "name": "applied_category_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "applied_category_source": {
-          "name": "applied_category_source",
-          "type": "category_source",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "applied_category_confidence": {
-          "name": "applied_category_confidence",
-          "type": "category_confidence",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "applied_category_reason": {
-          "name": "applied_category_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "applied_category_run_id": {
-          "name": "applied_category_run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "applied_category_revision": {
           "name": "applied_category_revision",
           "type": "bigint",
@@ -838,36 +806,6 @@
           ],
           "onUpdate": "no action",
           "onDelete": "no action"
-        },
-        "classification_proposals_applied_category_owner_fk": {
-          "name": "classification_proposals_applied_category_owner_fk",
-          "tableFrom": "classification_proposals",
-          "columnsFrom": [
-            "applied_category_id",
-            "owner_user_id"
-          ],
-          "tableTo": "categories",
-          "columnsTo": [
-            "id",
-            "user_id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "classification_proposals_applied_run_owner_fk": {
-          "name": "classification_proposals_applied_run_owner_fk",
-          "tableFrom": "classification_proposals",
-          "columnsFrom": [
-            "applied_category_run_id",
-            "owner_user_id"
-          ],
-          "tableTo": "classification_runs",
-          "columnsTo": [
-            "id",
-            "owner_user_id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -928,17 +866,9 @@
           "name": "classification_proposals_proposed_reason_bounded",
           "value": "char_length(proposed_reason) between 1 and 200"
         },
-        "classification_proposals_applied_reason_bounded": {
-          "name": "classification_proposals_applied_reason_bounded",
-          "value": "applied_category_reason is null or char_length(applied_category_reason) between 1 and 200"
-        },
-        "classification_proposals_applied_tuple_scope": {
-          "name": "classification_proposals_applied_tuple_scope",
-          "value": "(applied_category_id is null and applied_category_source is null\n          and applied_category_confidence is null and applied_category_reason is null\n          and applied_category_run_id is null and applied_category_revision is null\n          and applied_updated_at is null)\n        or (applied_category_id is not null\n          and applied_category_id is not distinct from proposed_category_id\n          and applied_category_source is not distinct from 'auto'\n          and applied_category_confidence is not distinct from proposed_confidence\n          and applied_category_reason is not distinct from proposed_reason\n          and applied_category_run_id is not null\n          and applied_category_run_id is not distinct from run_id\n          and applied_category_revision is not null\n          and applied_updated_at is not null)"
-        },
         "classification_proposals_state_scope": {
           "name": "classification_proposals_state_scope",
-          "value": "(state in ('proposed', 'skipped', 'conflicted') and applied_category_id is null)\n        or (state in ('applied', 'rolled_back', 'rollback_conflict') and applied_category_id is not null)"
+          "value": "(state in ('proposed', 'skipped', 'conflicted')\n          and applied_category_revision is null and applied_updated_at is null)\n        or (state in ('applied', 'rolled_back', 'rollback_conflict')\n          and applied_category_revision is not null and applied_updated_at is not null)"
         },
         "classification_proposals_revisions_nonnegative": {
           "name": "classification_proposals_revisions_nonnegative",

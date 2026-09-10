@@ -178,11 +178,6 @@ test("deleting an owner cascades the complete journal graph without touching ano
         proposedReason: "Reclassified choice",
         beforeCategoryRunId: priorRun.id,
         state: "applied",
-        appliedCategoryId: owner.otherCategory.id,
-        appliedCategorySource: "auto",
-        appliedCategoryConfidence: "high",
-        appliedCategoryReason: "Reclassified choice",
-        appliedCategoryRunId: currentRun.id,
         appliedCategoryRevision: 1,
         appliedUpdatedAt: appliedAt,
       })).returning(),
@@ -320,30 +315,14 @@ test("journal checks reject fabricated provenance and account purge removes prop
   const appliedBase = proposalValues(owner, run.id, {
     proposedReason: "Applied tuple probe",
     state: "applied",
-    appliedCategoryId: owner.category.id,
-    appliedCategorySource: "auto",
-    appliedCategoryConfidence: "high",
-    appliedCategoryReason: "Applied tuple probe",
-    appliedCategoryRunId: run.id,
     appliedCategoryRevision: owner.transaction.revision + 1,
     appliedUpdatedAt: "2026-09-10 12:00:00.654321+00",
   });
-  await expect(
-    adminDb().insert(classificationProposals).values({
-      ...appliedBase,
-      appliedCategorySource: null,
-    }),
-  ).rejects.toMatchObject(pgError("23514"));
-  await expect(
-    adminDb().insert(classificationProposals).values({
-      ...appliedBase,
-      appliedCategoryRunId: null,
-    }),
-  ).rejects.toMatchObject(pgError("23514"));
   for (const mismatch of [
-    { appliedCategoryId: owner.otherCategory.id },
-    { appliedCategoryConfidence: "medium" as const },
-    { appliedCategoryReason: "Different reason" },
+    { appliedCategoryRevision: null },
+    { appliedUpdatedAt: null },
+    { appliedCategoryRevision: owner.transaction.revision },
+    { state: "proposed" as const },
   ]) {
     await expect(
       adminDb().insert(classificationProposals).values({ ...appliedBase, ...mismatch }),
@@ -361,23 +340,37 @@ test("journal checks reject fabricated provenance and account purge removes prop
   await withRequestScope(owner.clerkUserId, (tx) =>
     tx.update(classificationProposals).set({
       state: "applied",
-      appliedCategoryId: owner.category.id,
-      appliedCategorySource: "auto",
-      appliedCategoryConfidence: "high",
-      appliedCategoryReason: "Owner-scoped proposal",
-      appliedCategoryRunId: run.id,
       appliedCategoryRevision: owner.transaction.revision + 1,
       appliedUpdatedAt: "2026-09-10 12:00:00.654321+00",
     }).where(eq(classificationProposals.id, proposal.id)),
   );
   const [appliedRoundTrip] = await adminDb()
-    .select({ value: sql<string>`(${classificationProposals.appliedUpdatedAt} at time zone 'UTC')::text` })
+    .select({
+      categoryId: classificationProposals.proposedCategoryId,
+      confidence: classificationProposals.proposedConfidence,
+      reason: classificationProposals.proposedReason,
+      runId: classificationProposals.runId,
+      revision: classificationProposals.appliedCategoryRevision,
+      value: sql<string>`(${classificationProposals.appliedUpdatedAt} at time zone 'UTC')::text`,
+    })
     .from(classificationProposals)
     .where(eq(classificationProposals.id, proposal.id));
-  expect(appliedRoundTrip.value).toBe("2026-09-10 12:00:00.654321");
+  expect(appliedRoundTrip).toEqual({
+    categoryId: owner.category.id,
+    confidence: "high",
+    reason: "Owner-scoped proposal",
+    runId: run.id,
+    revision: owner.transaction.revision + 1,
+    value: "2026-09-10 12:00:00.654321",
+  });
   await expect(
     withRequestScope(owner.clerkUserId, (tx) =>
       tx.update(classificationProposals).set({ beforeCategoryReason: "rewrite" }),
+    ),
+  ).rejects.toMatchObject(pgError("42501"));
+  await expect(
+    withRequestScope(owner.clerkUserId, (tx) =>
+      tx.update(classificationProposals).set({ proposedCategoryId: owner.otherCategory.id }),
     ),
   ).rejects.toMatchObject(pgError("42501"));
   await withRequestScope(owner.clerkUserId, (tx) =>

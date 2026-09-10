@@ -17,11 +17,6 @@ CREATE TABLE "classification_proposals" (
 	"before_category_run_id" uuid,
 	"before_category_revision" bigint NOT NULL,
 	"before_updated_at" timestamp with time zone NOT NULL,
-	"applied_category_id" uuid,
-	"applied_category_source" "category_source",
-	"applied_category_confidence" "category_confidence",
-	"applied_category_reason" text,
-	"applied_category_run_id" uuid,
 	"applied_category_revision" bigint,
 	"applied_updated_at" timestamp with time zone,
 	"state" "classification_proposal_state" DEFAULT 'proposed' NOT NULL,
@@ -36,22 +31,10 @@ CREATE TABLE "classification_proposals" (
 	CONSTRAINT "classification_proposals_run_kind" CHECK (run_kind = 'automatic_reclassification'),
 	CONSTRAINT "classification_proposals_before_reason_bounded" CHECK (before_category_reason is null or char_length(before_category_reason) between 1 and 200),
 	CONSTRAINT "classification_proposals_proposed_reason_bounded" CHECK (char_length(proposed_reason) between 1 and 200),
-	CONSTRAINT "classification_proposals_applied_reason_bounded" CHECK (applied_category_reason is null or char_length(applied_category_reason) between 1 and 200),
-	CONSTRAINT "classification_proposals_applied_tuple_scope" CHECK ((applied_category_id is null and applied_category_source is null
-          and applied_category_confidence is null and applied_category_reason is null
-          and applied_category_run_id is null and applied_category_revision is null
-          and applied_updated_at is null)
-        or (applied_category_id is not null
-          and applied_category_id is not distinct from proposed_category_id
-          and applied_category_source is not distinct from 'auto'
-          and applied_category_confidence is not distinct from proposed_confidence
-          and applied_category_reason is not distinct from proposed_reason
-          and applied_category_run_id is not null
-          and applied_category_run_id is not distinct from run_id
-          and applied_category_revision is not null
-          and applied_updated_at is not null)),
-	CONSTRAINT "classification_proposals_state_scope" CHECK ((state in ('proposed', 'skipped', 'conflicted') and applied_category_id is null)
-        or (state in ('applied', 'rolled_back', 'rollback_conflict') and applied_category_id is not null)),
+	CONSTRAINT "classification_proposals_state_scope" CHECK ((state in ('proposed', 'skipped', 'conflicted')
+          and applied_category_revision is null and applied_updated_at is null)
+        or (state in ('applied', 'rolled_back', 'rollback_conflict')
+          and applied_category_revision is not null and applied_updated_at is not null)),
 	CONSTRAINT "classification_proposals_revisions_nonnegative" CHECK (before_category_revision >= 0
         and (applied_category_revision is null or applied_category_revision > before_category_revision))
 );
@@ -119,8 +102,6 @@ ALTER TABLE "classification_proposals" ADD CONSTRAINT "classification_proposals_
 ALTER TABLE "classification_proposals" ADD CONSTRAINT "classification_proposals_category_owner_fk" FOREIGN KEY ("proposed_category_id","owner_user_id") REFERENCES "public"."categories"("id","user_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "classification_proposals" ADD CONSTRAINT "classification_proposals_before_category_owner_fk" FOREIGN KEY ("before_category_id","owner_user_id") REFERENCES "public"."categories"("id","user_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "classification_proposals" ADD CONSTRAINT "classification_proposals_before_run_owner_fk" FOREIGN KEY ("before_category_run_id","owner_user_id") REFERENCES "public"."classification_runs"("id","owner_user_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "classification_proposals" ADD CONSTRAINT "classification_proposals_applied_category_owner_fk" FOREIGN KEY ("applied_category_id","owner_user_id") REFERENCES "public"."categories"("id","user_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "classification_proposals" ADD CONSTRAINT "classification_proposals_applied_run_owner_fk" FOREIGN KEY ("applied_category_run_id","owner_user_id") REFERENCES "public"."classification_runs"("id","owner_user_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "classification_runs" ADD CONSTRAINT "classification_runs_owner_user_id_users_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "classification_proposals_owner_run_idx" ON "classification_proposals" USING btree ("owner_user_id","run_id");--> statement-breakpoint
 CREATE INDEX "classification_proposals_transaction_idx" ON "classification_proposals" USING btree ("transaction_id");--> statement-breakpoint

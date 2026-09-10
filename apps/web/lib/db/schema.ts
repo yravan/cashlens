@@ -436,11 +436,6 @@ export const classificationProposals = pgTable(
     beforeCategoryRunId: uuid("before_category_run_id"),
     beforeCategoryRevision: bigint("before_category_revision", { mode: "number" }).notNull(),
     beforeUpdatedAt: timestamp("before_updated_at", { withTimezone: true, mode: "string" }).notNull(),
-    appliedCategoryId: uuid("applied_category_id"),
-    appliedCategorySource: categorySource("applied_category_source"),
-    appliedCategoryConfidence: categoryConfidence("applied_category_confidence"),
-    appliedCategoryReason: text("applied_category_reason"),
-    appliedCategoryRunId: uuid("applied_category_run_id"),
     appliedCategoryRevision: bigint("applied_category_revision", { mode: "number" }),
     appliedUpdatedAt: timestamp("applied_updated_at", { withTimezone: true, mode: "string" }),
     state: classificationProposalState("state").notNull().default("proposed"),
@@ -476,16 +471,6 @@ export const classificationProposals = pgTable(
       columns: [t.beforeCategoryRunId, t.ownerUserId],
       foreignColumns: [classificationRuns.id, classificationRuns.ownerUserId],
     }),
-    foreignKey({
-      name: "classification_proposals_applied_category_owner_fk",
-      columns: [t.appliedCategoryId, t.ownerUserId],
-      foreignColumns: [categories.id, categories.userId],
-    }),
-    foreignKey({
-      name: "classification_proposals_applied_run_owner_fk",
-      columns: [t.appliedCategoryRunId, t.ownerUserId],
-      foreignColumns: [classificationRuns.id, classificationRuns.ownerUserId],
-    }),
     unique("classification_proposals_run_transaction_unique").on(t.runId, t.transactionId),
     index("classification_proposals_owner_run_idx").on(t.ownerUserId, t.runId),
     index("classification_proposals_transaction_idx").on(t.transactionId),
@@ -503,29 +488,11 @@ export const classificationProposals = pgTable(
       sql`char_length(proposed_reason) between 1 and 200`,
     ),
     check(
-      "classification_proposals_applied_reason_bounded",
-      sql`applied_category_reason is null or char_length(applied_category_reason) between 1 and 200`,
-    ),
-    check(
-      "classification_proposals_applied_tuple_scope",
-      sql`(applied_category_id is null and applied_category_source is null
-          and applied_category_confidence is null and applied_category_reason is null
-          and applied_category_run_id is null and applied_category_revision is null
-          and applied_updated_at is null)
-        or (applied_category_id is not null
-          and applied_category_id is not distinct from proposed_category_id
-          and applied_category_source is not distinct from 'auto'
-          and applied_category_confidence is not distinct from proposed_confidence
-          and applied_category_reason is not distinct from proposed_reason
-          and applied_category_run_id is not null
-          and applied_category_run_id is not distinct from run_id
-          and applied_category_revision is not null
-          and applied_updated_at is not null)`,
-    ),
-    check(
       "classification_proposals_state_scope",
-      sql`(state in ('proposed', 'skipped', 'conflicted') and applied_category_id is null)
-        or (state in ('applied', 'rolled_back', 'rollback_conflict') and applied_category_id is not null)`,
+      sql`(state in ('proposed', 'skipped', 'conflicted')
+          and applied_category_revision is null and applied_updated_at is null)
+        or (state in ('applied', 'rolled_back', 'rollback_conflict')
+          and applied_category_revision is not null and applied_updated_at is not null)`,
     ),
     check(
       "classification_proposals_revisions_nonnegative",
