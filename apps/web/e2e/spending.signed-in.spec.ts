@@ -182,6 +182,22 @@ test.describe("spending by category", () => {
     await expectTotals(currencySection(page, "USD"), spendingOf("demo", "USD").totals, "USD");
   });
 
+  test("Clear discards an unsubmitted period even when the URL is already unfiltered", async ({ page }) => {
+    await page.goto("/spending");
+    const form = page.getByRole("form", { name: "Choose a period" });
+    await form.getByLabel("From", { exact: true }).fill("2026-03-01");
+    await form.getByLabel("To", { exact: true }).fill("2026-03-31");
+    await form.getByRole("combobox", { name: "Currency" }).selectOption("USD");
+    await form.getByRole("link", { name: "Clear", exact: true }).click();
+    await expect(page).toHaveURL("/spending");
+    await expect(form.getByLabel("From", { exact: true })).toHaveValue("");
+    await expect(form.getByLabel("To", { exact: true })).toHaveValue("");
+    await expect(form.getByRole("combobox", { name: "Currency" })).toHaveValue("");
+    await form.getByRole("button", { name: "Apply" }).click();
+    await expectTotals(currencySection(page, "EUR"), spendingOf("demo", "EUR").totals, "EUR");
+    await expectTotals(currencySection(page, "USD"), spendingOf("demo", "USD").totals, "USD");
+  });
+
   test("the uncategorized row drills to exactly the rows with no category", async ({ page }) => {
     await page.goto("/spending");
     const usd = currencySection(page, "USD");
