@@ -87,11 +87,12 @@ const server = createServer((request, response) => {
   });
   request.on("end", () => {
     void (async () => {
+      const body = JSON.parse(raw) as SubstituteChatRequest;
       classificationRequests.push({
         method: request.method,
         path: request.url,
         headers: request.headers,
-        body: JSON.parse(raw) as SubstituteChatRequest,
+        body,
       });
       const next = primed.shift();
       if (beforeResponse) {
@@ -130,7 +131,7 @@ const server = createServer((request, response) => {
           id: "gen-substitute",
           object: "chat.completion",
           created: 0,
-          model: (JSON.parse(raw) as SubstituteChatRequest).model,
+          model: body.model,
           choices: [
             {
               index: 0,
