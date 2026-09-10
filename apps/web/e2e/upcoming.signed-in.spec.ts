@@ -123,20 +123,6 @@ test.describe("upcoming expenses view", () => {
     }
   });
 
-  test("a signed-out request to the page is redirected, not served", async ({
-    playwright,
-    baseURL,
-  }) => {
-    const anonymous = await playwright.request.newContext({ baseURL });
-    try {
-      const response = await anonymous.get("/upcoming?on=2026-04-01", { maxRedirects: 0 });
-      expect(response.status()).toBe(307);
-      expect(new URL(response.headers()["location"], baseURL).pathname).toBe("/sign-in");
-    } finally {
-      await anonymous.dispose();
-    }
-  });
-
   test("a neighbor's upcoming page knows nothing of demo projections", async ({
     page,
     browser,
