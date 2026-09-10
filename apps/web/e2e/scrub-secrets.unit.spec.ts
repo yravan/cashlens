@@ -18,6 +18,18 @@ function tmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), "scrub-test-"));
 }
 
+test("masking an unknown Clerk query token preserves JSON trace structure", () => {
+  const dir = tmpDir();
+  const file = path.join(dir, "trace.json");
+  try {
+    fs.writeFileSync(file, JSON.stringify({ url: "https://fapi.example/v1/client?__clerk_new_token=synthetic_unknown_token", status: 200 }));
+    scrub([dir], []);
+    expect(JSON.parse(fs.readFileSync(file, "utf8"))).toEqual({
+      url: "https://fapi.example/v1/client?__clerk_new_token=[redacted-e2e-secret]", status: 200,
+    });
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("planted secret values are removed from loose files, other content intact, missing dirs skipped", () => {
   const dir = tmpDir();
   const file = path.join(dir, "error-context.md");
@@ -68,6 +80,7 @@ test("token-shaped values missing from the value list are still scrubbed", () =>
       `set-cookie: __session=${ROTATED_JWT}; Path=/`,
       `url: https://x.clerk.accounts.dev/v1/client?__clerk_db_jwt=${DEV_BROWSER_TOKEN}`,
       `url: https://x.clerk.accounts.dev/v1/sign_ups?__clerk_testing_token=${TESTING_TOKEN}`,
+      "url: https://x.clerk.accounts.dev/v1/client?__clerk_unknown=unknown-format-value-123",
       `body: {"access_token":"${PLAID_ACCESS_TOKEN}","publicToken":"${PLAID_PUBLIC_TOKEN}"}`,
       "status: 200 OK",
     ].join("\n"),
@@ -79,10 +92,12 @@ test("token-shaped values missing from the value list are still scrubbed", () =>
   expect(scrubbed).not.toContain(ROTATED_JWT);
   expect(scrubbed).not.toContain(DEV_BROWSER_TOKEN);
   expect(scrubbed).not.toContain(TESTING_TOKEN);
+  expect(scrubbed).not.toContain("unknown-format-value-123");
   expect(scrubbed).not.toContain(PLAID_ACCESS_TOKEN);
   expect(scrubbed).not.toContain(PLAID_PUBLIC_TOKEN);
   expect(scrubbed).toContain("status: 200 OK");
   expect(scrubbed).toContain("__clerk_db_jwt=[redacted-e2e-secret]");
+  expect(scrubbed).toContain("__clerk_unknown=[redacted-e2e-secret]");
 });
 
 test("collectSecrets harvests storage-state cookie and localStorage values, skipping short non-secrets", () => {
@@ -117,4 +132,11 @@ test("collectSecrets harvests storage-state cookie and localStorage values, skip
   expect(secrets).not.toContain("1787155005");
   expect(secrets).not.toContain("1");
   expect(secrets).not.toContain("user_123");
+});
+
+test("fails closed on malformed storage state without exposing its contents", () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, "broken.json"), '{"secret":"malformed_state_value_0123456789');
+
+  expect(() => collectSecrets(dir)).toThrow("Unable to collect E2E redaction secrets.");
 });
