@@ -20,8 +20,10 @@ process.env.PLAID_CLIENT_ID ??= "api-suite-client-id";
 process.env.PLAID_SECRET ??= "api-suite-secret";
 // The OpenRouter substitute (harness/openrouter.ts) repoints the base URL at
 // its loopback server; this default fails closed so an unsubstituted call can
-// never leave the machine.
-process.env.OPENROUTER_API_KEY ??= "api-suite-openrouter-key";
+// never leave the machine. Both are assigned, not defaulted: the suite reaches
+// no real provider, so a real key from .env.local must never become a Bearer
+// header the substitute records and assertions print.
+process.env.OPENROUTER_API_KEY = "api-suite-openrouter-key";
 process.env.OPENROUTER_BASE_URL = "http://127.0.0.1:9/api/v1";
 
 beforeEach(truncateAll);

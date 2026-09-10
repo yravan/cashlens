@@ -20,7 +20,7 @@ export type SubstituteChatRequest = {
 export type RecordedClassification = {
   method: string | undefined;
   path: string | undefined;
-  authorization: string | undefined;
+  headers: Record<string, string | string[] | undefined>;
   body: SubstituteChatRequest;
 };
 
@@ -31,6 +31,7 @@ type Primed =
   | { kind: "text"; text: string; finishReason: string }
   | { kind: "http"; status: number; body: unknown }
   | { kind: "body"; body: unknown }
+  | { kind: "raw"; contentType: string; text: string }
   | { kind: "drop" };
 
 const primed: Primed[] = [];
@@ -63,6 +64,12 @@ export function primeClassificationBody(body: unknown): void {
   primed.push({ kind: "body", body });
 }
 
+// A 200 whose body is not JSON at all — a gateway or proxy answering in place
+// of the provider.
+export function primeClassificationRaw(contentType: string, text: string): void {
+  primed.push({ kind: "raw", contentType, text });
+}
+
 export function dropNextClassification(): void {
   primed.push({ kind: "drop" });
 }
@@ -83,7 +90,7 @@ const server = createServer((request, response) => {
       classificationRequests.push({
         method: request.method,
         path: request.url,
-        authorization: request.headers.authorization,
+        headers: request.headers,
         body: JSON.parse(raw) as SubstituteChatRequest,
       });
       const next = primed.shift();
@@ -103,6 +110,11 @@ const server = createServer((request, response) => {
       }
       if (next.kind === "drop") {
         request.socket.destroy();
+        return;
+      }
+      if (next.kind === "raw") {
+        response.setHeader("content-type", next.contentType);
+        response.end(next.text);
         return;
       }
       if (next.kind === "http" || next.kind === "body") {

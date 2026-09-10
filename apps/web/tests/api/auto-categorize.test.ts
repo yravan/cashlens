@@ -18,6 +18,7 @@ import {
   onceBeforeClassificationResponse,
   primeClassification,
   primeClassificationBody,
+  primeClassificationRaw,
   primeClassificationText,
   resetOpenRouterSubstitute,
 } from "../harness/openrouter";
@@ -25,6 +26,18 @@ import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 
 beforeEach(resetOpenRouterSubstitute);
+
+// Added by Node's fetch, not by us; every other header on the wire is ours.
+const TRANSPORT_HEADERS = new Set([
+  "accept",
+  "accept-encoding",
+  "accept-language",
+  "connection",
+  "content-length",
+  "host",
+  "sec-fetch-mode",
+  "user-agent",
+]);
 
 const LABELS = DEFAULT_CATEGORIES.flatMap(({ group, categories }) =>
   categories.map((name) => `${group} > ${name}`),
@@ -136,10 +149,10 @@ test("a batch classifies uncategorized rows through the model and stamps auto pr
   });
 
   expect(classificationRequests).toHaveLength(1);
-  const { method, path, authorization, body } = classificationRequests[0];
+  const { method, path, headers, body } = classificationRequests[0];
   expect(method).toBe("POST");
   expect(path).toBe("/api/v1/chat/completions");
-  expect(authorization).toBe(`Bearer ${process.env.OPENROUTER_API_KEY}`);
+  expect(headers.authorization).toBe(`Bearer ${process.env.OPENROUTER_API_KEY}`);
   expect(body.model).toBe("anthropic/claude-haiku-4.5");
   expect(body.temperature).toBe(0);
   expect(body.max_tokens).toBeGreaterThan(0);
@@ -149,6 +162,18 @@ test("a batch classifies uncategorized rows through the model and stamps auto pr
   expect(body.response_format?.json_schema?.strict).toBe(true);
   expect(body.response_format?.json_schema?.schema).toEqual(ASSIGNMENT_SCHEMA);
   expect(body.provider).toEqual({ data_collection: "deny", require_parameters: true });
+  expect(Object.keys(body).sort()).toEqual([
+    "max_tokens",
+    "messages",
+    "model",
+    "provider",
+    "response_format",
+    "temperature",
+  ]);
+  expect(Object.keys(headers).filter((name) => !TRANSPORT_HEADERS.has(name)).sort()).toEqual([
+    "authorization",
+    "content-type",
+  ]);
 
   const payload = promptPayload();
   expect(payload.categories.map((category) => category.name)).toEqual(LABELS);
@@ -446,6 +471,26 @@ test("an unconfigured provider answers 503 and never attempts a call", async () 
   }
 });
 
+// The pinned data controls only bind if the request reaches OpenRouter, so the
+// base-URL override — which exists for the substitutes — may only be loopback.
+test("a base URL pointing off-box is refused before the prompt is built", async () => {
+  const saved = process.env.OPENROUTER_BASE_URL;
+  try {
+    for (const off of ["http://192.0.2.10/api/v1", "https://openrouter.ai.evil.test/api/v1", "not a url"]) {
+      process.env.OPENROUTER_BASE_URL = off;
+      const clerkUserId = fakeClerkUserId();
+      const { ids } = await provision(clerkUserId, [{ description: "REROUTED VENDOR" }]);
+      const response = await withAuth(clerkUserId, () => post());
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: "llm_unconfigured" });
+      expect(classificationRequests).toHaveLength(0);
+      expect(await categoryStateOf(ids[0])).toMatchObject({ categoryId: null, source: null });
+    }
+  } finally {
+    process.env.OPENROUTER_BASE_URL = saved;
+  }
+});
+
 test("provider failures map to honest statuses and leak no provider detail", async () => {
   const clerkUserId = fakeClerkUserId();
   const { ids } = await provision(clerkUserId, [{ description: "FLAKY VENDOR" }]);
@@ -478,6 +523,12 @@ test("provider failures map to honest statuses and leak no provider detail", asy
     { prime: () => failNextClassification(503), status: 502, error: "llm_unavailable" },
     { prime: () => dropNextClassification(), status: 502, error: "llm_unavailable" },
     { prime: () => primeClassificationBody({ object: "chat.completion" }), status: 502, error: "llm_unavailable" },
+    {
+      // A gateway answering 200 in place of the provider, in its own dialect.
+      prime: () => primeClassificationRaw("text/html", "<html>gateway detail</html>"),
+      status: 502,
+      error: "llm_unavailable",
+    },
     { prime: () => primeClassificationText("not json at all"), status: 502, error: "llm_unavailable" },
     {
       prime: () =>

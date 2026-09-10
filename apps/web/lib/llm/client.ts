@@ -24,6 +24,20 @@ export function llmConfigured(): boolean {
   return Boolean(process.env.OPENROUTER_API_KEY);
 }
 
+// The pinned provider controls below only bind on requests that actually reach
+// OpenRouter, so the base-URL override exists solely for the test substitutes.
+const LOOPBACK = new Set(["127.0.0.1", "[::1]", "localhost"]);
+
+function baseUrl(): string {
+  const override = process.env.OPENROUTER_BASE_URL;
+  if (!override) return DEFAULT_BASE_URL;
+  const hostname = URL.parse(override)?.hostname;
+  if (!hostname || !LOOPBACK.has(hostname)) {
+    throw new LlmUnconfiguredError("OPENROUTER_BASE_URL may only name a loopback substitute");
+  }
+  return override;
+}
+
 // Provider error bodies may quote user input back (moderation metadata) and
 // carry upstream detail; only these sanitized classes — never a provider
 // message, body, or metadata — leave this module.
@@ -60,36 +74,34 @@ export async function classifyTransactions(
 ): Promise<ClassifyAssignment[]> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new LlmUnconfiguredError("OPENROUTER_API_KEY is not set");
+  const endpoint = `${baseUrl()}/chat/completions`;
   const { system, user } = classificationPrompt(items, categoryLabels);
 
   let response: Response;
   try {
-    response = await fetch(
-      `${process.env.OPENROUTER_BASE_URL || DEFAULT_BASE_URL}/chat/completions`,
-      {
-        method: "POST",
-        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        body: JSON.stringify({
-          model: process.env.LLM_MODEL || DEFAULT_MODEL,
-          max_tokens: 200 + items.length * 60,
-          temperature: 0,
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content: user },
-          ],
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "transaction_classification",
-              strict: true,
-              schema: ASSIGNMENT_SCHEMA,
-            },
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      body: JSON.stringify({
+        model: process.env.LLM_MODEL || DEFAULT_MODEL,
+        max_tokens: 200 + items.length * 60,
+        temperature: 0,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "transaction_classification",
+            strict: true,
+            schema: ASSIGNMENT_SCHEMA,
           },
-          provider: { data_collection: "deny", require_parameters: true },
-        }),
-      },
-    );
+        },
+        provider: { data_collection: "deny", require_parameters: true },
+      }),
+    });
   } catch (error) {
     throw new LlmUnavailableError(errorClass(error));
   }
