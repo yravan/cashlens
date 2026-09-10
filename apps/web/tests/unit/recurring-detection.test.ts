@@ -522,3 +522,14 @@ test("nextExpectedDate: annual keeps the date, clamping leap day", () => {
   expect(nextExpectedDate("2026-06-01", "annual")).toBe("2027-06-01");
   expect(nextExpectedDate("2024-02-29", "annual")).toBe("2025-02-28");
 });
+
+test("nextExpectedDate: an annual leap-day anchor returns in the next leap year", () => {
+  const anchorDay = 29;
+  const after2025 = nextExpectedDate("2024-02-29", "annual", anchorDay);
+  const after2026 = nextExpectedDate(after2025, "annual", anchorDay);
+  const after2027 = nextExpectedDate(after2026, "annual", anchorDay);
+  expect(after2025).toBe("2025-02-28");
+  expect(after2026).toBe("2026-02-28");
+  expect(after2027).toBe("2027-02-28");
+  expect(nextExpectedDate(after2027, "annual", anchorDay)).toBe("2028-02-29");
+});
