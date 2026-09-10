@@ -4,6 +4,7 @@ import Link from "next/link";
 import { upcomingOverview, type UpcomingOverview } from "@/lib/data/recurring";
 import { formatMinorUnits } from "@/lib/ledger/minor-units";
 import { parseUpcomingQuery, type UpcomingOccurrence } from "@/lib/ledger/upcoming";
+import { TransferMatch } from "../transactions/transfer-match";
 
 export const metadata: Metadata = { title: "Upcoming" };
 
@@ -17,9 +18,10 @@ const CADENCE_LABEL = {
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-const monthName = (iso: string) => `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
+const monthOf = (iso: string) => MONTHS[Number(iso.slice(5, 7)) - 1];
+const monthName = (iso: string) => `${monthOf(iso)} ${iso.slice(0, 4)}`;
 const shortDate = (iso: string) =>
-  `${MONTHS[Number(iso.slice(5, 7)) - 1].slice(0, 3)} ${Number(iso.slice(8, 10))}, ${iso.slice(0, 4)}`;
+  `${monthOf(iso).slice(0, 3)} ${Number(iso.slice(8, 10))}, ${iso.slice(0, 4)}`;
 const signed = (minor: number, currency: string) =>
   `${minor > 0 ? "+" : ""}${formatMinorUnits(minor, currency)}`;
 
@@ -196,11 +198,12 @@ export default async function UpcomingPage({
 
   const reference = parsed.query.on ?? new Date().toISOString().slice(0, 10);
   const overview = await upcomingOverview(reference);
-  const monthLabel = MONTHS[Number(reference.slice(5, 7)) - 1];
+  const monthLabel = monthOf(reference);
 
   return (
     <>
       {heading}
+      <TransferMatch />
       {parsed.query.on !== null && (
         <p data-testid="upcoming-pinned" className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
           Projected as of {shortDate(parsed.query.on)} ·{" "}

@@ -9,8 +9,8 @@ import {
   detectRecurringStreams,
   type RecurringStream,
 } from "@/lib/ledger/recurring-detection";
-import { ISO_DATE, projectUpcoming } from "@/lib/ledger/upcoming";
-import { isRealDate } from "@/lib/ledger/history-query";
+import { isIsoDate } from "@/lib/ledger/history-query";
+import { projectUpcoming } from "@/lib/ledger/upcoming";
 
 export type RecurringDecision = "confirmed" | "dismissed";
 export type RecurringStatus = "proposed" | RecurringDecision;
@@ -93,7 +93,7 @@ export async function recurringOverview(): Promise<{ streams: RecurringOverviewS
 export type RecurringOverview = Awaited<ReturnType<typeof recurringOverview>>;
 
 export async function upcomingOverview(reference: string) {
-  if (!ISO_DATE.test(reference) || !isRealDate(reference)) {
+  if (!isIsoDate(reference)) {
     throw new Error("upcoming reference must be a real ISO date");
   }
   const { streams } = await recurringOverview();

@@ -1,4 +1,4 @@
-import { isRealDate } from "./history-query";
+import { isIsoDate } from "./history-query";
 import {
   nextExpectedDate,
   type RecurringCadence,
@@ -37,8 +37,6 @@ export type UpcomingProjection = {
   stale: UpcomingStream[];
 };
 
-export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
 export type ParsedUpcomingQuery = { ok: true; query: { on: string | null } } | { ok: false };
 
 export function parseUpcomingQuery(
@@ -49,7 +47,7 @@ export function parseUpcomingQuery(
     if (value === undefined) continue;
     if (key !== "on" || Array.isArray(value)) return { ok: false };
     if (value === "") continue;
-    if (!ISO_DATE.test(value) || !isRealDate(value)) return { ok: false };
+    if (!isIsoDate(value)) return { ok: false };
     on = value;
   }
   return { ok: true, query: { on } };
