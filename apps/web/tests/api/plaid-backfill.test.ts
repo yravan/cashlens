@@ -14,6 +14,7 @@ import {
   mintSandboxItem,
   pushSyncUpdates,
   resetPlaidSubstitute,
+  sandboxAccounts,
   sandboxTransaction,
   syncRequests,
   SUBSTITUTE_SECRET,
@@ -247,6 +248,69 @@ test("connect before Plaid has any data: backfill stays in progress and stores n
   pushHistory(accessToken, sandboxTransaction(CHECKING, 3.5, "LATE ARRIVAL", "2026-05-01"));
   const ready = await sync();
   await expect(ready.json()).resolves.toEqual(step("complete", 1));
+});
+
+test.each(["in_progress", "complete"] as const)("a %s import with an empty provider cursor stays resumable until history arrives", async (backfillStatus) => {
+  const accounts = sandboxAccounts();
+  const clerkUserId = fakeClerkUserId();
+  const minted = mintSandboxItem({
+    accounts,
+    updateStatus: "HISTORICAL_UPDATE_COMPLETE",
+    emptyCursorWhenEmpty: true,
+  });
+  const exchanged = await withAuth(clerkUserId, () => postExchange(minted.publicToken));
+  expect(exchanged.status).toBe(200);
+  const body = await exchanged.json();
+  const connectionId = body.connection.id as string;
+  const sync = () => withAuth(clerkUserId, () => postSync(connectionId));
+  await adminDb().update(connections).set({ backfillStatus }).where(eq(connections.id, connectionId));
+
+  const premature = await sync();
+  await expect(premature.json()).resolves.toEqual(step("in_progress", 0));
+  await expectStored(connectionId, "in_progress", null);
+
+  const first = sandboxTransaction(accounts[0].account_id, 12.34, "READY HISTORY ONE", "2026-08-20");
+  const second = sandboxTransaction(accounts[0].account_id, -5, "READY HISTORY TWO", "2026-08-21");
+  pushSyncUpdates(minted.accessToken, {
+    added: [first, second],
+    updateStatus: "HISTORICAL_UPDATE_COMPLETE",
+  });
+
+  const ready = await sync();
+  await expect(ready.json()).resolves.toEqual(step("complete", 2));
+  await expectStored(connectionId, "complete", "sync-cursor-2");
+  await expect(ledgerRows()).resolves.toEqual([
+    expect.objectContaining({
+      amountMinor: -1234,
+      currency: "USD",
+      date: first.date,
+      description: first.name,
+      source: "plaid",
+      sourceId: first.transaction_id,
+    }),
+    expect.objectContaining({
+      amountMinor: 500,
+      currency: "USD",
+      date: second.date,
+      description: second.name,
+      source: "plaid",
+      sourceId: second.transaction_id,
+    }),
+  ]);
+});
+
+test("a genuinely empty history with a provider cursor can complete", async () => {
+  const accounts = sandboxAccounts();
+  const clerkUserId = fakeClerkUserId();
+  const minted = mintSandboxItem({ accounts, updateStatus: "HISTORICAL_UPDATE_COMPLETE" });
+  const exchanged = await withAuth(clerkUserId, () => postExchange(minted.publicToken));
+  expect(exchanged.status).toBe(200);
+  const { connection } = await exchanged.json();
+
+  const response = await withAuth(clerkUserId, () => postSync(connection.id));
+  await expect(response.json()).resolves.toEqual(step("complete", 0));
+  await expectStored(connection.id, "complete", "sync-cursor-0");
+  await expect(adminDb().$count(transactions)).resolves.toBe(0);
 });
 
 test("a sanitized error still reaches the caller when the provider fails outright", async () => {

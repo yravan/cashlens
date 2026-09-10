@@ -215,7 +215,8 @@ export async function advanceSyncFor(
 
   const previous = connection.backfillStatus;
   const backfillStatus =
-    previous === "complete" || (run.drained && run.updateStatus === "complete")
+    Boolean(run.cursor) &&
+    (previous === "complete" || (run.drained && run.updateStatus === "complete"))
       ? "complete"
       : "in_progress";
   if (run.updateStatus === "unknown") {
