@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, expect, test } from "vitest";
 
 import { POST as linkToken } from "@/app/api/plaid/link-token/route";
+import { POST as receiveWebhook } from "@/app/api/plaid/webhook/route";
 import { resetWebhookKeyCache } from "@/lib/plaid/webhook";
 import { connections, transactions } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
@@ -22,6 +23,64 @@ import { backfilled, CHECKING, ledgerRows, postSignedWebhook, postWebhook, webho
 beforeEach(() => {
   resetPlaidSubstitute();
   resetWebhookKeyCache();
+});
+
+test("oversized streamed deliveries stop being consumed at the body limit", async () => {
+  const chunk = new Uint8Array(16 * 1024).fill(120);
+  let bytesRead = 0;
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      bytesRead += chunk.byteLength;
+      controller.enqueue(chunk);
+      if (bytesRead === 1024 * 1024) controller.close();
+    },
+    cancel() { cancelled = true; },
+  });
+  const request = new Request("http://localhost/api/plaid/webhook", {
+    method: "POST", body, duplex: "half",
+    headers: { "plaid-verification": "synthetic-invalid-signature" },
+  } as RequestInit);
+  const response = await receiveWebhook(request);
+  expect(response.status).toBe(413);
+  expect(bytesRead).toBeLessThanOrEqual(256 * 1024 + 2 * chunk.byteLength);
+  expect(cancelled).toBe(true);
+  expect(webhookKeyRequests).toHaveLength(0);
+});
+
+test.each([256 * 1024 - 1, 256 * 1024, 256 * 1024 + 1])(
+  "a signed UTF-8 body split inside a character respects the %i-byte boundary",
+  async (size) => {
+    const payload = JSON.stringify({ ...JSON.parse(webhookBody("item-unknown")), note: "\u00e9" });
+    const text = payload + " ".repeat(size - Buffer.byteLength(payload));
+    const bytes = new TextEncoder().encode(text);
+    const split = bytes.indexOf(0xc3) + 1;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes.subarray(0, split));
+        controller.enqueue(bytes.subarray(split));
+        controller.close();
+      },
+    });
+    const response = await receiveWebhook(new Request("http://localhost/api/plaid/webhook", {
+      method: "POST", body, duplex: "half",
+      headers: { "plaid-verification": await signPlaidWebhook(text) },
+    } as RequestInit));
+    expect(response.status).toBe(size > 256 * 1024 ? 413 : 200);
+    expect(syncRequests).toHaveLength(0);
+  },
+);
+
+test("a broken request stream returns a generic error before verification", async () => {
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) { controller.error(new Error("synthetic-private-body-detail")); },
+  });
+  const response = await receiveWebhook(new Request("http://localhost/api/plaid/webhook", {
+    method: "POST", body, duplex: "half",
+  } as RequestInit));
+  expect(response.status).toBe(400);
+  await expect(response.json()).resolves.toEqual({ error: "invalid_body" });
+  expect(webhookKeyRequests).toHaveLength(0);
 });
 
 const storedCursor = async (connectionId: string) => {
