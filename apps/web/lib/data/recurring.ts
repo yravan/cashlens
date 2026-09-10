@@ -9,6 +9,8 @@ import {
   detectRecurringStreams,
   type RecurringStream,
 } from "@/lib/ledger/recurring-detection";
+import { isIsoDate } from "@/lib/ledger/history-query";
+import { projectUpcoming } from "@/lib/ledger/upcoming";
 
 export type RecurringDecision = "confirmed" | "dismissed";
 export type RecurringStatus = "proposed" | RecurringDecision;
@@ -89,6 +91,17 @@ export async function recurringOverview(): Promise<{ streams: RecurringOverviewS
 }
 
 export type RecurringOverview = Awaited<ReturnType<typeof recurringOverview>>;
+
+export async function upcomingOverview(reference: string) {
+  if (!isIsoDate(reference)) {
+    throw new Error("upcoming reference must be a real ISO date");
+  }
+  const { streams } = await recurringOverview();
+  const trackedCount = streams.filter((stream) => stream.status !== "dismissed").length;
+  return { reference, trackedCount, ...projectUpcoming(streams, reference) };
+}
+
+export type UpcomingOverview = Awaited<ReturnType<typeof upcomingOverview>>;
 
 // Decisions attach only to currently-detected streams: recomputing first means
 // a caller can never store intent for another user's account or a stream that

@@ -1,6 +1,7 @@
 import type { accountBalances, accounts, categories, transactions, users } from "../../lib/db/schema.ts";
 import { DEFAULT_CATEGORIES } from "../../lib/ledger/default-categories.ts";
 import type { RecurringStream } from "../../lib/ledger/recurring-detection.ts";
+import type { UpcomingProjection } from "../../lib/ledger/upcoming.ts";
 
 export const SEED_PERSONAS = ["demo", "neighbor", "empty"] as const;
 export type SeedPersona = (typeof SEED_PERSONAS)[number];
@@ -153,6 +154,36 @@ const SEED_RECURRING_STREAMS: Record<SeedPersona, RecurringStream[]> = {
   empty: [],
 };
 
+// 6.4.2 canonical reference date, the month after the ledger ends: both streams
+// project one date each, nothing overdue, nothing stale. Occurrences are
+// hand-derived from the rows above (monthly on the 29th and the 27th), never
+// computed by the projector.
+export const SEED_UPCOMING_REFERENCE = "2026-04-01";
+
+const QUIET_APRIL: UpcomingProjection = { monthEnd: "2026-04-30", currencies: [], stale: [] };
+
+const SEED_UPCOMING: Record<SeedPersona, UpcomingProjection> = {
+  demo: {
+    monthEnd: "2026-04-30",
+    currencies: [
+      {
+        currency: "USD",
+        toLeaveMinor: -2300,
+        toArriveMinor: 250000,
+        charges: [
+          { accountId: A.card, currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -2300, lastDate: "2026-03-29", date: "2026-04-29", overdue: false },
+        ],
+        deposits: [
+          { accountId: A.checking, currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: 250000, lastDate: "2026-03-27", date: "2026-04-27", overdue: false },
+        ],
+      },
+    ],
+    stale: [],
+  },
+  neighbor: QUIET_APRIL,
+  empty: QUIET_APRIL,
+};
+
 const AS_OF = new Date("2026-03-31T12:00:00Z");
 
 export const SEED_BALANCES: SeedRow<typeof accountBalances.$inferInsert>[] = [
@@ -205,6 +236,7 @@ export type ExpectedPersona = {
     autoQueue: number;
   };
   recurring: RecurringStream[];
+  upcoming: UpcomingProjection;
 };
 
 const ACCOUNT_TYPE_ORDER = ["depository", "credit", "loan", "investment", "other"];
@@ -353,6 +385,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
       autoQueue: mine.filter((t) => !t.categoryId && !pairedIds.has(t.id)).length,
     },
     recurring: SEED_RECURRING_STREAMS[persona],
+    upcoming: SEED_UPCOMING[persona],
   };
 }
 
