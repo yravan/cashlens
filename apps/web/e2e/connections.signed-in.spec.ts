@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery } from "./db";
 import { expect, test } from "./fixtures";
+import { cleanupSandboxRows, disconnectSandboxItems } from "./sandbox-cleanup";
 
 const CONFIGURED =
   !!process.env.PLAID_CLIENT_ID &&
@@ -17,13 +18,19 @@ test.describe("connection management (real sandbox)", () => {
   }
 
   async function cleanup() {
-    await adminQuery(
-      `with mine as (select id from users where clerk_user_id = $1),
-            cleared as (delete from accounts where user_id in (select id from mine))
-       delete from connections where user_id in (select id from mine)`,
+    await cleanupSandboxRows(clerkIdA());
+  }
+
+  test.afterEach(async ({ page }) => {
+    await disconnectSandboxItems(page, clerkIdA());
+    await cleanup();
+    const remaining = await adminQuery(
+      `select count(*)::int as n from connections
+        where user_id in (select id from users where clerk_user_id = $1)`,
       [clerkIdA()],
     );
-  }
+    expect(remaining.rows[0].n).toBe(0);
+  });
 
   test.afterAll(cleanup);
 
@@ -47,6 +54,18 @@ test.describe("connection management (real sandbox)", () => {
     const registered = await exchanged.json();
     return { connectionId: registered.connection.id as string, accounts: registered.accounts.length };
   }
+
+  test("teardown removes an exchanged Item when management stops before UI disconnect", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/accounts");
+    await cleanup();
+    const { connectionId } = await connectSandboxItem(page);
+    const registered = await adminQuery(
+      "select count(*)::int as n from connection_credentials where connection_id = $1",
+      [connectionId],
+    );
+    expect(registered.rows[0].n).toBe(1);
+  });
 
   test("the management arc: status states, repair mint, disconnect with /item/remove, purge", async ({
     page,
