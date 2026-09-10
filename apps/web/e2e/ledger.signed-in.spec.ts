@@ -199,13 +199,12 @@ test.describe("ledger row-level security backstop", () => {
     ).rejects.toMatchObject({ code: "23514" });
   });
 
-  test("the app role's ledger write surface: inserts, the balance refresh, and the scoped 2.1.4 transaction lifecycle", async () => {
+  test("the app role's ledger write surface: inserts, balances, lifecycle, and pending settlement", async () => {
     for (const statement of [
       "update accounts set name = 'overwritten'",
       "update transactions set user_id = user_id",
       "update transactions set account_id = account_id",
       "update transactions set source = source",
-      "update transactions set source_id = source_id",
       "update account_balances set user_id = user_id",
       "delete from account_balances",
     ]) {
@@ -226,6 +225,16 @@ test.describe("ledger row-level security backstop", () => {
     );
     expect(modified.rowCount).toBe(2);
     for (const row of modified.rows) expect(row.user_id).toBe(a.userId);
+
+    const settled = await appQueryScopedAs(
+      PROBE_A,
+      "update transactions set source_id = source_id || '-settled' returning user_id, source_id",
+    );
+    expect(settled.rowCount).toBe(2);
+    for (const row of settled.rows) {
+      expect(row.user_id).toBe(a.userId);
+      expect(row.source_id).toMatch(/-settled$/);
+    }
 
     const removed = await appQueryScopedAs(
       PROBE_A,
