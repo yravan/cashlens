@@ -80,10 +80,28 @@ function ledgerRow(raw: Transaction, account: RegisteredAccount, userId: string)
     status: raw.pending ? ("pending" as const) : ("posted" as const),
     source: "plaid" as const,
     sourceId,
+    pendingSourceId:
+      !raw.pending && raw.pending_transaction_id && raw.pending_transaction_id.length <= 256
+        ? raw.pending_transaction_id
+        : null,
   };
 }
 
 type LedgerRow = ReturnType<typeof ledgerRow>;
+
+const storedRow = (row: LedgerRow) => ({
+  userId: row.userId,
+  accountId: row.accountId,
+  amountMinor: row.amountMinor,
+  currency: row.currency,
+  date: row.date,
+  description: row.description,
+  merchant: row.merchant,
+  status: row.status,
+  source: row.source,
+  sourceId: row.sourceId,
+});
+const rowKey = (row: LedgerRow) => `${row.accountId}:${row.sourceId}`;
 
 async function paginate(accessToken: string, origin: string | null) {
   // One page budget across restarts: a mutation replays from the origin cursor
@@ -123,7 +141,7 @@ const errorFields = (error: unknown) => ({
 });
 
 const upsertLast = (rows: LedgerRow[]) =>
-  [...new Map(rows.map((row) => [`${row.accountId}:${row.sourceId}`, row])).values()];
+  [...new Map(rows.map((row) => [rowKey(row), row])).values()];
 
 export async function advanceSync(connectionId: string): Promise<SyncStep | null> {
   const user = await requireUser();
@@ -243,17 +261,60 @@ export async function advanceSyncFor(
       );
     if ((cas.rowCount ?? 0) === 0) return false;
 
-    for (let at = 0; at < addedRows.length; at += INSERT_CHUNK) {
+    const resolvedAdded = new Set<string>();
+    for (const row of addedRows) {
+      if (!row.pendingSourceId || row.pendingSourceId === row.sourceId) continue;
+      const [target] = await tx
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.userId, user.id),
+            eq(transactions.accountId, row.accountId),
+            eq(transactions.source, "plaid"),
+            eq(transactions.sourceId, row.sourceId),
+          ),
+        )
+        .limit(1);
+      if (target) continue;
+      const reconciled = await tx
+        .update(transactions)
+        .set({
+          sourceId: row.sourceId,
+          amountMinor: row.amountMinor,
+          currency: row.currency,
+          date: row.date,
+          description: row.description,
+          merchant: row.merchant,
+          status: row.status,
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(
+            eq(transactions.userId, user.id),
+            eq(transactions.accountId, row.accountId),
+            eq(transactions.source, "plaid"),
+            eq(transactions.sourceId, row.pendingSourceId),
+            eq(transactions.status, "pending"),
+          ),
+        );
+      if ((reconciled.rowCount ?? 0) > 0) {
+        resolvedAdded.add(rowKey(row));
+        counts.added += reconciled.rowCount ?? 0;
+      }
+    }
+    const unresolvedAdded = addedRows.filter((row) => !resolvedAdded.has(rowKey(row)));
+    for (let at = 0; at < unresolvedAdded.length; at += INSERT_CHUNK) {
       const chunk = await tx
         .insert(transactions)
-        .values(addedRows.slice(at, at + INSERT_CHUNK))
+        .values(unresolvedAdded.slice(at, at + INSERT_CHUNK).map(storedRow))
         .onConflictDoNothing();
       counts.added += chunk.rowCount ?? 0;
     }
     for (let at = 0; at < modifiedRows.length; at += INSERT_CHUNK) {
       const chunk = await tx
         .insert(transactions)
-        .values(modifiedRows.slice(at, at + INSERT_CHUNK))
+        .values(modifiedRows.slice(at, at + INSERT_CHUNK).map(storedRow))
         .onConflictDoUpdate({
           target: [transactions.accountId, transactions.source, transactions.sourceId],
           targetWhere: sql`source_id is not null`,
