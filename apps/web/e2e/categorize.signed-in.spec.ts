@@ -80,7 +80,7 @@ test.describe("auto categorization", () => {
 
   test("a transactions-page visit silently categorizes the whole backlog", async ({ page }) => {
     const probe = await page.request.post("/api/transactions/categorize");
-    // Only a locally reused server (predating ANTHROPIC_BASE_URL) may answer 503;
+    // Only a locally reused server (predating OPENROUTER_BASE_URL) may answer 503;
     // CI always builds fresh, so there it must fail rather than skip.
     test.skip(
       !process.env.CI && probe.status() === 503,
