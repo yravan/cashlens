@@ -84,6 +84,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
   - **2.4.2 PayPal activity** `[P2]` — The same, for PayPal.
 - **2.5 Investment accounts** `[P2]` — Connect brokerage and retirement accounts (Fidelity, Robinhood, a 401k) for balances and holdings, so fragmented money and net worth are complete.
 - **2.6 Text-message receipts** `[P3]` — Ingest receipts and alerts that arrive by SMS.
+- **2.7 Apple purchase history** `[P1]` — Bring Apple digital purchases and subscription charges into Cash Lens even when email receipts are missing, with item names, dates, prices, and source evidence. Match them to payments so Apple or PayPal charges reveal what was bought without counting it twice.
 
 ## 3. Ledger Core
 
@@ -169,6 +170,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
   - **6.7.1 Tax payments view** `[P2]` — Every tax payment and refund across accounts in one place, with year totals and surplus or deficit.
   - **6.7.2 Deductible flagging** `[P3]` — Tag potentially deductible spending all year; export a year-end summary.
 - **6.8 Data export** `[P3]` — Full transactions, categories, and balances out as CSV or JSON; the source of truth is never locked in.
+- **6.9 Natural-language spending questions** `[P1]` — Ask "how much did I spend on contact lenses this past year?" and get an evidence-backed answer across merchants and receipt items. Show the date range, supporting purchases, refunds and reimbursements, and gaps or uncertainty; clarify ambiguous questions instead of guessing.
 
 ## 7. Notifications & Alerts
 
