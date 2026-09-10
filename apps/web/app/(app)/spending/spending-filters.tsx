@@ -1,7 +1,7 @@
 import Form from "next/form";
 
 import type { SpendingParam } from "@/lib/ledger/history-query";
-import { ClearPeriodLink } from "./clear-period-link";
+import { ClearFiltersLink } from "../clear-filters-link";
 
 const field = "block text-xs font-medium text-zinc-600 dark:text-zinc-400";
 const control =
@@ -47,7 +47,7 @@ export function SpendingFilters({
         >
           Apply
         </button>
-        <ClearPeriodLink />
+        <ClearFiltersLink href="/spending" />
       </div>
     </Form>
   );

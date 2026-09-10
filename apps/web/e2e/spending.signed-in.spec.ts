@@ -198,6 +198,27 @@ test.describe("spending by category", () => {
     await expectTotals(currencySection(page, "USD"), spendingOf("demo", "USD").totals, "USD");
   });
 
+  test("modifier-clicking Clear leaves this tab's period and draft untouched", async ({
+    page,
+    context,
+  }) => {
+    await page.goto("/spending?from=2026-03-01&to=2026-03-31&currency=USD");
+    const form = page.getByRole("form", { name: "Choose a period" });
+    await form.getByLabel("From", { exact: true }).fill("2026-02-01");
+
+    await form
+      .getByRole("link", { name: "Clear", exact: true })
+      .click({ modifiers: ["ControlOrMeta"] });
+
+    await expect(page).toHaveURL("/spending?from=2026-03-01&to=2026-03-31&currency=USD");
+    await expect(currencySection(page, "USD")).toBeVisible();
+    await expect(currencySection(page, "EUR")).toHaveCount(0);
+    await expect(form.getByLabel("From", { exact: true })).toHaveValue("2026-02-01");
+    await expect(form.getByLabel("To", { exact: true })).toHaveValue("2026-03-31");
+    await expect(form.getByRole("combobox", { name: "Currency" })).toHaveValue("USD");
+    for (const opened of context.pages()) if (opened !== page) await opened.close();
+  });
+
   test("the uncategorized row drills to exactly the rows with no category", async ({ page }) => {
     await page.goto("/spending");
     const usd = currencySection(page, "USD");
