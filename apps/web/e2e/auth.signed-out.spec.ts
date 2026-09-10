@@ -4,12 +4,14 @@ test("a signed-out request to a protected page redirects to the sign-in page", a
   request,
   baseURL,
 }) => {
-  const response = await request.get("/", { maxRedirects: 0 });
+  for (const path of ["/", "/upcoming"]) {
+    const response = await request.get(path, { maxRedirects: 0 });
 
-  expect(response.status()).toBe(307);
-  const location = new URL(response.headers()["location"], baseURL);
-  expect(location.pathname).toBe("/sign-in");
-  expect(location.searchParams.get("redirect_url")).toBe(`${baseURL}/`);
+    expect(response.status()).toBe(307);
+    const location = new URL(response.headers()["location"], baseURL);
+    expect(location.pathname).toBe("/sign-in");
+    expect(location.searchParams.get("redirect_url")).toBe(`${baseURL}${path}`);
+  }
 });
 
 test("a signed-out request to an unknown API path is redirected, not served", async ({
