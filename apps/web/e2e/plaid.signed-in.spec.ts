@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 
 import { E2E_USERS_FILE } from "../playwright.config";
-import { adminQuery } from "./db";
+import { adminQuery, adminTransaction } from "./db";
 import { expect, test } from "./fixtures";
 
 // The Link UI itself is never driven — Plaid's own docs say to bypass it in
@@ -158,6 +159,125 @@ test.describe("plaid connect flow (real sandbox)", () => {
     await expect(
       page.locator('iframe[id^="plaid-link-"], iframe[title="Plaid Link"]').first(),
     ).toBeAttached({ timeout: 20_000 });
+  });
+
+  test("canceling a detected duplicate keeps the original connection and makes no cleanup request", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const connectionId = randomUUID();
+    const institutionId = "ins_e2e_duplicate_cancel";
+    const institutionName = "Synthetic Duplicate Bank";
+    const forbiddenRequests: string[] = [];
+
+    // This is the true external boundary: the application still mints a real
+    // Link token, while the hosted SDK invokes the actual ConnectButton callback
+    // with a synthetic, unexchanged public token.
+    await page.route("https://cdn.plaid.com/link/v2/stable/link-initialize.js", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/javascript",
+        body: `
+          window.Plaid = {
+            create(config) {
+              config.onLoad?.();
+              return {
+                open() {
+                  config.onSuccess("e2e-synthetic-public-token", {
+                    institution: {
+                      institution_id: "${institutionId}",
+                      name: "${institutionName}",
+                    },
+                    accounts: [],
+                    link_session_id: "e2e-duplicate-cancel",
+                  });
+                },
+                exit(_options, callback) { callback?.(); },
+                destroy() {},
+              };
+            },
+          };
+        `,
+      });
+    });
+    page.on("request", (request) => {
+      if (request.method() !== "POST") return;
+      const pathname = new URL(request.url()).pathname;
+      if (pathname === "/api/plaid/exchange" || pathname === "/api/plaid/abandon") {
+        forbiddenRequests.push(pathname);
+      }
+    });
+
+    try {
+      await page.goto("/accounts");
+      const userId = await userIdA();
+      await adminTransaction(async (client) => {
+        await client.query(
+          `insert into connections
+             (id, user_id, provider, provider_item_id, institution_id, institution_name,
+              status, backfill_status, sync_cursor)
+           values ($1, $2, 'plaid', $3, $4, $5, 'active', 'complete', 'e2e-complete-cursor')`,
+          [connectionId, userId, `e2e-item-${connectionId}`, institutionId, institutionName],
+        );
+        await client.query(
+          `insert into connection_credentials (connection_id, user_id, ciphertext)
+           values ($1, $2, 'v1.e2e.synthetic')`,
+          [connectionId, userId],
+        );
+        await client.query(
+          `insert into accounts
+             (user_id, connection_id, name, type, subtype, mask, currency, source, source_id)
+           values ($1, $2, 'Synthetic Checking', 'depository', 'checking', '0001', 'USD', 'plaid', $3)`,
+          [userId, connectionId, `e2e-account-${connectionId}`],
+        );
+      });
+      await page.reload();
+
+      const original = page.getByTestId(`connection-${connectionId}`);
+      await expect(original).toContainText(institutionName);
+      await expect(original.getByTestId("connection-status")).toHaveText("Connected");
+      const before = await adminQuery(
+        `select (select count(*)::int from connections where id = $1 and user_id = $2) as connections,
+                (select count(*)::int from connection_credentials where connection_id = $1 and user_id = $2) as credentials,
+                (select count(*)::int from accounts where connection_id = $1 and user_id = $2) as accounts,
+                (select status from connections where id = $1 and user_id = $2) as status`,
+        [connectionId, userId],
+      );
+      expect(before.rows[0]).toEqual({ connections: 1, credentials: 1, accounts: 1, status: "active" });
+
+      const tokenResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname === "/api/plaid/link-token",
+      );
+      await page.getByTestId("connect-bank").click();
+      expect((await tokenResponse).status()).toBe(200);
+      await expect(page.getByTestId("duplicate-warning")).toContainText(institutionName);
+
+      await page.getByTestId("duplicate-cancel").click();
+      // React's removal is the synchronization point: any exchange/abandon fetch
+      // from the click handler would have emitted a request before this assertion.
+      await expect(page.getByTestId("duplicate-warning")).toHaveCount(0);
+      await expect(page.getByTestId("connect-bank")).toBeEnabled();
+      expect(forbiddenRequests).toEqual([]);
+
+      const after = await adminQuery(
+        `select (select count(*)::int from connections where id = $1 and user_id = $2) as connections,
+                (select count(*)::int from connection_credentials where connection_id = $1 and user_id = $2) as credentials,
+                (select count(*)::int from accounts where connection_id = $1 and user_id = $2) as accounts,
+                (select status from connections where id = $1 and user_id = $2) as status`,
+        [connectionId, userId],
+      );
+      expect(after.rows[0]).toEqual(before.rows[0]);
+
+      await page.reload();
+      const stillConnected = page.getByTestId(`connection-${connectionId}`);
+      await expect(stillConnected).toContainText(institutionName);
+      await expect(stillConnected.getByTestId("connection-status")).toHaveText("Connected");
+    } finally {
+      await adminQuery("delete from accounts where connection_id = $1", [connectionId]);
+      await adminQuery("delete from connections where id = $1", [connectionId]);
+    }
   });
 
   test("a backfill that never got driven self-heals from the accounts page", async ({ page }) => {
