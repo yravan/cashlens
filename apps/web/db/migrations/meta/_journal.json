@@ -176,6 +176,20 @@
       "when": 1788939628322,
       "tag": "0024_recurring_streams_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789025876927,
+      "tag": "0025_connect_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789025893163,
+      "tag": "0026_connect_cleanup_grants",
+      "breakpoints": true
     }
   ]
 }
