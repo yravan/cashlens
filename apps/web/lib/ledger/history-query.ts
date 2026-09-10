@@ -58,7 +58,8 @@ const CURRENCY = /^[A-Z]{3}$/;
 const AMOUNT = /^\d+(\.\d+)?$/;
 const PAGE = /^[1-9]\d*$/;
 
-function isRealDate(value: string): boolean {
+export function isIsoDate(value: string): boolean {
+  if (!ISO_DATE.test(value)) return false;
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return (
@@ -128,7 +129,7 @@ export function parseHistoryQuery(
   for (const key of ["from", "to"] as const) {
     const value = given.get(key);
     if (value === undefined) continue;
-    if (!ISO_DATE.test(value) || !isRealDate(value)) return { ok: false };
+    if (!isIsoDate(value)) return { ok: false };
     query[key] = value;
   }
   if (query.from !== null && query.to !== null && query.from > query.to) return { ok: false };

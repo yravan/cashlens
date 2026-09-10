@@ -1,7 +1,7 @@
 import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 
-import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_CATEGORIES, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_TRANSFER_PAIRS, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
+import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_CATEGORIES, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_TRANSFER_PAIRS, SEED_UPCOMING_REFERENCE, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
 import { assertLocalDatabaseUrl } from "@/db/seed/local-only";
 import { seedDataset } from "@/db/seed/seed";
 import { ledgerCounts } from "@/lib/data/ledger";
@@ -9,6 +9,7 @@ import { requireUser } from "@/lib/data/users";
 import { accountBalances, accounts, categories, transactions, users } from "@/lib/db/schema";
 import { DEFAULT_CATEGORIES } from "@/lib/ledger/default-categories";
 import { detectRecurringStreams } from "@/lib/ledger/recurring-detection";
+import { projectUpcoming } from "@/lib/ledger/upcoming";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 
@@ -129,6 +130,23 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
       { accountId: seedAccount("demo", "Cash Rewards Card"), currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", typicalAmountMinor: -2300, lastAmountMinor: -2300, firstDate: "2026-01-29", lastDate: "2026-03-29", occurrences: 3, confidence: "high" },
       { accountId: seedAccount("demo", "Everyday Checking"), currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", typicalAmountMinor: 250000, lastAmountMinor: 250000, firstDate: "2026-01-27", lastDate: "2026-03-27", occurrences: 3, confidence: "high" },
     ],
+    upcoming: {
+      monthEnd: "2026-04-30",
+      currencies: [
+        {
+          currency: "USD",
+          toLeaveMinor: -2300,
+          toArriveMinor: 250000,
+          charges: [
+            { accountId: seedAccount("demo", "Cash Rewards Card"), currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -2300, lastDate: "2026-03-29", date: "2026-04-29", overdue: false },
+          ],
+          deposits: [
+            { accountId: seedAccount("demo", "Everyday Checking"), currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: 250000, lastDate: "2026-03-27", date: "2026-04-27", overdue: false },
+          ],
+        },
+      ],
+      stale: [],
+    },
   });
   expect(EXPECTED.neighbor).toEqual({
     accounts: 1,
@@ -175,6 +193,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     history: { order: expect.any(Array), currencies: ["USD"] },
     transfers: { pairs: [], pairedRows: 0, autoQueue: 1 },
     recurring: [],
+    upcoming: { monthEnd: "2026-04-30", currencies: [], stale: [] },
   });
   expect(EXPECTED.empty).toEqual({
     accounts: 0,
@@ -192,6 +211,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     history: { order: [], currencies: [] },
     transfers: { pairs: [], pairedRows: 0, autoQueue: 0 },
     recurring: [],
+    upcoming: { monthEnd: "2026-04-30", currencies: [], stale: [] },
   });
 });
 
@@ -381,6 +401,13 @@ test("the dataset's recurring streams are exactly what 6.4.1's detector finds in
   }
 });
 
+test("the dataset's upcoming month is exactly what 6.4.2's projector finds in the streams", () => {
+  for (const persona of SEED_PERSONAS) {
+    const streams = EXPECTED[persona].recurring.map((s) => ({ ...s, status: "proposed" as const }));
+    expect(projectUpcoming(streams, SEED_UPCOMING_REFERENCE)).toEqual(EXPECTED[persona].upcoming);
+  }
+});
+
 test("the dataset's transfer pairs are the two hand-verified zero-sum moves, matchable by 3.3.1's rule", () => {
   const byId = new Map(SEED_TRANSACTIONS.map((t) => [t.id, t]));
   const label = (id: string) => `${byId.get(id)!.date} ${byId.get(id)!.description}`;
@@ -406,7 +433,7 @@ test("the dataset's transfer pairs are the two hand-verified zero-sum moves, mat
   }
 });
 
-async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending" | "recurring">> {
+async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending" | "recurring" | "upcoming">> {
   const db = adminDb();
   const mine = eq(transactions.userId, userId);
   const posted = await db
@@ -448,7 +475,7 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
   };
 }
 
-function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending" | "recurring"> {
+function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending" | "recurring" | "upcoming"> {
   const { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted } =
     EXPECTED[persona];
   return { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted };
