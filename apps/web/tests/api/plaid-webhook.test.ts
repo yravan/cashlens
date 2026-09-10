@@ -48,6 +48,35 @@ test("oversized streamed deliveries stop being consumed at the body limit", asyn
   expect(webhookKeyRequests).toHaveLength(0);
 });
 
+// The DAL re-checks the size and answers 413 identically, so status alone cannot
+// tell whether the route stopped reading. Counting a demand-driven source can.
+test("the route itself stops on the byte that crosses the limit", async () => {
+  const sizes = [256 * 1024 - 1, 1, 1, 1];
+  let next = 0;
+  let bytesRead = 0;
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        if (next === sizes.length) return controller.close();
+        const size = sizes[next++];
+        bytesRead += size;
+        controller.enqueue(new Uint8Array(size).fill(120));
+      },
+      cancel() { cancelled = true; },
+    },
+    { highWaterMark: 0 },
+  );
+  const response = await receiveWebhook(new Request("http://localhost/api/plaid/webhook", {
+    method: "POST", body, duplex: "half",
+    headers: { "plaid-verification": "synthetic-invalid-signature" },
+  } as RequestInit));
+  expect(response.status).toBe(413);
+  expect(bytesRead).toBe(256 * 1024 + 1);
+  expect(cancelled).toBe(true);
+  expect(webhookKeyRequests).toHaveLength(0);
+});
+
 test.each([256 * 1024 - 1, 256 * 1024, 256 * 1024 + 1])(
   "a signed UTF-8 body split inside a character respects the %i-byte boundary",
   async (size) => {
@@ -80,6 +109,15 @@ test("a broken request stream returns a generic error before verification", asyn
   } as RequestInit));
   expect(response.status).toBe(400);
   await expect(response.json()).resolves.toEqual({ error: "invalid_body" });
+  expect(webhookKeyRequests).toHaveLength(0);
+});
+
+test("a delivery with no body at all is rejected as unverified", async () => {
+  const response = await receiveWebhook(
+    new Request("http://localhost/api/plaid/webhook", { method: "POST" }),
+  );
+  expect(response.status).toBe(401);
+  await expect(response.json()).resolves.toEqual({ error: "unverified" });
   expect(webhookKeyRequests).toHaveLength(0);
 });
 
