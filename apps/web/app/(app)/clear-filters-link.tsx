@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useRef } from "react";
 
-export function ClearFiltersLink() {
+export function ClearFiltersLink({ href }: { href: string }) {
   const link = useRef<HTMLAnchorElement>(null);
 
   return (
     <Link
       ref={link}
-      href="/transactions"
+      href={href}
       onNavigate={() => link.current?.closest("form")?.reset()}
       className="text-sm text-zinc-600 underline underline-offset-4 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
     >
