@@ -206,6 +206,24 @@ test("one run carrying the pending, its drift, and its posted replacement lands 
   ]);
 });
 
+test("a same-run correction to the settled posted row still applies", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const item = await backfilled(clerkUserId, pending());
+  const user = await internalUser(clerkUserId);
+  const [before] = await rowsFor(user.id);
+
+  pushSyncUpdates(item.accessToken, {
+    added: [posted()],
+    modified: [posted(CHECKING, "pending-source", "posted-source", 19.25)],
+    removed: [removed("pending-source")],
+  });
+  await item.sync();
+
+  await expect(rowsFor(user.id)).resolves.toMatchObject([
+    { id: before.id, amountMinor: -1925, status: "posted", sourceId: "posted-source" },
+  ]);
+});
+
 test("a removal that arrives before its linked posting still lands exactly one row", async () => {
   const clerkUserId = fakeClerkUserId();
   const item = await backfilled(clerkUserId, pending());

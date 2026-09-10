@@ -305,10 +305,9 @@ export async function advanceSyncFor(
         counts.added += claim.rowCount;
       }
     }
-    const ingestible = (rows: LedgerRow[]) =>
-      rows.filter((row) => !settled.has(rowKey(row)) && !replaced.has(rowKey(row)));
-
-    const toInsert = ingestible(addedRows);
+    const toInsert = addedRows.filter(
+      (row) => !settled.has(rowKey(row)) && !replaced.has(rowKey(row)),
+    );
     for (let at = 0; at < toInsert.length; at += INSERT_CHUNK) {
       const chunk = await tx
         .insert(transactions)
@@ -316,7 +315,7 @@ export async function advanceSyncFor(
         .onConflictDoNothing();
       counts.added += chunk.rowCount ?? 0;
     }
-    const toUpsert = ingestible(modifiedRows);
+    const toUpsert = modifiedRows.filter((row) => !replaced.has(rowKey(row)));
     for (let at = 0; at < toUpsert.length; at += INSERT_CHUNK) {
       const chunk = await tx
         .insert(transactions)
