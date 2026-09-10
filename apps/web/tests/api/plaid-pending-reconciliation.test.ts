@@ -188,7 +188,25 @@ test("a posted replacement resolves before Plaid removes the old pending id", as
   expect(await rowsFor(user.id)).toHaveLength(1);
 });
 
-test("a removal that arrives before its linked posting stays lossless", async () => {
+test("one run carrying the pending, its drift, and its posted replacement lands a single row", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const item = await backfilled(clerkUserId);
+  const user = await internalUser(clerkUserId);
+  const drifted = pending();
+  drifted.amount = 17;
+
+  pushSyncUpdates(item.accessToken, {
+    added: [pending(), posted()],
+    modified: [drifted],
+  });
+  await item.sync();
+
+  await expect(rowsFor(user.id)).resolves.toMatchObject([
+    { amountMinor: -1840, status: "posted", sourceId: "posted-source" },
+  ]);
+});
+
+test("a removal that arrives before its linked posting still lands exactly one row", async () => {
   const clerkUserId = fakeClerkUserId();
   const item = await backfilled(clerkUserId, pending());
   const user = await internalUser(clerkUserId);
@@ -228,6 +246,25 @@ test("null, unknown, and cross-account links never guess a replacement", async (
     "posted-no-link",
     "posted-other-account",
     "posted-unknown",
+  ]);
+});
+
+test("a self-link and a pending row carrying a link are both ingested normally", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const item = await backfilled(clerkUserId, pending());
+  const user = await internalUser(clerkUserId);
+  const laterPending = pending(CHECKING, "later-pending");
+  laterPending.pending_transaction_id = "pending-source";
+
+  pushSyncUpdates(item.accessToken, {
+    added: [posted(CHECKING, "self-posted", "self-posted"), laterPending],
+  });
+  await item.sync();
+
+  await expect(rowsFor(user.id)).resolves.toMatchObject([
+    { status: "pending", sourceId: "later-pending" },
+    { status: "pending", sourceId: "pending-source" },
+    { status: "posted", sourceId: "self-posted" },
   ]);
 });
 

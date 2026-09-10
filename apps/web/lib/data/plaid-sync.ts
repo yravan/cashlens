@@ -80,28 +80,19 @@ function ledgerRow(raw: Transaction, account: RegisteredAccount, userId: string)
     status: raw.pending ? ("pending" as const) : ("posted" as const),
     source: "plaid" as const,
     sourceId,
-    pendingSourceId:
-      !raw.pending && raw.pending_transaction_id && raw.pending_transaction_id.length <= 256
-        ? raw.pending_transaction_id
-        : null,
   };
 }
 
 type LedgerRow = ReturnType<typeof ledgerRow>;
 
-const storedRow = (row: LedgerRow) => ({
-  userId: row.userId,
-  accountId: row.accountId,
-  amountMinor: row.amountMinor,
-  currency: row.currency,
-  date: row.date,
-  description: row.description,
-  merchant: row.merchant,
-  status: row.status,
-  source: row.source,
-  sourceId: row.sourceId,
-});
 const rowKey = (row: LedgerRow) => `${row.accountId}:${row.sourceId}`;
+
+// Plaid's explicit link from a settling posted row back to the pending id it
+// replaces — kept only for the length of the run, never stored.
+const pendingLink = (raw: Transaction, row: LedgerRow) => {
+  const link = raw.pending_transaction_id;
+  return !raw.pending && link && link.length <= 256 && link !== row.sourceId ? link : null;
+};
 
 async function paginate(accessToken: string, origin: string | null) {
   // One page budget across restarts: a mutation replays from the origin cursor
@@ -201,6 +192,7 @@ export async function advanceSyncFor(
 
   let malformed = 0;
   let unregistered = 0;
+  const pendingLinks = new Map<string, string>();
   const prepared = (raws: Transaction[]) => {
     const rows: LedgerRow[] = [];
     for (const raw of raws) {
@@ -210,7 +202,10 @@ export async function advanceSyncFor(
         continue;
       }
       try {
-        rows.push(ledgerRow(raw, account, user.id));
+        const row = ledgerRow(raw, account, user.id);
+        rows.push(row);
+        const link = pendingLink(raw, row);
+        if (link) pendingLinks.set(rowKey(row), link);
       } catch {
         malformed += 1;
       }
@@ -261,10 +256,17 @@ export async function advanceSyncFor(
       );
     if ((cas.rowCount ?? 0) === 0) return false;
 
-    const resolvedAdded = new Set<string>();
+    // Plaid replaces a settling charge with a new posted id: the link is the
+    // only proof, so the pending row is claimed in place (its internal id and
+    // every user-owned column survive) and the old id — which Plaid also
+    // removes — stops being ingestible for the rest of the run.
+    const settled = new Set<string>();
+    const replaced = new Set<string>();
     for (const row of addedRows) {
-      if (!row.pendingSourceId || row.pendingSourceId === row.sourceId) continue;
-      const [target] = await tx
+      const link = pendingLinks.get(rowKey(row));
+      if (!link) continue;
+      replaced.add(`${row.accountId}:${link}`);
+      const [taken] = await tx
         .select({ id: transactions.id })
         .from(transactions)
         .where(
@@ -276,8 +278,8 @@ export async function advanceSyncFor(
           ),
         )
         .limit(1);
-      if (target) continue;
-      const reconciled = await tx
+      if (taken) continue;
+      const claim = await tx
         .update(transactions)
         .set({
           sourceId: row.sourceId,
@@ -294,27 +296,31 @@ export async function advanceSyncFor(
             eq(transactions.userId, user.id),
             eq(transactions.accountId, row.accountId),
             eq(transactions.source, "plaid"),
-            eq(transactions.sourceId, row.pendingSourceId),
+            eq(transactions.sourceId, link),
             eq(transactions.status, "pending"),
           ),
         );
-      if ((reconciled.rowCount ?? 0) > 0) {
-        resolvedAdded.add(rowKey(row));
-        counts.added += reconciled.rowCount ?? 0;
+      if (claim.rowCount) {
+        settled.add(rowKey(row));
+        counts.added += claim.rowCount;
       }
     }
-    const unresolvedAdded = addedRows.filter((row) => !resolvedAdded.has(rowKey(row)));
-    for (let at = 0; at < unresolvedAdded.length; at += INSERT_CHUNK) {
+    const ingestible = (rows: LedgerRow[]) =>
+      rows.filter((row) => !settled.has(rowKey(row)) && !replaced.has(rowKey(row)));
+
+    const toInsert = ingestible(addedRows);
+    for (let at = 0; at < toInsert.length; at += INSERT_CHUNK) {
       const chunk = await tx
         .insert(transactions)
-        .values(unresolvedAdded.slice(at, at + INSERT_CHUNK).map(storedRow))
+        .values(toInsert.slice(at, at + INSERT_CHUNK))
         .onConflictDoNothing();
       counts.added += chunk.rowCount ?? 0;
     }
-    for (let at = 0; at < modifiedRows.length; at += INSERT_CHUNK) {
+    const toUpsert = ingestible(modifiedRows);
+    for (let at = 0; at < toUpsert.length; at += INSERT_CHUNK) {
       const chunk = await tx
         .insert(transactions)
-        .values(modifiedRows.slice(at, at + INSERT_CHUNK).map(storedRow))
+        .values(toUpsert.slice(at, at + INSERT_CHUNK))
         .onConflictDoUpdate({
           target: [transactions.accountId, transactions.source, transactions.sourceId],
           targetWhere: sql`source_id is not null`,
