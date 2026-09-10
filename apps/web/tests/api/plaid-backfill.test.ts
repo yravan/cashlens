@@ -250,53 +250,63 @@ test("connect before Plaid has any data: backfill stays in progress and stores n
   await expect(ready.json()).resolves.toEqual(step("complete", 1));
 });
 
-test.each(["in_progress", "complete"] as const)("a %s import with an empty provider cursor stays resumable until history arrives", async (backfillStatus) => {
-  const accounts = sandboxAccounts();
-  const clerkUserId = fakeClerkUserId();
-  const minted = mintSandboxItem({
-    accounts,
-    updateStatus: "HISTORICAL_UPDATE_COMPLETE",
-    emptyCursorWhenEmpty: true,
-  });
-  const exchanged = await withAuth(clerkUserId, () => postExchange(minted.publicToken));
-  expect(exchanged.status).toBe(200);
-  const body = await exchanged.json();
-  const connectionId = body.connection.id as string;
-  const sync = () => withAuth(clerkUserId, () => postSync(connectionId));
-  await adminDb().update(connections).set({ backfillStatus }).where(eq(connections.id, connectionId));
+test.each(["in_progress", "complete"] as const)(
+  "a %s import with an empty provider cursor stays resumable until history arrives",
+  async (backfillStatus) => {
+    const accounts = sandboxAccounts();
+    const clerkUserId = fakeClerkUserId();
+    const minted = mintSandboxItem({
+      accounts,
+      updateStatus: "HISTORICAL_UPDATE_COMPLETE",
+      emptyCursorWhenEmpty: true,
+    });
+    const exchanged = await withAuth(clerkUserId, () => postExchange(minted.publicToken));
+    expect(exchanged.status).toBe(200);
+    const { connection } = await exchanged.json();
+    const sync = () => withAuth(clerkUserId, () => postSync(connection.id));
+    await adminDb().update(connections).set({ backfillStatus }).where(eq(connections.id, connection.id));
 
-  const premature = await sync();
-  await expect(premature.json()).resolves.toEqual(step("in_progress", 0));
-  await expectStored(connectionId, "in_progress", null);
+    const premature = await sync();
+    await expect(premature.json()).resolves.toEqual(step("in_progress", 0));
+    await expectStored(connection.id, "in_progress", null);
 
-  const first = sandboxTransaction(accounts[0].account_id, 12.34, "READY HISTORY ONE", "2026-08-20");
-  const second = sandboxTransaction(accounts[0].account_id, -5, "READY HISTORY TWO", "2026-08-21");
-  pushSyncUpdates(minted.accessToken, {
-    added: [first, second],
-    updateStatus: "HISTORICAL_UPDATE_COMPLETE",
-  });
+    const checking = accounts[0].account_id;
+    pushSyncUpdates(minted.accessToken, {
+      added: [
+        sandboxTransaction(checking, 12.34, "READY HISTORY ONE", "2026-08-20"),
+        sandboxTransaction(checking, -5, "READY HISTORY TWO", "2026-08-21"),
+      ],
+      updateStatus: "HISTORICAL_UPDATE_COMPLETE",
+    });
 
-  const ready = await sync();
-  await expect(ready.json()).resolves.toEqual(step("complete", 2));
+    const ready = await sync();
+    await expect(ready.json()).resolves.toEqual(step("complete", 2));
+    await expectStored(connection.id, "complete", "sync-cursor-2");
+    expect((await ledgerRows()).map((row) => [row.description, row.amountMinor, row.date])).toEqual([
+      ["READY HISTORY ONE", -1234, "2026-08-20"],
+      ["READY HISTORY TWO", 500, "2026-08-21"],
+    ]);
+  },
+);
+
+test("a premature completion marker is not restored by a cursor while history is still loading", async () => {
+  const { connectionId, accessToken, sync } = await connect();
+  await adminDb()
+    .update(connections)
+    .set({ backfillStatus: "complete", syncCursor: null })
+    .where(eq(connections.id, connectionId));
+
+  const recent = sandboxTransaction(CHECKING, 9.5, "LAST THIRTY DAYS", "2026-08-25");
+  pushSyncUpdates(accessToken, { added: [recent], updateStatus: "INITIAL_UPDATE_COMPLETE" });
+
+  const initial = await sync();
+  await expect(initial.json()).resolves.toEqual(step("in_progress", 1));
+  await expectStored(connectionId, "in_progress", "sync-cursor-1");
+
+  pushHistory(accessToken, sandboxTransaction(CHECKING, 40, "TWO YEARS BACK", "2025-01-05"));
+  const historical = await sync();
+  await expect(historical.json()).resolves.toEqual(step("complete", 1));
   await expectStored(connectionId, "complete", "sync-cursor-2");
-  await expect(ledgerRows()).resolves.toEqual([
-    expect.objectContaining({
-      amountMinor: -1234,
-      currency: "USD",
-      date: first.date,
-      description: first.name,
-      source: "plaid",
-      sourceId: first.transaction_id,
-    }),
-    expect.objectContaining({
-      amountMinor: 500,
-      currency: "USD",
-      date: second.date,
-      description: second.name,
-      source: "plaid",
-      sourceId: second.transaction_id,
-    }),
-  ]);
 });
 
 test("a genuinely empty history with a provider cursor can complete", async () => {

@@ -412,13 +412,10 @@ export class PlaidApi {
     }
     const page = item.syncLog.slice(start, start + Math.min(count ?? 100, syncPageCap));
     const end = start + page.length;
-    const primed = item.syncLog.length > 0 || item.updateStatus !== "NOT_READY";
-    const nextCursor =
-      item.emptyCursorWhenEmpty && item.syncLog.length === 0
-        ? ""
-        : primed
-          ? `sync-cursor-${end}`
-          : "";
+    const empty = item.syncLog.length === 0;
+    // Plaid withholds the cursor until an item's transactions are available,
+    // including on a HISTORICAL_UPDATE_COMPLETE response that carries none.
+    const primed = !empty || (item.updateStatus !== "NOT_READY" && !item.emptyCursorWhenEmpty);
     if (afterSyncPage) {
       const hook = afterSyncPage;
       afterSyncPage = null;
@@ -429,7 +426,7 @@ export class PlaidApi {
       modified: structuredClone(page.flatMap((event) => (event.kind === "modified" ? [event.txn] : []))),
       removed: structuredClone(page.flatMap((event) => (event.kind === "removed" ? [event.ref] : []))),
       accounts: structuredClone(item.accounts),
-      next_cursor: nextCursor,
+      next_cursor: primed ? `sync-cursor-${end}` : "",
       has_more: end < item.syncLog.length,
       transactions_update_status: item.updateStatus,
     });

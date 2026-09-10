@@ -227,11 +227,12 @@ export async function advanceSyncFor(
   }
 
   const previous = connection.backfillStatus;
-  const backfillStatus =
-    Boolean(run.cursor) &&
-    (previous === "complete" || (run.drained && run.updateStatus === "complete"))
-      ? "complete"
-      : "in_progress";
+  // An empty next_cursor means Plaid has not made this item's transactions
+  // available yet, so it can neither complete a backfill nor keep a `complete`
+  // marker standing — and a marker stored without a cursor was never earned.
+  const wasComplete = previous === "complete" && Boolean(connection.syncCursor);
+  const nowComplete = run.drained && run.updateStatus === "complete" && Boolean(run.cursor);
+  const backfillStatus = wasComplete || nowComplete ? "complete" : "in_progress";
   if (run.updateStatus === "unknown") {
     logEvent("plaid_sync.update_status_unknown", { connectionId });
   }
