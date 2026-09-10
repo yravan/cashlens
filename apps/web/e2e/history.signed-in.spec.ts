@@ -104,6 +104,32 @@ test.describe("transaction history", () => {
     await expect(form(page).getByLabel("From")).toHaveValue("");
   });
 
+  test("Clear discards unsubmitted filters on an already-unfiltered ledger", async ({ page }) => {
+    await page.goto("/transactions");
+    await form(page).getByLabel("Search").fill("acme");
+    await form(page).getByLabel("Account").selectOption({ label: "Everyday Checking" });
+    await form(page).getByLabel("Category").selectOption("uncategorized");
+    await form(page).getByLabel("From").fill("2026-03-01");
+    await form(page).getByLabel("To", { exact: true }).fill("2026-03-31");
+    await form(page).getByLabel("Currency").selectOption("USD");
+    await form(page).getByLabel("Min amount").fill("10");
+    await form(page).getByLabel("Max amount").fill("100");
+
+    await form(page).getByRole("link", { name: "Clear", exact: true }).click();
+    await expect(page).toHaveURL("/transactions");
+    for (const name of ["q", "account", "category", "from", "to", "currency", "min", "max"]) {
+      await expect(form(page).locator(`[name="${name}"]`)).toHaveValue("");
+    }
+    await form(page).getByRole("button", { name: "Apply" }).click();
+    await expect(page.getByTestId("transactions-count")).toHaveText("19 transactions in the ledger");
+    await expect(rows(page)).toHaveCount(DEMO_PAGE.length);
+    for (const [index, transaction] of DEMO_PAGE.entries()) {
+      await expect(rows(page).nth(index).locator("p").first()).toHaveText(
+        transaction.merchant ?? transaction.description,
+      );
+    }
+  });
+
   test("filters survive pagination and the back button", async ({ page }) => {
     const userA = await userIdOf("a");
     const checking = SEED_ACCOUNTS.find((a) => a.name === "Everyday Checking")!.id;
