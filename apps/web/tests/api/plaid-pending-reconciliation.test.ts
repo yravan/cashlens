@@ -88,6 +88,7 @@ test("a linked posted transaction reuses the pending row and preserves user enri
   const groups = await withAuth(clerkUserId, listCategoryGroups);
   const categoryId = leafNamed(groups, "Restaurants & Bars");
   await withAuth(clerkUserId, () => setTransactionCategory(before.id, categoryId));
+  capSyncPageSize(1);
 
   pushSyncUpdates(item.accessToken, {
     added: [posted()],
@@ -111,6 +112,62 @@ test("a linked posted transaction reuses the pending row and preserves user enri
       status: "posted",
       sourceId: "posted-source",
     },
+  ]);
+});
+
+test("auto-category provenance survives settlement", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const item = await backfilled(clerkUserId, pending());
+  const user = await internalUser(clerkUserId);
+  const [before] = await rowsFor(user.id);
+  const categoryId = leafNamed(
+    await withAuth(clerkUserId, listCategoryGroups),
+    "Restaurants & Bars",
+  );
+  await adminDb()
+    .update(transactions)
+    .set({
+      categoryId,
+      categorySource: "auto",
+      categoryConfidence: "low",
+      categoryReason: "Merchant resembles a restaurant",
+    })
+    .where(eq(transactions.id, before.id));
+  pushSyncUpdates(item.accessToken, {
+    added: [posted()],
+    removed: [removed("pending-source")],
+  });
+
+  await item.sync();
+
+  await expect(rowsFor(user.id)).resolves.toMatchObject([
+    {
+      id: before.id,
+      categoryId,
+      categorySource: "auto",
+      categoryConfidence: "low",
+      categoryReason: "Merchant resembles a restaurant",
+      status: "posted",
+      sourceId: "posted-source",
+    },
+  ]);
+});
+
+test("an explicit link can claim only a pending row", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const alreadyPosted = pending();
+  alreadyPosted.pending = false;
+  alreadyPosted.name = "ALREADY POSTED";
+  const item = await backfilled(clerkUserId, alreadyPosted);
+  const user = await internalUser(clerkUserId);
+  const [before] = await rowsFor(user.id);
+  pushSyncUpdates(item.accessToken, { added: [posted()] });
+
+  await item.sync();
+
+  await expect(rowsFor(user.id)).resolves.toMatchObject([
+    { id: before.id, description: "ALREADY POSTED", sourceId: "pending-source" },
+    { description: "POSTED CHARGE", sourceId: "posted-source" },
   ]);
 });
 
