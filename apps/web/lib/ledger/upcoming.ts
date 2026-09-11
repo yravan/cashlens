@@ -81,17 +81,22 @@ export function projectUpcoming(
       amountMinor: stream.typicalAmountMinor,
       lastDate: stream.lastDate,
     };
-    const first = nextExpectedDate(stream.lastDate, stream.cadence);
+    const anchorDay =
+      stream.cadence === "monthly" || stream.cadence === "annual"
+        ? Number(stream.lastDate.slice(8, 10))
+        : undefined;
+    const advance = (date: string) => nextExpectedDate(date, stream.cadence, anchorDay);
+    const first = advance(stream.lastDate);
     let next = first;
     if (first < reference) {
-      next = nextExpectedDate(first, stream.cadence);
+      next = advance(first);
       if (next < reference) {
         stale.push(base);
         continue;
       }
       listed.push({ ...base, date: first, overdue: true });
     }
-    for (; next <= monthEnd; next = nextExpectedDate(next, stream.cadence)) {
+    for (; next <= monthEnd; next = advance(next)) {
       listed.push({ ...base, date: next, overdue: false });
     }
   }
