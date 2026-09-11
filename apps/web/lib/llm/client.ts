@@ -16,7 +16,7 @@ export { InvalidClassificationError } from "./classify";
 const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const TIMEOUT_MS = 30_000;
-const PROMPT_VERSION = "classification-prompt-v1";
+const PROMPT_VERSION = "classification-prompt-v2";
 const ASSIGNMENT_SCHEMA_VERSION = "transaction-classification-v1";
 const PROVIDER_POLICY = { data_collection: "deny", require_parameters: true } as const;
 
