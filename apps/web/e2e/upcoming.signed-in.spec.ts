@@ -90,6 +90,29 @@ test.describe("upcoming expenses view", () => {
     await expect(page.getByTestId("upcoming-charge")).not.toContainText("not seen");
   });
 
+  test("a January month-end subscription stays due on March 31 after February", async ({ page }) => {
+    await adminQuery(
+      `update transactions set date = case date
+         when '2026-01-29' then '2025-11-30'::date
+         when '2026-02-28' then '2025-12-31'::date
+         when '2026-03-29' then '2026-01-31'::date end
+       where user_id = $1 and merchant = 'Streamflix'`,
+      [await userIdOf("a")],
+    );
+    await page.goto("/upcoming?on=2026-03-29");
+    await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$46.00");
+    const charges = page.getByTestId("upcoming-charge");
+    await expect(charges).toHaveCount(2);
+    await expect(charges.nth(0)).toContainText("expected Feb 28, 2026");
+    await expect(charges.nth(0)).toContainText("not seen yet");
+    await expect(charges.nth(1)).toContainText("expected Mar 31, 2026");
+    await expect(charges.nth(1)).not.toContainText("not seen yet");
+    const calendar = page.getByTestId("upcoming-calendar");
+    await expect(calendar.locator("caption")).toHaveText("March 2026");
+    await expect(calendar.locator("td").filter({ hasText: "Streamflix" })).toContainText("31");
+    await expect(page.getByTestId("upcoming-stale-stream")).toHaveCount(0);
+  });
+
   test("a reference far past the data projects nothing and says so, instead of phantom bills", async ({
     page,
   }) => {

@@ -12,6 +12,8 @@ const CONFIGURED =
   !!process.env.PLAID_SECRET &&
   process.env.PLAID_ENV === "sandbox";
 
+test.use({ trace: "off" });
+
 test.describe("plaid connect flow (real sandbox)", () => {
   test.skip(!CONFIGURED, "PLAID_* sandbox keys not configured");
 
@@ -278,6 +280,124 @@ test.describe("plaid connect flow (real sandbox)", () => {
       await adminQuery("delete from accounts where connection_id = $1", [connectionId]);
       await adminQuery("delete from connections where id = $1", [connectionId]);
     }
+  });
+
+  test.describe("connect completion race", () => {
+    test("does not report only this browser's sync additions", async ({ page }) => {
+      test.setTimeout(180_000);
+
+      const minted = await fetch("https://sandbox.plaid.com/sandbox/public_token/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          client_id: process.env.PLAID_CLIENT_ID,
+          secret: process.env.PLAID_SECRET,
+          institution_id: "ins_109508",
+          initial_products: ["transactions"],
+        }),
+      });
+      expect(minted.status).toBe(200);
+      const { public_token } = await minted.json();
+
+      // Keep the real Link callback contract while avoiding the hosted UI. The
+      // one-time public token still goes through the real exchange route below.
+      await page.addInitScript((token) => {
+        (window as Window & { __cashLensPlaidPublicToken?: string }).__cashLensPlaidPublicToken = token;
+      }, public_token);
+      await page.route("https://cdn.plaid.com/link/v2/stable/link-initialize.js", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/javascript",
+          body: `
+            window.Plaid = {
+              create(config) {
+                config.onLoad?.();
+                return {
+                  open() {
+                    const token = window.__cashLensPlaidPublicToken;
+                    delete window.__cashLensPlaidPublicToken;
+                    config.onSuccess(token, {
+                      institution: { institution_id: "ins_109508", name: "First Platypus Bank" },
+                      accounts: [],
+                      link_session_id: "e2e-link",
+                    });
+                  },
+                  exit(_options, callback) { callback?.(); },
+                  destroy() {},
+                };
+              },
+            };
+          `,
+        });
+      });
+
+      let releaseSyncRequests: (() => void) | undefined;
+      let syncRequestsReleased = false;
+      const syncRequestsGate = new Promise<void>((resolve) => {
+        releaseSyncRequests = () => {
+          syncRequestsReleased = true;
+          resolve();
+        };
+      });
+      let firstSyncResolve!: (connectionId: string) => void;
+      const firstSyncRequest = new Promise<string>((resolve) => {
+        firstSyncResolve = resolve;
+      });
+      let sawFirstSync = false;
+      const syncRoute = "**/api/connections/*/sync";
+      await page.goto("/accounts");
+      await cleanup();
+      await page.route(syncRoute, async (route) => {
+        const match = new URL(route.request().url()).pathname.match(
+          /^\/api\/connections\/([^/]+)\/sync$/,
+        );
+        if (!match) {
+          await route.continue();
+          return;
+        }
+        if (!sawFirstSync) {
+          sawFirstSync = true;
+          firstSyncResolve(match[1]);
+        }
+        if (!syncRequestsReleased) await syncRequestsGate;
+        await route.continue();
+      });
+
+      try {
+        await page.reload();
+        await page.getByTestId("connect-bank").click();
+
+        const connectionId = await firstSyncRequest;
+        let winnerAdded = 0;
+        await expect
+          .poll(
+            async () => {
+              const response = await page.request.post(`/api/connections/${connectionId}/sync`);
+              if (response.status() === 429) return "rate_limited";
+              expect(response.status()).toBe(200);
+              const step = (await response.json()) as {
+                backfillStatus?: string;
+                drained?: boolean;
+                added?: number;
+              };
+              winnerAdded += step.added ?? 0;
+              return `${step.backfillStatus}:${step.drained}`;
+            },
+            { timeout: 90_000, intervals: [1_000] },
+          )
+          .toBe("complete:true");
+        expect(winnerAdded).toBeGreaterThan(0);
+      } finally {
+        releaseSyncRequests?.();
+        await page.unroute(syncRoute);
+        await page.unroute("https://cdn.plaid.com/link/v2/stable/link-initialize.js");
+      }
+
+      await expect(page.getByTestId("connect-status")).toHaveText(
+        /Connected First Platypus Bank — \d+ accounts registered\. Transaction history imported\./,
+        { timeout: 30_000 },
+      );
+    });
   });
 
   test("a backfill that never got driven self-heals from the accounts page", async ({ page }) => {
