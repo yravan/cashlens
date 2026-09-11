@@ -4,8 +4,10 @@ import { expect, test } from "vitest";
 
 import {
   createConnection,
+  createConnectionAs,
   disconnectConnection,
   listConnections,
+  listPlaidCleanupIds,
   readConnectionCredential,
 } from "@/lib/data/connections";
 import { requireUser } from "@/lib/data/users";
@@ -137,6 +139,38 @@ test("the app role cannot rewrite connection identity or delete connection rows"
   await denied("update connections set status = 'provisioning'");
   await denied("update connection_credentials set ciphertext = 'x'");
   await denied("delete from connections");
+});
+
+test("cleanup discovery is owner-only, stale-state-only, and bounded", async () => {
+  const clerkA = fakeClerkUserId();
+  const clerkB = fakeClerkUserId();
+  const userA = await withAuth(clerkA, () => requireUser());
+  const userB = await withAuth(clerkB, () => requireUser());
+  const provision = (user: typeof userA, item: string) =>
+    createConnectionAs(user, {
+      provider: "plaid",
+      credential: `access-sandbox-${item}`,
+      providerItemId: `item-${item}`,
+    }, "provisioning");
+
+  const eligible = await Promise.all(
+    Array.from({ length: 6 }, (_, index) => provision(userA, `eligible-${index}`)),
+  );
+  const foreign = await provision(userB, "foreign");
+  await adminDb()
+    .update(connections)
+    .set({ status: "cleanup_required" })
+    .where(sql`${connections.id} = ${eligible[0].id}`);
+  await adminDb().update(connections).set({ updatedAt: new Date("2000-01-01T00:00:00Z") });
+  await provision(userA, "fresh");
+  await createConnectionAs(userA, { provider: "plaid", credential: TOKEN_A });
+  const disconnected = await createConnectionAs(userA, { provider: "plaid", credential: TOKEN_B });
+  await withAuth(clerkA, () => disconnectConnection(disconnected.id));
+
+  expect(await withAuth(clerkA, () => listPlaidCleanupIds())).toEqual(
+    eligible.map(({ id }) => id).sort().slice(0, 5),
+  );
+  expect(await withAuth(clerkB, () => listPlaidCleanupIds())).toEqual([foreign.id]);
 });
 
 test("every connection function requires a signed-in user", async () => {
