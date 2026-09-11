@@ -133,7 +133,9 @@ const timestamps = {
 export const connectionProvider = pgEnum("connection_provider", ["plaid"]);
 
 export const connectionStatus = pgEnum("connection_status", [
+  "provisioning",
   "active",
+  "cleanup_required",
   "disconnected",
 ]);
 

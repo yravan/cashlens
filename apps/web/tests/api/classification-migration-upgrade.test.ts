@@ -32,15 +32,18 @@ type MigrationJournal = {
 
 const MIGRATIONS = path.join(APP_DIR, "db", "migrations");
 const DATABASE_NAME = /^cashlens_upgrade_[a-f0-9]{16}$/;
+const SCHEMA_MIGRATION = "0028_classification_journal";
+const GRANTS_MIGRATION = "0029_classification_journal_grants";
 
 async function stageBaseline(destination: string): Promise<void> {
   const journal = JSON.parse(
     await readFile(path.join(MIGRATIONS, "meta", "_journal.json"), "utf8"),
   ) as MigrationJournal;
-  const cutoff = journal.entries.findIndex((entry) =>
-    entry.tag.endsWith("_classification_journal"),
-  );
+  const cutoff = journal.entries.findIndex((entry) => entry.tag === SCHEMA_MIGRATION);
   if (cutoff < 0) throw new Error("classification journal migration is missing from the journal");
+  if (journal.entries[cutoff + 1]?.tag !== GRANTS_MIGRATION) {
+    throw new Error("classification journal grants migration is missing from the journal");
+  }
 
   const entries = journal.entries.slice(0, cutoff);
   const meta = path.join(destination, "meta");
