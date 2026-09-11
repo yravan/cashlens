@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { sql } from "drizzle-orm";
 
 import { EXPECTED, SEED_PERSONAS, SEED_UPCOMING_REFERENCE, SEED_USERS } from "@/db/seed/dataset";
 import { seedDataset } from "@/db/seed/seed";
@@ -74,6 +75,25 @@ test("a reference far past the data goes honestly stale: no phantom months of ch
     ["Streamflix", "2026-03-29"],
     ["Acme Corp", "2026-03-27"],
   ]);
+});
+
+test("a detected January month-end stream keeps March's anchor and both charges", async () => {
+  await seedDataset(adminDb());
+  await adminDb().execute(sql`
+    update transactions set date = case date
+      when '2026-01-29' then '2025-11-30'::date
+      when '2026-02-28' then '2025-12-31'::date
+      when '2026-03-29' then '2026-01-31'::date end
+    where user_id = ${SEED_USERS.demo.id} and merchant = 'Streamflix'
+  `);
+  const overview = await overviewAs("demo", "2026-03-29");
+  const [usd] = overview.currencies;
+  expect(usd?.toLeaveMinor).toBe(-4600);
+  expect(usd.charges.map(({ name, date, overdue }) => [name, date, overdue])).toEqual([
+    ["Streamflix", "2026-02-28", true],
+    ["Streamflix", "2026-03-31", false],
+  ]);
+  expect(overview.stale).toEqual([]);
 });
 
 test("cross-user isolation: the neighbor's projection knows nothing of demo streams", async () => {

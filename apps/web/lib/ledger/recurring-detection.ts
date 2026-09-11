@@ -74,7 +74,11 @@ export function normalizeRecurringName(raw: string): string {
   return (end > 0 ? tokens.slice(0, end) : tokens).join(" ");
 }
 
-export function nextExpectedDate(lastDate: string, cadence: RecurringCadence): string {
+export function nextExpectedDate(
+  lastDate: string,
+  cadence: RecurringCadence,
+  anchorDay?: number,
+): string {
   const [year, month, day] = lastDate.split("-").map(Number);
   if (cadence === "weekly" || cadence === "biweekly") {
     const next = new Date(Date.UTC(year, month - 1, day + (cadence === "weekly" ? 7 : 14)));
@@ -83,7 +87,7 @@ export function nextExpectedDate(lastDate: string, cadence: RecurringCadence): s
   const nextYear = cadence === "annual" ? year + 1 : year + (month === 12 ? 1 : 0);
   const nextMonth = cadence === "annual" ? month : (month % 12) + 1;
   const monthLength = new Date(Date.UTC(nextYear, nextMonth, 0)).getUTCDate();
-  const clamped = Math.min(day, monthLength);
+  const clamped = Math.min(anchorDay ?? day, monthLength);
   return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(clamped).padStart(2, "0")}`;
 }
 
