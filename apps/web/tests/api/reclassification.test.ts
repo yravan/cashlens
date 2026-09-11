@@ -13,7 +13,7 @@ import {
   rollbackReclassification,
 } from "@/lib/data/reclassification";
 import { requireUser } from "@/lib/data/users";
-import { withRequestScope } from "@/lib/db/client";
+import { withRequestScope, type ScopedTx } from "@/lib/db/client";
 import {
   accounts,
   categories,
@@ -128,6 +128,73 @@ async function categoryState(transactionId: string) {
     .from(transactions)
     .where(eq(transactions.id, transactionId));
   return row;
+}
+
+async function waitUntil(predicate: () => Promise<boolean>, message: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (await predicate()) return;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  throw new Error(message);
+}
+
+async function waitForBlocking(pid: number, message: string): Promise<void> {
+  await waitUntil(async () => {
+    const result = await adminDb().execute(sql`
+      select exists (
+        select 1 from pg_stat_activity where ${pid} = any(pg_blocking_pids(pid))
+      ) as blocking
+    `);
+    return Boolean((result.rows[0] as { blocking: boolean }).blocking);
+  }, message);
+}
+
+async function waitUntilBlocked(pid: number, message: string, clerkUserId: string): Promise<void> {
+  await waitUntil(async () => withRequestScope(clerkUserId, async (tx) => {
+    const result = await tx.execute(sql`
+      select cardinality(pg_blocking_pids(pid)) > 0 as blocked
+      from pg_stat_activity where pid = ${pid}
+    `);
+    return Boolean((result.rows[0] as { blocked?: boolean } | undefined)?.blocked);
+  }), message);
+}
+
+async function holdDbLock(acquire: (tx: ScopedTx) => Promise<unknown>) {
+  let signalReady!: (pid: number) => void;
+  let signalRelease = () => {};
+  const ready = new Promise<number>((resolve) => { signalReady = resolve; });
+  const releaseSignal = new Promise<void>((resolve) => { signalRelease = resolve; });
+  const completion = adminDb().transaction(async (tx) => {
+    const result = await tx.execute(sql`select pg_backend_pid() as pid`);
+    const pid = Number((result.rows[0] as { pid: number }).pid);
+    await acquire(tx);
+    signalReady(pid);
+    await releaseSignal;
+  });
+  const pid = await ready;
+  let released = false;
+  return {
+    pid,
+    release: async () => {
+      if (!released) {
+        released = true;
+        signalRelease();
+      }
+      await completion;
+    },
+  };
+}
+
+async function startDbOperation(operation: (tx: ScopedTx) => Promise<unknown>) {
+  let signalStarted!: (pid: number) => void;
+  const started = new Promise<number>((resolve) => { signalStarted = resolve; });
+  const completion = adminDb().transaction(async (tx) => {
+    const result = await tx.execute(sql`select pg_backend_pid() as pid`);
+    signalStarted(Number((result.rows[0] as { pid: number }).pid));
+    await operation(tx);
+  });
+  return { pid: await started, completion };
 }
 
 test("proposal is automatic-only, confidence-bounded, unpaired, durable, and ledger-read-only", async () => {
@@ -336,7 +403,9 @@ test.each(["payload", "manual", "category", "transfer"] as const)(
   },
 );
 
-test("proposal finalization rechecks its lease after waiting for a target-row lock", async () => {
+test.each(["transaction", "run"] as const)(
+  "proposal finalization rechecks its lease after waiting for the %s row",
+  async (lockedRow) => {
   const owner = await fixture();
   const transactionId = await addAuto(owner);
   let monitor: Promise<void> | undefined;
@@ -356,134 +425,29 @@ test("proposal finalization rechecks its lease after waiting for a target-row lo
       .set({ inferenceLeaseUntil: sql`clock_timestamp() + interval '1 second'` })
       .where(eq(classificationRuns.id, run.id));
 
-    let release = () => {};
-    let locked = () => {};
-    let holderPid = 0;
-    const releaseSignal = new Promise<void>((resolve) => { release = resolve; });
-    const lockedSignal = new Promise<void>((resolve) => { locked = resolve; });
-    const holder = adminDb().transaction(async (tx) => {
-      const pid = await tx.execute(sql`select pg_backend_pid() as pid`);
-      holderPid = Number((pid.rows[0] as { pid: number }).pid);
-      await tx
-        .select({ id: transactions.id })
-        .from(transactions)
-        .where(eq(transactions.id, transactionId))
-        .for("update");
-      locked();
-      await releaseSignal;
-    });
-    await lockedSignal;
-    const waitUntil = async (predicate: () => Promise<boolean>, message: string) => {
-      const deadline = Date.now() + 5_000;
-      while (Date.now() < deadline) {
-        if (await predicate()) return;
-        await new Promise<void>((resolve) => setImmediate(resolve));
-      }
-      throw new Error(message);
-    };
-    monitor = (async () => {
-      try {
-        await waitUntil(async () => {
-          const result = await adminDb().execute(sql`
-            select exists (
-              select 1 from pg_stat_activity
-              where ${holderPid} = any(pg_blocking_pids(pid))
-            ) as blocked
-          `);
-          return Boolean((result.rows[0] as { blocked: boolean }).blocked);
-        }, "proposal finalizer never waited for the target row");
-        await waitUntil(async () => {
-          const result = await adminDb().execute(sql`
-            select inference_lease_until <= clock_timestamp() as expired
-            from classification_runs where id = ${run.id}
-          `);
-          return Boolean((result.rows[0] as { expired: boolean }).expired);
-        }, "proposal lease did not expire while blocked");
-      } finally {
-        release();
-        await holder;
-      }
-    })();
-  });
-
-  await expect(proposeReclassification({
-    ownerClerkUserId: owner.clerkUserId,
-    operatorActor: OPERATOR,
-    maxRows: 1,
-    policy: "all_auto",
-  })).rejects.toBeInstanceOf(ReclassificationStaleError);
-  await monitor;
-  await expect(adminDb().$count(classificationProposals)).resolves.toBe(0);
-  const [run] = await adminDb().select({ status: classificationRuns.status }).from(classificationRuns);
-  expect(run.status).toBe("expired");
-});
-
-test("proposal finalization rechecks its lease after waiting for the run-row lock", async () => {
-  const owner = await fixture();
-  await addAuto(owner);
-  let monitor: Promise<void> | undefined;
-  primeClassification([
-    { item: 0, category: labelIndex("Groceries"), confidence: "high", reason: "Replacement" },
-  ]);
-  onceBeforeClassificationResponse(async () => {
-    const [run] = await adminDb()
-      .select({ id: classificationRuns.id })
-      .from(classificationRuns)
-      .where(and(
-        eq(classificationRuns.ownerUserId, owner.user.id),
-        eq(classificationRuns.status, "inferring"),
-      ));
-    await adminDb()
-      .update(classificationRuns)
-      .set({ inferenceLeaseUntil: sql`clock_timestamp() + interval '1 second'` })
-      .where(eq(classificationRuns.id, run.id));
-
-    let release = () => {};
-    let locked = () => {};
-    let holderPid = 0;
-    const releaseSignal = new Promise<void>((resolve) => { release = resolve; });
-    const lockedSignal = new Promise<void>((resolve) => { locked = resolve; });
-    const holder = adminDb().transaction(async (tx) => {
-      const pid = await tx.execute(sql`select pg_backend_pid() as pid`);
-      holderPid = Number((pid.rows[0] as { pid: number }).pid);
-      await tx
+    const held = await holdDbLock((tx) => lockedRow === "run"
+      ? tx
         .select({ id: classificationRuns.id })
         .from(classificationRuns)
         .where(eq(classificationRuns.id, run.id))
-        .for("update");
-      locked();
-      await releaseSignal;
-    });
-    await lockedSignal;
-    const waitUntil = async (predicate: () => Promise<boolean>, message: string) => {
-      const deadline = Date.now() + 5_000;
-      while (Date.now() < deadline) {
-        if (await predicate()) return;
-        await new Promise<void>((resolve) => setImmediate(resolve));
-      }
-      throw new Error(message);
-    };
+        .for("update")
+      : tx
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(eq(transactions.id, transactionId))
+        .for("update"));
     monitor = (async () => {
       try {
-        await waitUntil(async () => {
-          const result = await adminDb().execute(sql`
-            select exists (
-              select 1 from pg_stat_activity
-              where ${holderPid} = any(pg_blocking_pids(pid))
-            ) as blocked
-          `);
-          return Boolean((result.rows[0] as { blocked: boolean }).blocked);
-        }, "proposal finalizer never waited for the run row");
+        await waitForBlocking(held.pid, `proposal finalizer never waited for the ${lockedRow} row`);
         await waitUntil(async () => {
           const result = await adminDb().execute(sql`
             select inference_lease_until <= clock_timestamp() as expired
             from classification_runs where id = ${run.id}
           `);
           return Boolean((result.rows[0] as { expired: boolean }).expired);
-        }, "proposal lease did not expire while waiting for its run row");
+        }, `proposal lease did not expire while waiting for its ${lockedRow} row`);
       } finally {
-        release();
-        await holder;
+        await held.release();
       }
     })();
   });
@@ -502,7 +466,8 @@ test("proposal finalization rechecks its lease after waiting for the run-row loc
     .from(classificationRuns)
     .orderBy(classificationRuns.createdAt);
   expect(runs).toEqual([{ status: "expired" }, { status: "proposed" }]);
-});
+  },
+);
 
 test("apply rechecks proposal expiry after waiting for all target-row locks", async () => {
   const owner = await fixture();
@@ -513,23 +478,11 @@ test("apply rechecks proposal expiry after waiting for all target-row locks", as
     .set({ expiresAt: sql`clock_timestamp() + interval '1 second'` })
     .where(eq(classificationRuns.id, proposed.runId));
 
-  let release = () => {};
-  let locked = () => {};
-  let holderPid = 0;
-  const releaseSignal = new Promise<void>((resolve) => { release = resolve; });
-  const lockedSignal = new Promise<void>((resolve) => { locked = resolve; });
-  const holder = adminDb().transaction(async (tx) => {
-    const pid = await tx.execute(sql`select pg_backend_pid() as pid`);
-    holderPid = Number((pid.rows[0] as { pid: number }).pid);
-    await tx
+  const held = await holdDbLock((tx) => tx
       .select({ id: transactions.id })
       .from(transactions)
       .where(eq(transactions.id, transactionId))
-      .for("update");
-    locked();
-    await releaseSignal;
-  });
-  await lockedSignal;
+      .for("update"));
   const before = await categoryState(transactionId);
   const applying = applyReclassification({
     ownerClerkUserId: owner.clerkUserId,
@@ -537,24 +490,8 @@ test("apply rechecks proposal expiry after waiting for all target-row locks", as
     runId: proposed.runId,
     approvalHash: proposed.approvalHash,
   });
-  const waitUntil = async (predicate: () => Promise<boolean>, message: string) => {
-    const deadline = Date.now() + 5_000;
-    while (Date.now() < deadline) {
-      if (await predicate()) return;
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-    throw new Error(message);
-  };
   try {
-    await waitUntil(async () => {
-      const result = await adminDb().execute(sql`
-        select exists (
-          select 1 from pg_stat_activity
-          where ${holderPid} = any(pg_blocking_pids(pid))
-        ) as blocked
-      `);
-      return Boolean((result.rows[0] as { blocked: boolean }).blocked);
-    }, "apply never waited for the target row");
+    await waitForBlocking(held.pid, "apply never waited for the target row");
     await waitUntil(async () => {
       const result = await adminDb().execute(sql`
         select expires_at <= clock_timestamp() as expired
@@ -563,8 +500,7 @@ test("apply rechecks proposal expiry after waiting for all target-row locks", as
       return Boolean((result.rows[0] as { expired: boolean }).expired);
     }, "proposal did not expire while apply was blocked");
   } finally {
-    release();
-    await holder;
+    await held.release();
   }
   await expect(applying).rejects.toBeInstanceOf(ReclassificationStateError);
   expect(await categoryState(transactionId)).toEqual(before);
@@ -575,23 +511,11 @@ test("a concurrent transfer insert wins its FK-lock race with apply and becomes 
   const transactionId = await addAuto(owner);
   const companion = await addTransaction(owner, { description: "PAIR IN", amountMinor: 1299 });
   const proposed = await propose(owner);
-  let release = () => {};
-  let inserted = () => {};
-  let holderPid = 0;
-  const releaseSignal = new Promise<void>((resolve) => { release = resolve; });
-  const insertedSignal = new Promise<void>((resolve) => { inserted = resolve; });
-  const holder = adminDb().transaction(async (tx) => {
-    const pid = await tx.execute(sql`select pg_backend_pid() as pid`);
-    holderPid = Number((pid.rows[0] as { pid: number }).pid);
-    await tx.insert(transferPairs).values({
+  const held = await holdDbLock((tx) => tx.insert(transferPairs).values({
       userId: owner.user.id,
       outflowTransactionId: transactionId,
       inflowTransactionId: companion,
-    });
-    inserted();
-    await releaseSignal;
-  });
-  await insertedSignal;
+    }));
   const before = await categoryState(transactionId);
   const applying = applyReclassification({
     ownerClerkUserId: owner.clerkUserId,
@@ -599,23 +523,10 @@ test("a concurrent transfer insert wins its FK-lock race with apply and becomes 
     runId: proposed.runId,
     approvalHash: proposed.approvalHash,
   });
-  const deadline = Date.now() + 5_000;
   try {
-    let blocked = false;
-    while (!blocked && Date.now() < deadline) {
-      const result = await adminDb().execute(sql`
-        select exists (
-          select 1 from pg_stat_activity
-          where ${holderPid} = any(pg_blocking_pids(pid))
-        ) as blocked
-      `);
-      blocked = Boolean((result.rows[0] as { blocked: boolean }).blocked);
-      if (!blocked) await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-    expect(blocked).toBe(true);
+    await waitForBlocking(held.pid, "apply never waited for the transfer FK lock");
   } finally {
-    release();
-    await holder;
+    await held.release();
   }
   await expect(applying).resolves.toEqual({
     runId: proposed.runId,
@@ -624,6 +535,151 @@ test("a concurrent transfer insert wins its FK-lock race with apply and becomes 
     conflicted: 1,
   });
   expect(await categoryState(transactionId)).toEqual(before);
+});
+
+test.each(["rename", "root insert"] as const)(
+  "the categories trigger blocks a same-owner %s until proposal finalization commits",
+  async (mutation) => {
+    const owner = await fixture();
+    const transactionId = await addAuto(owner);
+    let monitor: Promise<void> | undefined;
+    primeClassification([
+      { item: 0, category: labelIndex("Groceries"), confidence: "high", reason: "Replacement" },
+    ]);
+    onceBeforeClassificationResponse(async () => {
+      const held = await holdDbLock((tx) => tx
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(eq(transactions.id, transactionId))
+        .for("update"));
+      monitor = (async () => {
+        let pending: Awaited<ReturnType<typeof startDbOperation>> | undefined;
+        try {
+          await waitForBlocking(held.pid, "proposal finalizer never reached its target lock");
+          pending = await startDbOperation((tx) => mutation === "rename"
+            ? tx
+              .update(categories)
+              .set({ name: "Renamed after taxonomy read" })
+              .where(eq(categories.id, owner.leaf("Groceries")))
+            : tx.insert(categories).values({
+              userId: owner.user.id,
+              name: "Late root",
+              sortOrder: 999,
+            }));
+          await waitUntilBlocked(
+            pending.pid,
+            `same-owner taxonomy ${mutation} did not wait for the advisory lock`,
+            owner.clerkUserId,
+          );
+        } finally {
+          await held.release();
+        }
+        await pending?.completion;
+      })();
+    });
+
+    const proposed = await proposeReclassification({
+      ownerClerkUserId: owner.clerkUserId,
+      operatorActor: OPERATOR,
+      maxRows: 1,
+      policy: "all_auto",
+    });
+    await monitor;
+    expect(proposed).toMatchObject({ status: "proposed", proposed: 1 });
+    if (proposed.status !== "proposed") throw new Error("expected proposal");
+    if (mutation === "rename") {
+      await expect(applyReclassification({
+        ownerClerkUserId: owner.clerkUserId,
+        operatorActor: OPERATOR,
+        runId: proposed.runId,
+        approvalHash: proposed.approvalHash,
+      })).rejects.toBeInstanceOf(ReclassificationStateError);
+    } else {
+      await expect(adminDb().$count(categories, and(
+        eq(categories.userId, owner.user.id),
+        eq(categories.name, "Late root"),
+      ))).resolves.toBe(1);
+    }
+  },
+  15_000,
+);
+
+test("a different owner's taxonomy write is independent of proposal finalization", async () => {
+  const a = await fixture();
+  const b = await fixture();
+  const transactionId = await addAuto(a);
+  let monitor: Promise<void> | undefined;
+  primeClassification([
+    { item: 0, category: labelIndex("Groceries"), confidence: "high", reason: "Replacement" },
+  ]);
+  onceBeforeClassificationResponse(async () => {
+    const held = await holdDbLock((tx) => tx
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(eq(transactions.id, transactionId))
+      .for("update"));
+    monitor = (async () => {
+      try {
+        await waitForBlocking(held.pid, "proposal finalizer never reached its target lock");
+        let completed = false;
+        const pending = await startDbOperation((tx) => tx.insert(categories).values({
+          userId: b.user.id,
+          name: "Independent root",
+          sortOrder: 999,
+        }));
+        const completion = pending.completion.then(() => { completed = true; });
+        await waitUntil(async () => completed, "different-owner taxonomy write was blocked");
+        await completion;
+      } finally {
+        await held.release();
+      }
+    })();
+  });
+
+  await expect(proposeReclassification({
+    ownerClerkUserId: a.clerkUserId,
+    operatorActor: OPERATOR,
+    maxRows: 1,
+    policy: "all_auto",
+  })).resolves.toMatchObject({ status: "proposed", proposed: 1 });
+  await monitor;
+});
+
+test("apply holds the owner taxonomy lock from validation through commit", async () => {
+  const owner = await fixture();
+  const transactionId = await addAuto(owner);
+  const proposed = await propose(owner);
+  const held = await holdDbLock((tx) => tx
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(eq(transactions.id, transactionId))
+    .for("update"));
+  const applying = applyReclassification({
+    ownerClerkUserId: owner.clerkUserId,
+    operatorActor: OPERATOR,
+    runId: proposed.runId,
+    approvalHash: proposed.approvalHash,
+  });
+  await waitForBlocking(held.pid, "apply never reached its target lock");
+  const rename = await startDbOperation((tx) => tx
+    .update(categories)
+    .set({ name: "Renamed after apply taxonomy read" })
+    .where(eq(categories.id, owner.leaf("Groceries"))));
+  try {
+    await waitUntilBlocked(
+      rename.pid,
+      "taxonomy rename did not wait for apply's advisory lock",
+      owner.clerkUserId,
+    );
+  } finally {
+    await held.release();
+  }
+  await expect(applying).resolves.toMatchObject({ status: "applied", applied: 1 });
+  await rename.completion;
+  expect(await categoryState(transactionId)).toMatchObject({
+    categoryId: owner.leaf("Groceries"),
+    runId: proposed.runId,
+  });
 });
 
 test.each(["manual", "transfer", "aba", "microsecond"] as const)(

@@ -170,6 +170,10 @@ async function taxonomyFor(tx: ScopedTx, ownerUserId: string): Promise<TaxonomyL
   );
 }
 
+async function lockTaxonomy(tx: ScopedTx): Promise<void> {
+  await tx.execute(sql`select public.app_lock_category_taxonomy()`);
+}
+
 const candidateSelection = {
   id: transactions.id,
   description: transactions.description,
@@ -338,6 +342,7 @@ export async function proposeReclassification(input: OperatorScope & {
 
   const finalized = await withRequestScope(input.ownerClerkUserId, async (tx) => {
     if (!(await lockLiveInferenceRun(tx, admitted.ownerUserId, runId))) return null;
+    await lockTaxonomy(tx);
     const currentLeaves = await taxonomyFor(tx, admitted.ownerUserId);
     await tx
       .select({ id: transactions.id })
@@ -532,6 +537,7 @@ export async function applyReclassification(input: OperatorScope & {
     if (proposals.some((proposal) => proposal.state !== "proposed")) {
       throw new ReclassificationStateError("proposal set has already been consumed");
     }
+    await lockTaxonomy(tx);
     const leaves = await taxonomyFor(tx, owner.id);
     if (taxonomyFingerprint(leaves) !== run.taxonomyFingerprint) {
       throw new ReclassificationStateError("taxonomy changed after proposal creation");
