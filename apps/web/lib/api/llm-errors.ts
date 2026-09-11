@@ -1,5 +1,6 @@
 import {
   InvalidClassificationError,
+  InferenceBusyError,
   LlmRateLimitedError,
   LlmUnavailableError,
   LlmUnconfiguredError,
@@ -8,6 +9,12 @@ import {
 export const LLM_RETRY_AFTER_SECONDS = 30;
 
 export function llmErrorResponse(error: unknown): Response {
+  if (error instanceof InferenceBusyError) {
+    return Response.json(
+      { error: "classification_busy" },
+      { status: 429, headers: { "retry-after": String(error.retryAfterSeconds) } },
+    );
+  }
   if (error instanceof LlmUnconfiguredError) {
     return Response.json({ error: "llm_unconfigured" }, { status: 503 });
   }
