@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 
 import { errorClass } from "@/lib/log";
 import {
@@ -15,6 +16,9 @@ export { InvalidClassificationError } from "./classify";
 const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const TIMEOUT_MS = 30_000;
+const PROMPT_VERSION = "classification-prompt-v1";
+const ASSIGNMENT_SCHEMA_VERSION = "transaction-classification-v1";
+const PROVIDER_POLICY = { data_collection: "deny", require_parameters: true } as const;
 
 export class LlmUnconfiguredError extends Error {}
 export class LlmRateLimitedError extends Error {}
@@ -49,6 +53,9 @@ function errorForCode(code: unknown): Error {
 }
 
 type ChatCompletion = {
+  id?: unknown;
+  model?: unknown;
+  usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
   error?: { code?: unknown };
   choices?: {
     error?: { code?: unknown };
@@ -56,6 +63,57 @@ type ChatCompletion = {
     message?: { content?: unknown };
   }[];
 };
+
+export type ClassificationRequest = {
+  requestedModel: string;
+  promptVersion: string;
+  assignmentSchemaVersion: string;
+  providerPolicyFingerprint: string;
+  classify: (items: ClassifyItem[], categoryLabels: string[]) => Promise<ClassificationResult>;
+};
+
+export type ClassificationMetadata = {
+  responseModel: string | null;
+  providerGenerationId: string | null;
+  providerInputTokens: number | null;
+  providerOutputTokens: number | null;
+};
+
+export type ClassificationResult = {
+  assignments: ClassifyAssignment[];
+  metadata: ClassificationMetadata;
+};
+
+const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
+
+export function captureClassificationRequest(): ClassificationRequest {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) throw new LlmUnconfiguredError("OPENROUTER_API_KEY is not set");
+  const requestedModel = process.env.LLM_MODEL || DEFAULT_MODEL;
+  if (requestedModel.length < 1 || requestedModel.length > 200) {
+    throw new LlmUnconfiguredError("LLM_MODEL must be between 1 and 200 characters");
+  }
+  const endpoint = `${baseUrl()}/chat/completions`;
+  const identity = {
+    requestedModel,
+    promptVersion: PROMPT_VERSION,
+    assignmentSchemaVersion: ASSIGNMENT_SCHEMA_VERSION,
+    providerPolicyFingerprint: sha256(JSON.stringify(PROVIDER_POLICY)),
+  };
+  return {
+    ...identity,
+    classify: (items, categoryLabels) =>
+      classifyTransactions(items, categoryLabels, { requestedModel, endpoint, apiKey }),
+  };
+}
+
+const boundedText = (value: unknown): string | null =>
+  typeof value === "string" && value.length >= 1 && value.length <= 200 ? value : null;
+
+const tokenCount = (value: unknown): number | null =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= 2_147_483_647
+    ? value
+    : null;
 
 function contentText(content: unknown): string {
   if (typeof content === "string") return content;
@@ -68,23 +126,21 @@ function contentText(content: unknown): string {
     .join("");
 }
 
-export async function classifyTransactions(
+async function classifyTransactions(
   items: ClassifyItem[],
   categoryLabels: string[],
-): Promise<ClassifyAssignment[]> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new LlmUnconfiguredError("OPENROUTER_API_KEY is not set");
-  const endpoint = `${baseUrl()}/chat/completions`;
+  transport: { requestedModel: string; endpoint: string; apiKey: string },
+): Promise<ClassificationResult> {
   const { system, user } = classificationPrompt(items, categoryLabels);
 
   let response: Response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetch(transport.endpoint, {
       method: "POST",
-      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${transport.apiKey}`, "content-type": "application/json" },
       signal: AbortSignal.timeout(TIMEOUT_MS),
       body: JSON.stringify({
-        model: process.env.LLM_MODEL || DEFAULT_MODEL,
+        model: transport.requestedModel,
         max_tokens: 200 + items.length * 60,
         temperature: 0,
         messages: [
@@ -99,7 +155,7 @@ export async function classifyTransactions(
             schema: ASSIGNMENT_SCHEMA,
           },
         },
-        provider: { data_collection: "deny", require_parameters: true },
+        provider: PROVIDER_POLICY,
       }),
     });
   } catch (error) {
@@ -121,5 +177,13 @@ export async function classifyTransactions(
   if (choice.finish_reason !== "stop") {
     throw new InvalidClassificationError(`classification stopped on ${String(choice.finish_reason)}`);
   }
-  return parseAssignments(contentText(choice.message?.content), items.length, categoryLabels.length);
+  return {
+    assignments: parseAssignments(contentText(choice.message?.content), items.length, categoryLabels.length),
+    metadata: {
+      responseModel: boundedText(completion.model),
+      providerGenerationId: boundedText(completion.id),
+      providerInputTokens: tokenCount(completion.usage?.prompt_tokens),
+      providerOutputTokens: tokenCount(completion.usage?.completion_tokens),
+    },
+  };
 }

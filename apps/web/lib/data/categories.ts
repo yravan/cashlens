@@ -99,6 +99,8 @@ export async function setTransactionCategory(
         categorySource: categoryId === null ? null : "user",
         categoryConfidence: null,
         categoryReason: null,
+        categoryRunId: null,
+        categoryRevision: sql`${transactions.categoryRevision} + 1`,
         updatedAt: sql`now()`,
       })
       .where(and(eq(transactions.id, transactionId), eq(transactions.userId, user.id)))

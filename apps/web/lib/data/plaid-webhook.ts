@@ -7,7 +7,12 @@ import { advanceSyncFor } from "@/lib/data/plaid-sync";
 import { withPlaidItemScope } from "@/lib/db/client";
 import { connections, users } from "@/lib/db/schema";
 import { errorClass, logEvent } from "@/lib/log";
-import { verifyPlaidWebhook, WebhookVerificationError } from "@/lib/plaid/webhook";
+import {
+  verifyPlaidWebhook,
+  WebhookLookupBusyError,
+  WebhookLookupUnavailableError,
+  WebhookVerificationError,
+} from "@/lib/plaid/webhook";
 
 export const MAX_BODY_BYTES = 256 * 1024;
 // Legacy stream Plaid keeps sending alongside /transactions/sync; documented no-ops.
@@ -98,6 +103,20 @@ export async function handlePlaidWebhook(
   try {
     ({ stale } = await verifyPlaidWebhook(rawBody, verificationJwt));
   } catch (error) {
+    if (error instanceof WebhookLookupBusyError) {
+      logEvent("plaid_webhook.verification_busy", { reason: error.message });
+      return Response.json(
+        { error: "verification_busy" },
+        { status: 429, headers: { "cache-control": "no-store", "retry-after": "30" } },
+      );
+    }
+    if (error instanceof WebhookLookupUnavailableError) {
+      logEvent("plaid_webhook.verification_unavailable", { reason: error.message });
+      return Response.json(
+        { error: "verification_unavailable" },
+        { status: 503, headers: { "cache-control": "no-store", "retry-after": "30" } },
+      );
+    }
     if (error instanceof WebhookVerificationError) {
       logEvent("plaid_webhook.rejected", { reason: error.message });
       return Response.json({ error: "unverified" }, { status: 401 });

@@ -206,7 +206,10 @@ export type WebhookVerificationKey = {
 
 export async function getWebhookVerificationKey(keyId: string): Promise<WebhookVerificationKey> {
   try {
-    const { data } = await client().webhookVerificationKeyGet({ key_id: keyId });
+    const { data } = await client().webhookVerificationKeyGet(
+      { key_id: keyId },
+      { timeout: 5_000, signal: AbortSignal.timeout(5_000) },
+    );
     const { kid, kty, crv, alg, use, x, y, expired_at } = data.key;
     return { kid, kty, crv, alg, use, x, y, expiredAt: expired_at };
   } catch (error) {

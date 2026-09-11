@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { beforeEach, expect, test } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 
 import { POST as linkToken } from "@/app/api/plaid/link-token/route";
 import { POST as receiveWebhook } from "@/app/api/plaid/webhook/route";
@@ -8,6 +8,8 @@ import { connections, transactions } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 import {
+  failNextWebhookKey,
+  holdWebhookKeyRequests,
   linkTokenRequests,
   pushSyncUpdates,
   resetPlaidSubstitute,
@@ -205,6 +207,32 @@ test("a malformed kid is rejected before any key fetch — garbage cannot drive 
   expect(webhookKeyRequests).toEqual([WEBHOOK_KID]);
 });
 
+test("lookup pressure and provider failure stay retryable without authenticating the body", async () => {
+  const body = webhookBody("item-nobody-has");
+  failNextWebhookKey("API_ERROR", "INTERNAL_SERVER_ERROR");
+  const unavailable = await postWebhook(
+    body,
+    await signPlaidWebhook(body, { kid: "temporarily-unavailable" }),
+  );
+  expect(unavailable.status).toBe(503);
+  expect(unavailable.headers.get("retry-after")).toBe("30");
+  expect(unavailable.headers.get("cache-control")).toBe("no-store");
+  await expect(unavailable.json()).resolves.toEqual({ error: "verification_unavailable" });
+
+  const release = holdWebhookKeyRequests();
+  const held = postWebhook(body, await signPlaidWebhook(body, { kid: "held-novel" }));
+  await vi.waitFor(() => expect(webhookKeyRequests.at(-1)).toBe("held-novel"));
+  const busy = await postWebhook(body, await signPlaidWebhook(body, { kid: "blocked-novel" }));
+  expect(busy.status).toBe(429);
+  expect(busy.headers.get("retry-after")).toBe("30");
+  expect(busy.headers.get("cache-control")).toBe("no-store");
+  await expect(busy.json()).resolves.toEqual({ error: "verification_busy" });
+  release();
+  expect((await held).status).toBe(401);
+  expect(syncRequests).toHaveLength(0);
+  await expect(adminDb().$count(transactions)).resolves.toBe(0);
+});
+
 test("an HS256 signature never verifies even with the live kid", async () => {
   const { SignJWT } = await import("jose");
   const body = webhookBody("item-x");
@@ -307,7 +335,7 @@ test("an oversized body is refused before any verification work", async () => {
   expect(webhookKeyRequests).toHaveLength(0);
 });
 
-test("verification keys are cached, misses are negative-cached, and a new kid re-checks the rest", async () => {
+test("verification keys and misses are cached without refreshing unrelated keys", async () => {
   const { itemId } = await backfilled(fakeClerkUserId());
   const first = webhookBody(itemId);
   const second = webhookBody(itemId, "DEFAULT_UPDATE");
@@ -320,15 +348,13 @@ test("verification keys are cached, misses are negative-cached, and a new kid re
   expect((await postWebhook(first, await signPlaidWebhook(first, stranger))).status).toBe(401);
   expect(webhookKeyRequests).toEqual([WEBHOOK_KID, stranger.kid]);
 
-  // A kid Plaid does serve is a rotation signal: every cached unexpired key is
-  // re-fetched so one that has since retired starts being rejected.
+  // A newly served kid is cached without fanning out refreshes of other keys.
   const rotated = await signPlaidWebhook(first, { kid: WEBHOOK_RETIRED_KID, key: "retired" });
   expect((await postWebhook(first, rotated)).status).toBe(401);
   expect(webhookKeyRequests).toEqual([
     WEBHOOK_KID,
     stranger.kid,
     WEBHOOK_RETIRED_KID,
-    WEBHOOK_KID,
   ]);
 });
 
