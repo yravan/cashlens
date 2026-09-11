@@ -16,14 +16,14 @@ import {
   classificationRequests,
   onceBeforeClassificationResponse,
   primeClassification,
-  resetAnthropicSubstitute,
-} from "../harness/anthropic";
+  resetOpenRouterSubstitute,
+} from "../harness/openrouter";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 import { backfilled, CARD, CHECKING } from "./plaid-helpers";
 import { sandboxTransaction } from "../harness/plaid";
 
-beforeEach(resetAnthropicSubstitute);
+beforeEach(resetOpenRouterSubstitute);
 
 type Row = {
   account: number;

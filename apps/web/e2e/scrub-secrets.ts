@@ -2,16 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 
-const MARKER = "[redacted-e2e-secret]";
-const MIN_SECRET_LENGTH = 16;
-// Clerk rotates session/client JWTs mid-run, so harvested values provably miss live
-// tokens; these shapes also cover dev-browser and @clerk/testing (URL) tokens.
-const TOKEN_SHAPES = [
-  /\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/g,
-  /\bdvb_[\w-]{10,}/g,
-  /\b\d{10}-c_[\w-]{16,}/g,
-  /\b(?:access|public|link)-(?:sandbox|production)-[\w-]{10,}/g,
-];
+import { collectSecrets, redact } from "./redaction.mjs";
+
+export { collectSecrets } from "./redaction.mjs";
 
 type Parts = Record<string, string>;
 
@@ -22,39 +15,12 @@ function mapValues<A, B>(
   return Object.fromEntries(Object.entries(record).map(([k, v]) => [k, f(v)]));
 }
 
-export function collectSecrets(stateDir: string): string[] {
-  const secrets = new Set<string>();
-  const consider = (value: unknown) => {
-    if (typeof value === "string" && value.length >= MIN_SECRET_LENGTH) {
-      secrets.add(value);
-    }
-  };
-  consider(process.env.CLERK_SECRET_KEY);
-  consider(process.env.PLAID_SECRET);
-  for (const name of fs.existsSync(stateDir) ? fs.readdirSync(stateDir) : []) {
-    if (!name.endsWith(".json")) continue;
-    const state = JSON.parse(fs.readFileSync(path.join(stateDir, name), "utf8"));
-    for (const cookie of state.cookies ?? []) consider(cookie.value);
-    for (const origin of state.origins ?? []) {
-      for (const item of origin.localStorage ?? []) consider(item.value);
-    }
-  }
-  return [...secrets];
-}
-
 function listFiles(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
     return entry.isDirectory() ? listFiles(full) : [full];
   });
-}
-
-function redact(text: string, secrets: string[]): string {
-  let result = text;
-  for (const secret of secrets) result = result.split(secret).join(MARKER);
-  for (const shape of TOKEN_SHAPES) result = result.replace(shape, MARKER);
-  return result;
 }
 
 // One part per zip entry; any other file is a single unnamed part, read as latin1
