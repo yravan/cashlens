@@ -13,7 +13,6 @@ export default defineConfig({
     alias: {
       "@clerk/nextjs/server": path.join(web, "tests/harness/clerk.ts"),
       plaid: path.join(web, "tests/harness/plaid.ts"),
-      "@anthropic-ai/sdk": path.join(web, "tests/harness/anthropic.ts"),
       "server-only": path.join(web, "tests/harness/server-only.ts"),
       "@": web,
     },

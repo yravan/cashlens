@@ -9,7 +9,7 @@ import { connections, users } from "@/lib/db/schema";
 import { errorClass, logEvent } from "@/lib/log";
 import { verifyPlaidWebhook, WebhookVerificationError } from "@/lib/plaid/webhook";
 
-const MAX_BODY_BYTES = 256 * 1024;
+export const MAX_BODY_BYTES = 256 * 1024;
 // Legacy stream Plaid keeps sending alongside /transactions/sync; documented no-ops.
 const LEGACY_TRANSACTIONS_CODES = new Set([
   "INITIAL_UPDATE",

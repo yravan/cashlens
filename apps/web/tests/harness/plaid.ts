@@ -49,6 +49,7 @@ type SandboxItem = {
   accounts: SandboxAccount[];
   syncLog: SyncEvent[];
   updateStatus: string;
+  emptyCursorWhenEmpty?: boolean;
 };
 
 const byPublicToken = new Map<string, SandboxItem>();
@@ -411,7 +412,10 @@ export class PlaidApi {
     }
     const page = item.syncLog.slice(start, start + Math.min(count ?? 100, syncPageCap));
     const end = start + page.length;
-    const primed = item.syncLog.length > 0 || item.updateStatus !== "NOT_READY";
+    const empty = item.syncLog.length === 0;
+    // Plaid withholds the cursor until an item's transactions are available,
+    // including on a HISTORICAL_UPDATE_COMPLETE response that carries none.
+    const primed = !empty || (item.updateStatus !== "NOT_READY" && !item.emptyCursorWhenEmpty);
     if (afterSyncPage) {
       const hook = afterSyncPage;
       afterSyncPage = null;
