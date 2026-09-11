@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery } from "./db";
 import { expect, test } from "./fixtures";
+import { cleanupSandboxRows, disconnectSandboxItems } from "./sandbox-cleanup";
 
 // The Link UI itself is never driven — Plaid's own docs say to bypass it in
 // automated suites — so the API suite covers the flow logic and this covers the wire.
@@ -26,15 +28,55 @@ test.describe("plaid connect flow (real sandbox)", () => {
   }
 
   async function cleanup() {
-    await adminQuery(
-      `with mine as (select id from users where clerk_user_id = $1),
-            cleared as (delete from accounts where user_id in (select id from mine))
-       delete from connections where user_id in (select id from mine)`,
-      [clerkIdA()],
-    );
+    await cleanupSandboxRows(clerkIdA());
   }
 
+  test.afterEach(async ({ page }) => {
+    await disconnectSandboxItems(page, clerkIdA());
+    await cleanup();
+  });
+
   test.afterAll(cleanup);
+
+  test("raw cleanup refuses a credentialed connection and leaves it unchanged", async ({ page }) => {
+    await page.goto("/accounts");
+    await cleanup();
+    const connectionId = randomUUID();
+    const userId = await userIdA();
+
+    try {
+      await adminQuery(
+        `with inserted_connection as (
+           insert into connections
+             (id, user_id, provider, provider_item_id, institution_id, institution_name,
+              status, backfill_status, sync_cursor)
+           values ($1, $2, 'plaid', $3, 'e2e-guard', 'Synthetic guard fixture',
+                   'active', 'complete', 'e2e-guard-cursor')
+           returning id, user_id
+         )
+         insert into connection_credentials (connection_id, user_id, ciphertext)
+         select id, user_id, 'v1.e2e.guard'
+           from inserted_connection`,
+        [connectionId, userId, `e2e-guard-item-${connectionId}`],
+      );
+
+      const before = await adminQuery(
+        `select (select count(*)::int from connections where id = $1) as connections,
+                (select count(*)::int from connection_credentials where connection_id = $1) as credentials`,
+        [connectionId],
+      );
+      expect(before.rows[0]).toEqual({ connections: 1, credentials: 1 });
+      await expect(cleanup()).rejects.toThrow("refusing to delete a connection before provider cleanup");
+      const after = await adminQuery(
+        `select (select count(*)::int from connections where id = $1) as connections,
+                (select count(*)::int from connection_credentials where connection_id = $1) as credentials`,
+        [connectionId],
+      );
+      expect(after.rows[0]).toEqual(before.rows[0]);
+    } finally {
+      await adminQuery("delete from connections where id = $1 and user_id = $2", [connectionId, userId]);
+    }
+  });
 
   test("a sandbox public token exchanged through the app registers the institution and its accounts", async ({
     page,
