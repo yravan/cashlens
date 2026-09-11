@@ -2,6 +2,10 @@ import "server-only";
 import { and, asc, count, countDistinct, eq, inArray, lte, sql } from "drizzle-orm";
 
 import { decryptCredential, encryptCredential, SecretString, UUID_PATTERN } from "@/lib/crypto/credentials";
+import {
+  CONNECTION_CLEANUP_BATCH_SIZE,
+  CONNECTION_CLEANUP_LEASE_MS,
+} from "@/lib/connection-cleanup-policy";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
 import { accounts, connectionCredentials, connections, transactions } from "@/lib/db/schema";
@@ -201,7 +205,7 @@ export async function completeConnectionCleanupAs(
   });
 }
 
-export const PLAID_CLEANUP_GRACE_MS = 2 * 60 * 1000;
+export const PLAID_CLEANUP_GRACE_MS = CONNECTION_CLEANUP_LEASE_MS;
 
 const cleanupEligibleBefore = () => new Date(Date.now() - PLAID_CLEANUP_GRACE_MS);
 
@@ -219,7 +223,8 @@ export async function listPlaidCleanupIds(): Promise<string[]> {
           lte(connections.updatedAt, cleanupEligibleBefore()),
         ),
       )
-      .orderBy(asc(connections.updatedAt), asc(connections.id)),
+      .orderBy(asc(connections.updatedAt), asc(connections.id))
+      .limit(CONNECTION_CLEANUP_BATCH_SIZE),
   );
   return rows.map(({ id }) => id);
 }

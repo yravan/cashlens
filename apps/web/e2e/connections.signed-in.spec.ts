@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
 
 import { E2E_USER_A_EMAIL, E2E_USERS_FILE } from "../playwright.config";
-import { adminQuery } from "./db";
+import { adminQuery, adminTransaction } from "./db";
 import { expect, test } from "./fixtures";
 import { cleanupSandboxRows, disconnectSandboxItems } from "./sandbox-cleanup";
 
@@ -202,5 +202,177 @@ test.describe("connection management (real sandbox)", () => {
       [clerkIdA()],
     );
     expect(purged.rows[0]).toEqual({ accounts: 0, transactions: 0, balances: 0 });
+  });
+
+  test("opening Accounts retries an aged failed-connect cleanup", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/accounts");
+    await cleanup();
+    const { connectionId } = await connectSandboxItem(page);
+
+    try {
+      await adminTransaction(async (client) => {
+        await client.query(
+          `create temporary table cleanup_fixture on commit drop as
+             select c.*, cc.ciphertext, cc.created_at as credential_created_at,
+                    cc.updated_at as credential_updated_at
+               from connections c join connection_credentials cc on cc.connection_id = c.id
+              where c.id = $1`,
+          [connectionId],
+        );
+        await client.query("delete from accounts where connection_id = $1", [connectionId]);
+        await client.query("delete from connections where id = $1", [connectionId]);
+        await client.query(
+          `insert into connections
+             (id, user_id, provider, provider_item_id, institution_id, institution_name,
+              status, backfill_status, sync_cursor, provider_error, webhook_url, created_at, updated_at)
+             select id, user_id, provider, provider_item_id, institution_id, institution_name,
+                    'cleanup_required', backfill_status, sync_cursor, provider_error, webhook_url,
+                    created_at, now() - interval '3 minutes'
+               from cleanup_fixture`,
+        );
+        await client.query(
+          `insert into connection_credentials
+             (connection_id, user_id, ciphertext, created_at, updated_at)
+             select id, user_id, ciphertext, credential_created_at, credential_updated_at
+               from cleanup_fixture`,
+        );
+      });
+
+      const retried = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          response.url().endsWith(`/api/connections/${connectionId}/cleanup`),
+        { timeout: 10_000 },
+      );
+      await page.goto("/accounts");
+      expect((await retried).status()).toBe(200);
+      const cleaned = await adminQuery(
+        `select c.status, count(cc.connection_id)::int as credentials
+           from connections c left join connection_credentials cc on cc.connection_id = c.id
+          where c.id = $1 group by c.id`,
+        [connectionId],
+      );
+      expect(cleaned.rows[0]).toEqual({ status: "disconnected", credentials: 0 });
+    } finally {
+      const state = await adminQuery("select status from connections where id = $1", [connectionId]);
+      if (state.rows[0]?.status === "active") {
+        const removed = await page.request.post(`/api/connections/${connectionId}/disconnect`, {
+          data: { purge: true },
+        });
+        expect(removed.status()).toBe(200);
+      } else if (state.rows[0]?.status !== "disconnected") {
+        await adminQuery(
+          "update connections set updated_at = now() - interval '3 minutes' where id = $1",
+          [connectionId],
+        );
+        const removed = await page.request.post(`/api/connections/${connectionId}/cleanup`);
+        expect(removed.status()).toBe(200);
+      }
+      await cleanup();
+    }
+  });
+
+  test("retries cleanup after the first successful response is lost in transit", async ({ page }) => {
+    test.setTimeout(240_000);
+    await page.goto("/accounts");
+    await cleanup();
+    const { connectionId } = await connectSandboxItem(page);
+    const cleanupPath = `/api/connections/${connectionId}/cleanup`;
+    let attempt = 0;
+    let resolveFirst!: (status: number) => void;
+    let rejectFirst!: (error: unknown) => void;
+    const firstForwarded = new Promise<number>((resolve, reject) => {
+      resolveFirst = resolve;
+      rejectFirst = reject;
+    });
+
+    try {
+      await adminTransaction(async (client) => {
+        await client.query(
+          `create temporary table cleanup_fixture on commit drop as
+             select c.*, cc.ciphertext, cc.created_at as credential_created_at,
+                    cc.updated_at as credential_updated_at
+               from connections c join connection_credentials cc on cc.connection_id = c.id
+              where c.id = $1`,
+          [connectionId],
+        );
+        await client.query("delete from accounts where connection_id = $1", [connectionId]);
+        await client.query("delete from connections where id = $1", [connectionId]);
+        await client.query(
+          `insert into connections
+             (id, user_id, provider, provider_item_id, institution_id, institution_name,
+              status, backfill_status, sync_cursor, provider_error, webhook_url, created_at, updated_at)
+           select id, user_id, provider, provider_item_id, institution_id, institution_name,
+                  'cleanup_required', backfill_status, sync_cursor, provider_error, webhook_url,
+                  created_at, now() - interval '3 minutes'
+             from cleanup_fixture`,
+        );
+        await client.query(
+          `insert into connection_credentials
+             (connection_id, user_id, ciphertext, created_at, updated_at)
+           select id, user_id, ciphertext, credential_created_at, credential_updated_at
+             from cleanup_fixture`,
+        );
+      });
+
+      await page.route(`**${cleanupPath}`, async (route) => {
+        const currentAttempt = attempt;
+        attempt += 1;
+        if (currentAttempt === 0) {
+          try {
+            // The provider removal and server-side tombstone are real; only the
+            // already-completed browser response is discarded.
+            const upstream = await route.fetch();
+            const status = upstream.status();
+            await route.abort("connectionreset");
+            resolveFirst(status);
+          } catch (error) {
+            rejectFirst(error);
+            await route.abort().catch(() => undefined);
+          }
+          return;
+        }
+
+        await route.continue();
+      });
+
+      const [firstStatus, secondResponse] = await Promise.all([
+        firstForwarded,
+        page.waitForResponse(
+          (response) =>
+            response.request().method() === "POST" && response.url().endsWith(cleanupPath),
+          { timeout: 180_000 },
+        ),
+        page.goto("/accounts"),
+      ]);
+      expect(firstStatus).toBe(200);
+      expect(secondResponse.status()).toBe(404);
+
+      const cleaned = await adminQuery(
+        `select c.status, count(cc.connection_id)::int as credentials
+           from connections c left join connection_credentials cc on cc.connection_id = c.id
+          where c.id = $1 group by c.id`,
+        [connectionId],
+      );
+      expect(cleaned.rows[0]).toEqual({ status: "disconnected", credentials: 0 });
+    } finally {
+      await page.unroute(`**${cleanupPath}`);
+      const state = await adminQuery("select status from connections where id = $1", [connectionId]);
+      if (state.rows[0]?.status === "active") {
+        const removed = await page.request.post(`/api/connections/${connectionId}/disconnect`, {
+          data: { purge: true },
+        });
+        expect(removed.status()).toBe(200);
+      } else if (state.rows[0]?.status !== "disconnected") {
+        await adminQuery(
+          "update connections set updated_at = now() - interval '3 minutes' where id = $1",
+          [connectionId],
+        );
+        const removed = await page.request.post(cleanupPath);
+        expect(removed.status()).toBe(200);
+      }
+      await cleanup();
+    }
   });
 });
