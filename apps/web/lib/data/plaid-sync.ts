@@ -85,6 +85,15 @@ function ledgerRow(raw: Transaction, account: RegisteredAccount, userId: string)
 
 type LedgerRow = ReturnType<typeof ledgerRow>;
 
+const rowKey = (row: LedgerRow) => `${row.accountId}:${row.sourceId}`;
+
+// Plaid's explicit link from a settling posted row back to the pending id it
+// replaces — kept only for the length of the run, never stored.
+const pendingLink = (raw: Transaction, row: LedgerRow) => {
+  const link = raw.pending_transaction_id;
+  return !raw.pending && link && link.length <= 256 && link !== row.sourceId ? link : null;
+};
+
 async function paginate(accessToken: string, origin: string | null) {
   // One page budget across restarts: a mutation replays from the origin cursor
   // and keeps spending it, so a churning item cannot multiply a run's cost.
@@ -123,7 +132,7 @@ const errorFields = (error: unknown) => ({
 });
 
 const upsertLast = (rows: LedgerRow[]) =>
-  [...new Map(rows.map((row) => [`${row.accountId}:${row.sourceId}`, row])).values()];
+  [...new Map(rows.map((row) => [rowKey(row), row])).values()];
 
 export async function advanceSync(connectionId: string): Promise<SyncStep | null> {
   const user = await requireUser();
@@ -183,6 +192,7 @@ export async function advanceSyncFor(
 
   let malformed = 0;
   let unregistered = 0;
+  const pendingLinks = new Map<string, string>();
   const prepared = (raws: Transaction[]) => {
     const rows: LedgerRow[] = [];
     for (const raw of raws) {
@@ -192,7 +202,10 @@ export async function advanceSyncFor(
         continue;
       }
       try {
-        rows.push(ledgerRow(raw, account, user.id));
+        const row = ledgerRow(raw, account, user.id);
+        rows.push(row);
+        const link = pendingLink(raw, row);
+        if (link) pendingLinks.set(rowKey(row), link);
       } catch {
         malformed += 1;
       }
@@ -214,10 +227,12 @@ export async function advanceSyncFor(
   }
 
   const previous = connection.backfillStatus;
-  const backfillStatus =
-    previous === "complete" || (run.drained && run.updateStatus === "complete")
-      ? "complete"
-      : "in_progress";
+  // An empty next_cursor means Plaid has not made this item's transactions
+  // available yet, so it can neither complete a backfill nor keep a `complete`
+  // marker standing — and a marker stored without a cursor was never earned.
+  const wasComplete = previous === "complete" && Boolean(connection.syncCursor);
+  const nowComplete = run.drained && run.updateStatus === "complete" && Boolean(run.cursor);
+  const backfillStatus = wasComplete || nowComplete ? "complete" : "in_progress";
   if (run.updateStatus === "unknown") {
     logEvent("plaid_sync.update_status_unknown", { connectionId });
   }
@@ -243,17 +258,70 @@ export async function advanceSyncFor(
       );
     if ((cas.rowCount ?? 0) === 0) return false;
 
-    for (let at = 0; at < addedRows.length; at += INSERT_CHUNK) {
+    // Plaid replaces a settling charge with a new posted id: the link is the
+    // only proof, so the pending row is claimed in place (its internal id and
+    // every user-owned column survive) and the old id — which Plaid also
+    // removes — stops being ingestible for the rest of the run.
+    const settled = new Set<string>();
+    const replaced = new Set<string>();
+    for (const row of addedRows) {
+      const link = pendingLinks.get(rowKey(row));
+      if (!link) continue;
+      replaced.add(`${row.accountId}:${link}`);
+      const [taken] = await tx
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.userId, user.id),
+            eq(transactions.accountId, row.accountId),
+            eq(transactions.source, "plaid"),
+            eq(transactions.sourceId, row.sourceId),
+          ),
+        )
+        .limit(1);
+      if (taken) continue;
+      const claim = await tx
+        .update(transactions)
+        .set({
+          sourceId: row.sourceId,
+          amountMinor: row.amountMinor,
+          currency: row.currency,
+          date: row.date,
+          description: row.description,
+          merchant: row.merchant,
+          status: row.status,
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(
+            eq(transactions.userId, user.id),
+            eq(transactions.accountId, row.accountId),
+            eq(transactions.source, "plaid"),
+            eq(transactions.sourceId, link),
+            eq(transactions.status, "pending"),
+          ),
+        );
+      if (claim.rowCount) {
+        settled.add(rowKey(row));
+        counts.added += claim.rowCount;
+      }
+    }
+    const toInsert = addedRows.filter(
+      (row) => !settled.has(rowKey(row)) && !replaced.has(rowKey(row)),
+    );
+    for (let at = 0; at < toInsert.length; at += INSERT_CHUNK) {
       const chunk = await tx
         .insert(transactions)
-        .values(addedRows.slice(at, at + INSERT_CHUNK))
+        .values(toInsert.slice(at, at + INSERT_CHUNK))
         .onConflictDoNothing();
       counts.added += chunk.rowCount ?? 0;
     }
-    for (let at = 0; at < modifiedRows.length; at += INSERT_CHUNK) {
+    const toUpsert = modifiedRows.filter((row) => !replaced.has(rowKey(row)));
+    for (let at = 0; at < toUpsert.length; at += INSERT_CHUNK) {
       const chunk = await tx
         .insert(transactions)
-        .values(modifiedRows.slice(at, at + INSERT_CHUNK))
+        .values(toUpsert.slice(at, at + INSERT_CHUNK))
         .onConflictDoUpdate({
           target: [transactions.accountId, transactions.source, transactions.sourceId],
           targetWhere: sql`source_id is not null`,

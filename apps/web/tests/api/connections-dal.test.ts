@@ -134,6 +134,7 @@ test("the app role cannot rewrite connection identity or delete connection rows"
     ).rejects.toMatchObject(pgError("42501"));
 
   await denied("update connections set institution_name = 'x'");
+  await denied("update connections set status = 'provisioning'");
   await denied("update connection_credentials set ciphertext = 'x'");
   await denied("delete from connections");
 });

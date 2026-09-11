@@ -1,7 +1,13 @@
 import fs from "node:fs";
 import { type Locator, type Page } from "@playwright/test";
 
-import { EXPECTED, SEED_CATEGORIES, SEED_CLERK_IDS, SEED_TRANSACTIONS } from "../db/seed/dataset";
+import {
+  EXPECTED,
+  SEED_CATEGORIES,
+  SEED_CLERK_IDS,
+  SEED_TRANSACTIONS,
+  SEED_TRANSFER_PAIRS,
+} from "../db/seed/dataset";
 import { formatMinorUnits } from "../lib/ledger/minor-units";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, seedLedgerFixture } from "./db";
@@ -147,18 +153,124 @@ test.describe("spending by category", () => {
     await expect(page.getByTestId("transaction-row")).toContainText("Maple Market");
   });
 
+  test("clearing a period resets the controls and cannot silently reapply old filters", async ({ page }) => {
+    await page.goto("/spending");
+    const form = page.getByRole("form", { name: "Choose a period" });
+    await form.getByLabel("From", { exact: true }).fill("2026-03-01");
+    await form.getByLabel("To", { exact: true }).fill("2026-03-31");
+    await form.getByRole("combobox", { name: "Currency" }).selectOption("USD");
+    await form.getByRole("button", { name: "Apply" }).click();
+    await expect(page).toHaveURL("/spending?from=2026-03-01&to=2026-03-31&currency=USD");
+    await expect(currencySection(page, "EUR")).toHaveCount(0);
+
+    await form.getByRole("link", { name: "Clear", exact: true }).click();
+    await expect(page).toHaveURL("/spending");
+    await expectTotals(currencySection(page, "USD"), spendingOf("demo", "USD").totals, "USD");
+    await expect(form.getByLabel("From", { exact: true })).toHaveValue("");
+    await expect(form.getByLabel("To", { exact: true })).toHaveValue("");
+    await expect(form.getByRole("combobox", { name: "Currency" })).toHaveValue("");
+
+    await page.goBack();
+    await expect(page).toHaveURL("/spending?from=2026-03-01&to=2026-03-31&currency=USD");
+    await expect(form.getByLabel("From", { exact: true })).toHaveValue("2026-03-01");
+    await expect(form.getByLabel("To", { exact: true })).toHaveValue("2026-03-31");
+    await expect(form.getByRole("combobox", { name: "Currency" })).toHaveValue("USD");
+    await expect(currencySection(page, "EUR")).toHaveCount(0);
+    await page.goForward();
+    await expect(page).toHaveURL("/spending");
+    await expect(form.getByLabel("From", { exact: true })).toHaveValue("");
+    await expect(form.getByLabel("To", { exact: true })).toHaveValue("");
+    await expect(form.getByRole("combobox", { name: "Currency" })).toHaveValue("");
+
+    await form.getByRole("button", { name: "Apply" }).click();
+    await expect(page).toHaveURL("/spending?from=&to=&currency=");
+    await expectTotals(currencySection(page, "EUR"), spendingOf("demo", "EUR").totals, "EUR");
+    await expectTotals(currencySection(page, "USD"), spendingOf("demo", "USD").totals, "USD");
+  });
+
+  test("Clear discards an unsubmitted period even when the URL is already unfiltered", async ({ page }) => {
+    await page.goto("/spending");
+    const form = page.getByRole("form", { name: "Choose a period" });
+    await form.getByLabel("From", { exact: true }).fill("2026-03-01");
+    await form.getByLabel("To", { exact: true }).fill("2026-03-31");
+    await form.getByRole("combobox", { name: "Currency" }).selectOption("USD");
+    await form.getByRole("link", { name: "Clear", exact: true }).click();
+    await expect(page).toHaveURL("/spending");
+    await expect(form.getByLabel("From", { exact: true })).toHaveValue("");
+    await expect(form.getByLabel("To", { exact: true })).toHaveValue("");
+    await expect(form.getByRole("combobox", { name: "Currency" })).toHaveValue("");
+    await form.getByRole("button", { name: "Apply" }).click();
+    await expectTotals(currencySection(page, "EUR"), spendingOf("demo", "EUR").totals, "EUR");
+    await expectTotals(currencySection(page, "USD"), spendingOf("demo", "USD").totals, "USD");
+  });
+
+  test("modifier-clicking Clear leaves this tab's period and draft untouched", async ({
+    page,
+    context,
+  }) => {
+    await page.goto("/spending?from=2026-03-01&to=2026-03-31&currency=USD");
+    const form = page.getByRole("form", { name: "Choose a period" });
+    await form.getByLabel("From", { exact: true }).fill("2026-02-01");
+
+    await form
+      .getByRole("link", { name: "Clear", exact: true })
+      .click({ modifiers: ["ControlOrMeta"] });
+
+    await expect(page).toHaveURL("/spending?from=2026-03-01&to=2026-03-31&currency=USD");
+    await expect(currencySection(page, "USD")).toBeVisible();
+    await expect(currencySection(page, "EUR")).toHaveCount(0);
+    await expect(form.getByLabel("From", { exact: true })).toHaveValue("2026-02-01");
+    await expect(form.getByLabel("To", { exact: true })).toHaveValue("2026-03-31");
+    await expect(form.getByRole("combobox", { name: "Currency" })).toHaveValue("USD");
+    for (const opened of context.pages()) if (opened !== page) await opened.close();
+  });
+
   test("the uncategorized row drills to exactly the rows with no category", async ({ page }) => {
     await page.goto("/spending");
+    await expect(page.getByTestId("spend-transfer-note")).toHaveText(
+      `${EXPECTED.demo.transfers.pairedRows} transactions are internal transfer legs — left out so nothing counts twice.`,
+      { timeout: 30_000 },
+    );
     const usd = currencySection(page, "USD");
+    const categorizeResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/transactions/categorize",
+      { timeout: 45_000 },
+    );
     await usd.getByRole("link", { name: "Uncategorized" }).click({ timeout: 30_000 });
 
     await expect(page).toHaveURL("/transactions?category=uncategorized&currency=USD");
-    const uncategorizedUsdRows = SEED_TRANSACTIONS.filter(
-      (t) => t.persona === "demo" && t.currency === "USD" && !t.categoryId,
-    ).length;
-    await expect(page.getByTestId("transactions-count")).toHaveText(
-      `${uncategorizedUsdRows} matching transactions`,
+    const categorize = await categorizeResponse;
+    expect(categorize.status()).toBe(200);
+    const categorizeBody = await categorize.json();
+    expect(categorizeBody).toMatchObject({ remaining: 0 });
+
+    const activeTransferIds = new Set(
+      SEED_TRANSFER_PAIRS.filter(({ persona }) => persona === "demo").flatMap(
+        ({ outflowId, inflowId }) => [outflowId, inflowId],
+      ),
     );
+    const expectedRows = SEED_TRANSACTIONS.filter(
+      (t) =>
+        t.persona === "demo" &&
+        t.currency === "USD" &&
+        !t.categoryId &&
+        activeTransferIds.has(t.id),
+    );
+    await expect(page.getByTestId("transactions-count")).toHaveText(
+      `${expectedRows.length} matching transactions`,
+    );
+
+    const rows = page.getByTestId("transaction-row");
+    await expect(rows).toHaveCount(expectedRows.length);
+    for (const transaction of expectedRows) {
+      await expect(
+        rows.filter({
+          has: page.getByText(transaction.merchant ?? transaction.description, { exact: true }),
+        }),
+      ).toHaveCount(1);
+    }
   });
 
   test("a neighbor sees only their spending and none of the demo ledger", async ({
