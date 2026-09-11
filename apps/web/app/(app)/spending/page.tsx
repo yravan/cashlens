@@ -191,6 +191,7 @@ export default async function SpendingPage({
 }) {
   const params = await searchParams;
   const parsed = parseSpendingQuery(params);
+  const formKey = JSON.stringify(parsed.ok ? parsed.query : params);
   const summary = await spendingByCategory(parsed);
   const values = (key: SpendingParam) => {
     const value = params[key];
@@ -220,7 +221,7 @@ export default async function SpendingPage({
           That period isn&apos;t valid — dates must be real days in order, currency is a
           three-letter code, and nothing else filters this page.
         </p>
-        <SpendingFilters currencies={summary.options.currencies} values={values} />
+        <SpendingFilters key={formKey} currencies={summary.options.currencies} values={values} />
       </>
     );
   }
@@ -247,7 +248,7 @@ export default async function SpendingPage({
         </section>
       ) : (
         <>
-          <SpendingFilters currencies={summary.options.currencies} values={values} />
+          <SpendingFilters key={formKey} currencies={summary.options.currencies} values={values} />
           {summary.currencies.length === 0 ? (
             <section data-testid="no-activity" className="mt-8 max-w-xl py-4">
               <p className="text-sm leading-6 text-zinc-500 dark:text-zinc-400">

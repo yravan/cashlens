@@ -2,9 +2,15 @@ import { inspect } from "node:util";
 import { eq } from "drizzle-orm";
 import { beforeEach, expect, test } from "vitest";
 
+import { POST as cleanup } from "@/app/api/connections/[connectionId]/cleanup/route";
 import { POST as linkToken } from "@/app/api/plaid/link-token/route";
 import { POST as exchange } from "@/app/api/plaid/exchange/route";
-import { listConnections, readConnectionCredential } from "@/lib/data/connections";
+import {
+  createConnectionAs,
+  listConnections,
+  listPlaidCleanupIds,
+  readConnectionCredential,
+} from "@/lib/data/connections";
 import { connectPlaidItem, ProviderError } from "@/lib/data/plaid";
 import { withRequestScope } from "@/lib/db/client";
 import { accountBalances, accounts, connectionCredentials, connections, users } from "@/lib/db/schema";
@@ -12,11 +18,14 @@ import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 import {
   exchangeRequests,
+  failNextAccountsGet,
+  failNextRemove,
+  isItemLive,
   linkTokenRequests,
   mintSandboxItem,
   removedAccessTokens,
+  removeItemRemotely,
   resetPlaidSubstitute,
-  revokeAccessToken,
   SANDBOX_INSTITUTION,
   SUBSTITUTE_SECRET,
 } from "../harness/plaid";
@@ -31,6 +40,15 @@ const post = (path: string, body?: unknown, headers: Record<string, string> = {}
   });
 
 const postExchange = (publicToken: unknown) => exchange(post("exchange", { publicToken }));
+
+const postCleanup = (connectionId: string, headers: Record<string, string> = {}) =>
+  cleanup(
+    new Request(`http://localhost/api/connections/${connectionId}/cleanup`, {
+      method: "POST",
+      headers: { host: "localhost", ...headers },
+    }),
+    { params: Promise.resolve({ connectionId }) },
+  );
 
 const CONNECTION_KEYS = ["backfillStatus", "createdAt", "id", "institutionId", "institutionName", "provider", "providerError", "status"];
 
@@ -152,7 +170,7 @@ test("a public token is single-use: a replay registers nothing new", async () =>
   expect(await adminDb().$count(accounts)).toBe(3);
 });
 
-test("an already-connected item is refused and the fresh token is revoked at Plaid", async () => {
+test("an already-connected Item is refused without revoking the Item backing the existing connection", async () => {
   const clerkUserId = fakeClerkUserId();
   const first = mintSandboxItem();
   const response = await withAuth(clerkUserId, () => postExchange(first.publicToken));
@@ -163,32 +181,177 @@ test("an already-connected item is refused and the fresh token is revoked at Pla
   expect(duplicate.status).toBe(409);
   expect(await duplicate.json()).toEqual({ error: "already_connected" });
 
-  expect(removedAccessTokens).toEqual([first.accessToken]);
+  expect(removedAccessTokens).toEqual([]);
+  expect(isItemLive(first.accessToken)).toBe(true);
   expect(await adminDb().$count(connections)).toBe(1);
   expect(await adminDb().$count(accounts)).toBe(3);
   const secret = await withAuth(clerkUserId, () => readConnectionCredential(connection.id));
   expect(secret?.expose()).toBe(first.accessToken);
 });
 
-test("a provider failure after exchange leaves no partial state and never carries the API secret", async () => {
+test("a provider failure after exchange removes remote state and never carries the API secret", async () => {
   const clerkUserId = fakeClerkUserId();
   const { publicToken, accessToken } = mintSandboxItem();
-  revokeAccessToken(accessToken);
+  failNextAccountsGet("API_ERROR", "INTERNAL_SERVER_ERROR");
 
   const response = await withAuth(clerkUserId, () => postExchange(publicToken));
   expect(response.status).toBe(502);
   expect(await response.json()).toEqual({ error: "provider_error", message: null });
-  expect(await adminDb().$count(connections)).toBe(0);
+  const [failed] = await adminDb().select({ status: connections.status }).from(connections);
+  expect(failed.status).toBe("disconnected");
   expect(await adminDb().$count(connectionCredentials)).toBe(0);
   expect(await adminDb().$count(accounts)).toBe(0);
+  expect(isItemLive(accessToken)).toBe(false);
+  expect(removedAccessTokens).toEqual([accessToken]);
 
   const doomed = mintSandboxItem();
-  revokeAccessToken(doomed.accessToken);
+  failNextAccountsGet("API_ERROR", "INTERNAL_SERVER_ERROR");
   const thrown = await withAuth(clerkUserId, () =>
     connectPlaidItem(doomed.publicToken).catch((error: unknown) => error),
   );
   expect(thrown).toBeInstanceOf(ProviderError);
   expect(inspect(thrown, { depth: null })).not.toContain(SUBSTITUTE_SECRET);
+});
+
+test("an accounts/get failure removes the Item or retains an encrypted cleanup credential", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const { publicToken, accessToken } = mintSandboxItem();
+  failNextAccountsGet("API_ERROR", "INTERNAL_SERVER_ERROR");
+
+  const response = await withAuth(clerkUserId, () => postExchange(publicToken));
+  expect(response.status).toBe(502);
+  expect(await response.json()).toEqual({ error: "provider_error", message: null });
+  expect(await adminDb().$count(accounts)).toBe(0);
+
+  expect({
+    remoteItemLive: isItemLive(accessToken),
+    durableCredentials: await adminDb().$count(connectionCredentials),
+  }).not.toEqual({ remoteItemLive: true, durableCredentials: 0 });
+});
+
+test("failed cleanup stays encrypted and owner-scoped through leased concurrent retries", async () => {
+  const clerkA = fakeClerkUserId();
+  const clerkB = fakeClerkUserId();
+  const { publicToken, accessToken } = mintSandboxItem();
+  failNextAccountsGet("API_ERROR", "INTERNAL_SERVER_ERROR");
+  failNextRemove("API_ERROR", "INTERNAL_SERVER_ERROR");
+
+  const failed = await withAuth(clerkA, () => postExchange(publicToken));
+  expect(failed.status).toBe(502);
+  const failedBody = await failed.json();
+  expect(failedBody).toEqual({ error: "provider_error", message: null });
+
+  const [recovery] = await adminDb()
+    .select({ id: connections.id, status: connections.status })
+    .from(connections);
+  const [credential] = await adminDb().select().from(connectionCredentials);
+  expect(recovery.status).toBe("cleanup_required");
+  expect(credential.ciphertext).not.toContain(accessToken);
+  expect(isItemLive(accessToken)).toBe(true);
+  expect(await withAuth(clerkA, () => listConnections())).toEqual([]);
+
+  const visibleToB = await withRequestScope(clerkB, async (tx) => ({
+    connections: await tx.select().from(connections),
+    credentials: await tx.select().from(connectionCredentials),
+  }));
+  expect(visibleToB).toEqual({ connections: [], credentials: [] });
+  expect(await withAuth(clerkA, () => listPlaidCleanupIds())).toEqual([]);
+  expect((await postCleanup(recovery.id)).status).toBe(401);
+  expect(
+    (await withAuth(clerkA, () => postCleanup(recovery.id, { origin: "https://evil.example" })))
+      .status,
+  ).toBe(403);
+  expect((await withAuth(clerkB, () => postCleanup(recovery.id))).status).toBe(404);
+  expect((await withAuth(clerkA, () => postCleanup(recovery.id))).status).toBe(404);
+  expect(isItemLive(accessToken)).toBe(true);
+
+  await adminDb()
+    .update(connections)
+    .set({ updatedAt: new Date("2000-01-01T00:00:00.000Z") })
+    .where(eq(connections.id, recovery.id));
+  expect(await withAuth(clerkB, () => listPlaidCleanupIds())).toEqual([]);
+  expect(await withAuth(clerkA, () => listPlaidCleanupIds())).toEqual([recovery.id]);
+  failNextRemove("API_ERROR", "INTERNAL_SERVER_ERROR");
+  const retryFailed = await withAuth(clerkA, () => postCleanup(recovery.id));
+  expect(retryFailed.status).toBe(502);
+  const retryFailedBody = await retryFailed.json();
+  expect(retryFailedBody).toEqual({ error: "provider_error", message: null });
+  expect(await adminDb().$count(connectionCredentials)).toBe(1);
+  expect((await withAuth(clerkA, () => postCleanup(recovery.id))).status).toBe(404);
+
+  await adminDb()
+    .update(connections)
+    .set({ updatedAt: new Date("2000-01-01T00:00:00.000Z") })
+    .where(eq(connections.id, recovery.id));
+  const retries = await withAuth(clerkA, () =>
+    Promise.all([postCleanup(recovery.id), postCleanup(recovery.id)]),
+  );
+  expect(retries.map(({ status }) => status).sort()).toEqual([200, 404]);
+  const retried = retries.find(({ status }) => status === 200)!;
+  const retriedBody = await retried.json();
+  expect(retriedBody).toEqual({ cleaned: true });
+  expect(removedAccessTokens).toEqual([accessToken]);
+  expect(isItemLive(accessToken)).toBe(false);
+  expect(await adminDb().$count(connectionCredentials)).toBe(0);
+  const [cleaned] = await adminDb().select({ status: connections.status }).from(connections);
+  expect(cleaned.status).toBe("disconnected");
+
+  const serialized = JSON.stringify({ failedBody, retryFailedBody, retriedBody });
+  expect(serialized).not.toContain(accessToken);
+  expect(serialized).not.toContain(credential.ciphertext);
+  expect(serialized).not.toContain(SUBSTITUTE_SECRET);
+});
+
+test("concurrent exchanges for the same Item keep one connection and never remove the winner", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const first = mintSandboxItem();
+  const second = mintSandboxItem({ item_id: first.itemId, access_token: first.accessToken });
+
+  const responses = await withAuth(clerkUserId, () =>
+    Promise.all([postExchange(first.publicToken), postExchange(second.publicToken)]),
+  );
+  expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
+  expect(await adminDb().$count(connections)).toBe(1);
+  expect(await adminDb().$count(connectionCredentials)).toBe(1);
+  expect(await adminDb().$count(accounts)).toBe(3);
+  expect(removedAccessTokens).toEqual([]);
+  expect(isItemLive(first.accessToken)).toBe(true);
+});
+
+test("a stale provisional credential heals after remote removal completed first", async () => {
+  const clerkUserId = fakeClerkUserId();
+  await withAuth(clerkUserId, () => listConnections());
+  const [user] = await adminDb().select().from(users).where(eq(users.clerkUserId, clerkUserId));
+  const minted = mintSandboxItem();
+  const recovery = await createConnectionAs(user, {
+    provider: "plaid",
+    credential: minted.accessToken,
+    providerItemId: minted.itemId,
+  }, "provisioning");
+  await adminDb()
+    .update(connections)
+    .set({ updatedAt: new Date("2000-01-01T00:00:00.000Z") })
+    .where(eq(connections.id, recovery.id));
+  removeItemRemotely(minted.accessToken);
+
+  expect((await withAuth(clerkUserId, () => postCleanup(recovery.id))).status).toBe(200);
+  expect(await adminDb().$count(connectionCredentials)).toBe(0);
+  const [cleaned] = await adminDb().select({ status: connections.status }).from(connections);
+  expect(cleaned.status).toBe("disconnected");
+});
+
+test("a database rejection after exchange immediately compensates at Plaid", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const minted = mintSandboxItem({ item_id: "item-with-null-\u0000-byte" });
+
+  const thrown = await withAuth(clerkUserId, () =>
+    postExchange(minted.publicToken).catch((error: unknown) => error),
+  );
+  expect(thrown).toBeInstanceOf(Error);
+  expect(removedAccessTokens).toEqual([minted.accessToken]);
+  expect(isItemLive(minted.accessToken)).toBe(false);
+  expect(await adminDb().$count(connections)).toBe(0);
+  expect(await adminDb().$count(connectionCredentials)).toBe(0);
 });
 
 test("malformed bodies are rejected at the boundary without touching Plaid", async () => {

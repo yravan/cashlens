@@ -110,7 +110,7 @@ test("removed transactions are deleted; a pending replaced by its posted version
   });
 
   const response = await sync();
-  await expect(response.json()).resolves.toEqual(step("complete", 1, { removed: 1 }));
+  await expect(response.json()).resolves.toEqual(step("complete", 1));
   expect((await ledgerRows()).map((row) => row.description)).toEqual(["UNTOUCHED", "POSTED CHARGE"]);
 
   pushSyncUpdates(accessToken, {
