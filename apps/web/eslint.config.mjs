@@ -7,11 +7,6 @@ const plaidPackage = {
   name: "plaid",
   message: "The Plaid SDK is confined to lib/plaid (secret-bearing errors).",
 };
-const anthropicPackage = {
-  name: "@anthropic-ai/sdk",
-  message: "The Anthropic SDK is confined to lib/llm (sanitized errors, least data).",
-};
-
 const dbFence = {
   group: ["@/lib/db/*", "**/lib/db/*"],
   message: "Import DAL functions from lib/data instead of the db client.",
@@ -38,20 +33,20 @@ export default defineConfig([
   ...nextTs,
   {
     ignores: ["lib/db/**", "lib/data/**", "lib/crypto/**", "lib/plaid/**", "lib/llm/**", "db/seed/**", "e2e/**", "scripts/**", "tests/**"],
-    rules: restrict([pgPackage, plaidPackage, anthropicPackage], [dbFence, cryptoFence, plaidFence, llmFence]),
+    rules: restrict([pgPackage, plaidPackage], [dbFence, cryptoFence, plaidFence, llmFence]),
   },
   {
     files: ["lib/db/**", "db/seed/**", "e2e/**", "scripts/**"],
-    rules: restrict([plaidPackage, anthropicPackage], [cryptoFence, plaidFence, llmFence]),
+    rules: restrict([plaidPackage], [cryptoFence, plaidFence, llmFence]),
   },
   {
     files: ["lib/data/**", "lib/crypto/**"],
-    rules: restrict([plaidPackage, anthropicPackage], []),
+    rules: restrict([plaidPackage], []),
   },
   {
     files: ["lib/plaid/**"],
     rules: restrict(
-      [anthropicPackage],
+      [],
       [
         cryptoFence,
         llmFence,
