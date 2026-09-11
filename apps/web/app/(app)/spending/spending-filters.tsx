@@ -1,7 +1,7 @@
 import Form from "next/form";
-import Link from "next/link";
 
 import type { SpendingParam } from "@/lib/ledger/history-query";
+import { ClearFiltersLink } from "../clear-filters-link";
 
 const field = "block text-xs font-medium text-zinc-600 dark:text-zinc-400";
 const control =
@@ -47,12 +47,7 @@ export function SpendingFilters({
         >
           Apply
         </button>
-        <Link
-          href="/spending"
-          className="text-sm text-zinc-600 underline underline-offset-4 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-        >
-          Clear
-        </Link>
+        <ClearFiltersLink href="/spending" />
       </div>
     </Form>
   );
