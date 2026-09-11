@@ -246,6 +246,52 @@ test("a month-end anchor clamps into February through 6.4.1's next-date rule", (
   expect(projected.currencies[0].charges).toEqual([occurrenceOf(rent, "2026-02-28")]);
 });
 
+test("a month-end anchor returns to its original day after February", () => {
+  const rent = stream({ lastDate: "2026-01-31", typicalAmountMinor: -180000 });
+  const projected = projectUpcoming([rent], "2026-03-29");
+  expect(projected.currencies).toEqual([
+    {
+      currency: "USD",
+      toLeaveMinor: -360000,
+      toArriveMinor: 0,
+      charges: [
+        occurrenceOf(rent, "2026-02-28", true),
+        occurrenceOf(rent, "2026-03-31"),
+      ],
+      deposits: [],
+    },
+  ]);
+  expect(projected.stale).toEqual([]);
+});
+
+test.each([
+  ["2026-01-29", "2026-03-28", "2026-03-29"],
+  ["2026-01-30", "2026-03-29", "2026-03-30"],
+] as const)("day %s returns after a non-leap February", (lastDate, reference, nextDate) => {
+  const rent = stream({ lastDate, typicalAmountMinor: -180000 });
+  const projected = projectUpcoming([rent], reference);
+  expect(projected.currencies[0].charges).toEqual([
+    occurrenceOf(rent, "2026-02-28", true),
+    occurrenceOf(rent, nextDate),
+  ]);
+  expect(projected.currencies[0].toLeaveMinor).toBe(-360000);
+  expect(projected.stale).toEqual([]);
+});
+
+test("the month-end anchor is due on its original March day and stale the next day", () => {
+  const rent = stream({ lastDate: "2026-01-31", typicalAmountMinor: -180000 });
+  const due = projectUpcoming([rent], "2026-03-31");
+  expect(due.currencies[0].charges).toEqual([
+    occurrenceOf(rent, "2026-02-28", true),
+    occurrenceOf(rent, "2026-03-31"),
+  ]);
+  expect(due.stale).toEqual([]);
+
+  const stale = projectUpcoming([rent], "2026-04-01");
+  expect(stale.currencies).toEqual([]);
+  expect(stale.stale).toEqual([staleOf(rent)]);
+});
+
 test("charges order by date then name; stale order by last-seen desc then name", () => {
   const zebra = stream({ normalizedName: "ZEBRA", name: "Zebra", lastDate: "2026-03-29" });
   const apex = stream({ normalizedName: "APEX", name: "Apex", lastDate: "2026-03-29" });

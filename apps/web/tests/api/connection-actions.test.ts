@@ -15,6 +15,7 @@ import {
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 import {
+  exchangeRequests,
   failNextRemove,
   failNextSync,
   linkTokenRequests,
@@ -288,7 +289,7 @@ test("boundary: malformed purge flags and garbage ids never reach the provider o
   expect(removedAccessTokens).toHaveLength(0);
 });
 
-test("an abandoned Link session burns the item at Plaid and stores nothing", async () => {
+test("declining a duplicate never exchanges its public token or creates provider state", async () => {
   const clerkUserId = fakeClerkUserId();
   const minted = mintSandboxItem();
   const postAbandon = (publicToken: string) =>
@@ -303,20 +304,13 @@ test("an abandoned Link session burns the item at Plaid and stores nothing", asy
   const response = await withAuth(clerkUserId, () => postAbandon(minted.publicToken));
   expect(response.status).toBe(200);
   await expect(response.json()).resolves.toEqual({ abandoned: true });
-  expect(removedAccessTokens).toEqual([minted.accessToken]);
+  expect(exchangeRequests).toEqual([]);
+  expect(removedAccessTokens).toEqual([]);
   await expect(adminDb().$count(connections)).resolves.toBe(0);
   await expect(adminDb().$count(connectionCredentials)).resolves.toBe(0);
 
   expect((await withAuth(clerkUserId, () => postAbandon("garbage"))).status).toBe(400);
   expect((await postAbandon(minted.publicToken)).status).toBe(401);
-
-  // A remove that fails is reported, never reported as a clean backout — the
-  // caller has to know an orphan item may be live at Plaid.
-  const orphaned = mintSandboxItem();
-  failNextRemove("API_ERROR", "INTERNAL_SERVER_ERROR");
-  const failed = await withAuth(clerkUserId, () => postAbandon(orphaned.publicToken));
-  expect(failed.status).toBe(502);
-  await expect(adminDb().$count(connections)).resolves.toBe(0);
 });
 
 // Headers as well as bodies: a token smuggled into a response header would pass

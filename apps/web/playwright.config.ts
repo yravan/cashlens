@@ -25,15 +25,15 @@ export const E2E_USERS_FILE = path.join(
 export const E2E_USER_A_EMAIL = "cashlens-e2e@example.com";
 export const E2E_USER_B_EMAIL = "cashlens-e2e-b@example.com";
 
-// No real Anthropic key -> the app under test talks to the local stub
-// (e2e/llm-stub.setup.ts starts it); a real key in .env.local makes the
+// No real OpenRouter key -> the app under test talks to the local stub
+// (e2e/llm-stub.setup.ts starts it); a real key in the environment makes the
 // categorize spec a live-provider smoke instead.
 export const LLM_STUB_PORT = 3199;
-const llmEnv: { [key: string]: string } = process.env.ANTHROPIC_API_KEY
+const llmEnv: { [key: string]: string } = process.env.OPENROUTER_API_KEY
   ? {}
   : {
-      ANTHROPIC_API_KEY: "sk-ant-e2e-stub",
-      ANTHROPIC_BASE_URL: `http://127.0.0.1:${LLM_STUB_PORT}`,
+      OPENROUTER_API_KEY: "sk-or-e2e-stub",
+      OPENROUTER_BASE_URL: `http://127.0.0.1:${LLM_STUB_PORT}/api/v1`,
     };
 
 export default defineConfig({

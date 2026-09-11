@@ -19,22 +19,15 @@ function exchangeFailureText(body: { error?: string; message?: string | null } |
 }
 
 async function importHistory(connectionId: string, connected: string, setStatus: (status: Status) => void) {
-  let imported = 0;
-  const importing = () =>
-    setStatus({ kind: "busy", text: `${connected}. Importing transaction history… (${imported} so far)` });
   try {
-    importing();
+    setStatus({ kind: "busy", text: `${connected}. Importing transaction history…` });
     const finished = await pollSync(connectionId, {
       idleMs: 1500,
-      onStep: (step) => {
-        imported += step.added;
-        importing();
-      },
     });
     setStatus({
       kind: "done",
       text: finished
-        ? `${connected}, ${imported} transactions imported.`
+        ? `${connected}. Transaction history imported.`
         : `${connected}. History is still importing — check back shortly.`,
     });
   } catch {
