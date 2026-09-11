@@ -1,7 +1,17 @@
+import fs from "node:fs";
+import { clerk, clerkSetup } from "@clerk/testing/playwright";
 import type { Page } from "@playwright/test";
 
+import { E2E_USER_A_EMAIL, E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery } from "./db";
 import { expect } from "./fixtures";
+
+function assertRegisteredTestUserA(clerkUserId: string) {
+  const userA = JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8")).a;
+  if (!userA || userA.email !== E2E_USER_A_EMAIL || userA.clerkUserId !== clerkUserId) {
+    throw new Error("refusing provider cleanup for an unregistered test owner");
+  }
+}
 
 async function credentialedConnections(clerkUserId: string): Promise<Array<{ id: string; status: string }>> {
   const result = await adminQuery(
@@ -28,6 +38,7 @@ export async function cleanupSandboxRows(clerkUserId: string) {
 }
 
 export async function disconnectSandboxItems(page: Page, clerkUserId: string) {
+  assertRegisteredTestUserA(clerkUserId);
   const credentialed = await credentialedConnections(clerkUserId);
   const unsupported = credentialed.filter(({ status }) => status !== "active");
   if (unsupported.length !== 0) {
@@ -39,8 +50,10 @@ export async function disconnectSandboxItems(page: Page, clerkUserId: string) {
       maxRedirects: 0,
     });
     if ([307, 308, 401].includes(response.status())) {
-      await page.goto("/accounts", { waitUntil: "domcontentloaded" });
-      await expect(page.getByRole("heading", { name: "Accounts", exact: true })).toBeVisible();
+      await clerkSetup();
+      await page.goto("/sign-in");
+      await clerk.loaded({ page });
+      await clerk.signIn({ page, emailAddress: E2E_USER_A_EMAIL });
       response = await page.request.post(`/api/connections/${id}/disconnect`, {
         data: { purge: true },
         maxRedirects: 0,

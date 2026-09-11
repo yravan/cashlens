@@ -1,6 +1,7 @@
 import fs from "node:fs";
+import { clerk, clerkSetup } from "@clerk/testing/playwright";
 
-import { E2E_USERS_FILE } from "../playwright.config";
+import { E2E_USER_A_EMAIL, E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery } from "./db";
 import { expect, test } from "./fixtures";
 import { cleanupSandboxRows, disconnectSandboxItems } from "./sandbox-cleanup";
@@ -65,6 +66,69 @@ test.describe("connection management (real sandbox)", () => {
       [connectionId],
     );
     expect(registered.rows[0].n).toBe(1);
+  });
+
+  test("cleanup rejects an unregistered owner before provider work", async ({ page }) => {
+    const registeredUserB = JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8")).b.clerkUserId;
+    let error: unknown;
+    try {
+      await disconnectSandboxItems(page, registeredUserB);
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(Error);
+    const message = (error as Error).message;
+    expect(message).toBe("refusing provider cleanup for an unregistered test owner");
+    expect(message).not.toContain(registeredUserB);
+  });
+
+  test("cleanup re-authenticates after a signed-out browser redirect", async ({ browser, baseURL }) => {
+    const context = await browser.newContext({
+      baseURL,
+      storageState: { cookies: [], origins: [] },
+    });
+    const page = await context.newPage();
+    let connectionId: string | undefined;
+    let cleanupSucceeded = false;
+    try {
+      await clerkSetup();
+      await page.goto("/sign-in");
+      await clerk.loaded({ page });
+      await clerk.signIn({ page, emailAddress: E2E_USER_A_EMAIL });
+      ({ connectionId } = await connectSandboxItem(page));
+
+      await page.goto("/accounts");
+      await page.locator(".cl-userButtonTrigger").click();
+      await page.locator(".cl-userButtonPopoverActionButton__signOut").click();
+      await expect(page).toHaveURL(/\/sign-in/);
+
+      await disconnectSandboxItems(page, clerkIdA());
+      const credentials = await adminQuery(
+        "select count(*)::int as n from connection_credentials where connection_id = $1",
+        [connectionId],
+      );
+      expect(credentials.rows[0].n).toBe(0);
+      cleanupSucceeded = true;
+    } finally {
+      try {
+        if (!cleanupSucceeded) {
+          await clerkSetup();
+          await page.goto("/sign-in");
+          await clerk.loaded({ page });
+          await clerk.signIn({ page, emailAddress: E2E_USER_A_EMAIL });
+          await disconnectSandboxItems(page, clerkIdA());
+          if (connectionId) {
+            const credentials = await adminQuery(
+              "select count(*)::int as n from connection_credentials where connection_id = $1",
+              [connectionId],
+            );
+            expect(credentials.rows[0].n).toBe(0);
+          }
+        }
+      } finally {
+        await context.close();
+      }
+    }
   });
 
   test("the management arc: status states, repair mint, disconnect with /item/remove, purge", async ({
