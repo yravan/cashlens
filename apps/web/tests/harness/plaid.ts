@@ -62,6 +62,7 @@ export const balanceRequests: Array<{ min_last_updated_datetime?: string }> = []
 export const webhookUpdateRequests: Array<{ accessToken: string; webhook: string }> = [];
 let syncPageCap = Infinity;
 const syncFailures: Array<{ errorType: string; errorCode: string; after: number }> = [];
+const accountsGetFailures: Array<{ errorType: string; errorCode: string }> = [];
 const balanceFailures: Array<{ errorType: string; errorCode: string }> = [];
 const removeFailures: Array<{ errorType: string; errorCode: string }> = [];
 let afterSyncPage: (() => Promise<void>) | null = null;
@@ -77,6 +78,7 @@ export function resetPlaidSubstitute(): void {
   webhookUpdateRequests.length = 0;
   webhookKeyRequests.length = 0;
   syncFailures.length = 0;
+  accountsGetFailures.length = 0;
   balanceFailures.length = 0;
   removeFailures.length = 0;
   syncPageCap = Infinity;
@@ -89,6 +91,10 @@ export function capSyncPageSize(size: number): void {
 
 export function failNextSync(errorType: string, errorCode: string, after = 0): void {
   syncFailures.push({ errorType, errorCode, after });
+}
+
+export function failNextAccountsGet(errorType: string, errorCode: string): void {
+  accountsGetFailures.push({ errorType, errorCode });
 }
 
 export function failNextBalanceGet(errorType: string, errorCode: string): void {
@@ -260,6 +266,10 @@ export function revokeAccessToken(accessToken: string): void {
   byAccessToken.delete(accessToken);
 }
 
+export function isItemLive(accessToken: string): boolean {
+  return byAccessToken.has(accessToken);
+}
+
 export function removeItemRemotely(accessToken: string): void {
   if (byAccessToken.delete(accessToken)) removedAccessTokens.push(accessToken);
 }
@@ -370,6 +380,10 @@ export class PlaidApi {
   }
 
   async accountsGet({ access_token }: { access_token: string }) {
+    const failure = accountsGetFailures.shift();
+    if (failure) {
+      return plaidReject(500, failure.errorType, failure.errorCode, "injected accounts/get failure");
+    }
     const item = byAccessToken.get(access_token);
     if (!item) {
       return plaidReject(
