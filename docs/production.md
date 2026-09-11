@@ -56,7 +56,8 @@ leaf 10.6.
 | `PLAID_SECRET` | the **production** secret (per-environment; the sandbox secret only works against sandbox) | yes |
 | `PLAID_ENV` | `production` | no |
 | `PLAID_WEBHOOK_URL` | `https://cashlens.org/api/plaid/webhook` — stamped onto items at link time; the receiver (leaf 2.1.4) verifies Plaid's ES256 signature, so it needs no secret of its own | no |
-| `ANTHROPIC_API_KEY` | from console.anthropic.com → API keys — powers LLM auto-categorization (leaf 4.2.1). Read lazily: until it is set the feature is simply dormant (no trigger renders, the categorize route answers 503) and every deploy stays green | yes |
+| `OPENROUTER_API_KEY` | from openrouter.ai → Keys — powers LLM auto-categorization (leaf 4.2.1, OpenRouter transport). Read lazily: until it is set the feature is simply dormant (no trigger renders, the categorize route answers 503) and every deploy stays green | yes |
+| `LLM_MODEL` | optional — any OpenRouter model slug; unset = `anthropic/claude-haiku-4.5`. Switching models is this one var, no deploy logic change (see the LLM section below before picking) | no |
 
 ### Plaid production (leaf 2.1.1 — before real banks connect)
 
@@ -79,17 +80,31 @@ leaf 10.6.
    the URL heals every item on its next sync. Continuous sync still works without webhooks via
    the accounts-page resume path — webhooks make it prompt, not possible.
 
-### LLM auto-categorization (leaf 4.2.1 — founder provisions the key)
+### LLM auto-categorization (leaf 4.2.1, OpenRouter transport — founder provisions the key)
 
-1. console.anthropic.com → create an API key (its own workspace, e.g. `cashlens-prod`, keeps
-   spend legible) and set `ANTHROPIC_API_KEY` (Production scope, Sensitive).
-2. Cost shape: batches of ≤40 uncategorized transactions per call on `claude-haiku-4-5`
-   ($1/$5 per MTok) ≈ $0.01 per batch — a 2,000-row backfill is well under a dollar. Set a
-   monthly spend limit in the Anthropic console anyway.
-3. What leaves the system per transaction: description, merchant, and direction only — no ids,
-   dates, amounts, currencies, or account names. Anthropic's commercial API terms: no training
-   on API data, 30-day retention (docs/leaves/4.2.1-prior-art.md #19).
+1. openrouter.ai → Keys → create an API key (name it `cashlens-prod`; give the key its own
+   credit limit so spend stays legible) and set `OPENROUTER_API_KEY` (Production scope,
+   Sensitive). Buy a small credit balance — a 402 (out of credits) surfaces as the categorize
+   route answering 503 until topped up.
+2. Model is `LLM_MODEL` (default `anthropic/claude-haiku-4.5` — the same model 4.2.1 shipped
+   on, $1/$5 per MTok ≈ $0.01 per ≤40-row batch; a 2,000-row backfill is well under a dollar).
+   Cheaper structured-output-capable slugs surveyed 2026-09
+   (docs/leaves/4.2.1-openrouter-prior-art.md #11): `openai/gpt-5-nano` $0.025/$0.20,
+   `mistralai/mistral-small-3.2-24b-instruct` $0.075/$0.20, `google/gemini-2.5-flash-lite`
+   $0.10/$0.40. Before switching, check the model page's Providers tab: it needs at least one
+   endpoint supporting structured outputs AND acceptable data policies — every request pins
+   `provider: { data_collection: "deny", require_parameters: true }`, so a model with no
+   eligible endpoint fails closed (503 from OpenRouter → our 502), never silently degrades.
+3. What leaves the system per transaction is unchanged: description, merchant, and direction
+   only — no ids, dates, amounts, currencies, or account names. New intermediary: OpenRouter
+   sees prompts in transit (their logging is off unless opted in); the pinned
+   `data_collection: "deny"` keeps data-collecting/training endpoints out of routing — for the
+   default model that routes to zero-retention Azure/Bedrock endpoints at the same price,
+   30-day-retention first-party Anthropic at worst (prior-art #10). Optional belt-and-braces:
+   openrouter.ai → Settings → Privacy — block training providers account-wide, or enable ZDR-only.
 4. Nothing else to deploy: triggers run as the signed-in user from the transactions page.
+   (If first-party Anthropic billing is ever wanted again, OpenRouter BYOK reuses this exact
+   transport and the pinned data controls still bind — prior-art #13.)
 
 `DATABASE_URL_SUPERUSER` is never set on Vercel: the `neondb_owner` credential exists only on the
 founder's machine, for bootstrap.
