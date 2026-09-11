@@ -1,6 +1,6 @@
 {
-  "id": "f5937400-b6e8-4b19-99b2-54ff60bb0496",
-  "prevId": "a25985eb-3357-4dcd-9b53-6a51e0cac9b6",
+  "id": "472d9297-36f1-4c46-a830-1463c090aa6a",
+  "prevId": "31277128-8535-472f-a9c3-e088f536c947",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2361,7 +2361,9 @@
       "name": "connection_status",
       "schema": "public",
       "values": [
+        "provisioning",
         "active",
+        "cleanup_required",
         "disconnected"
       ]
     },
