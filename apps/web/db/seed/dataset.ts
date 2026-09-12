@@ -190,7 +190,7 @@ export const SEED_BALANCES: SeedRow<typeof accountBalances.$inferInsert>[] = [
   { persona: "demo", accountId: A.checking, availableMinor: 234120, currentMinor: 235370, limitMinor: null, asOf: AS_OF },
   { persona: "demo", accountId: A.savings, availableMinor: 1500000, currentMinor: 1500000, limitMinor: null, asOf: AS_OF },
   { persona: "demo", accountId: A.card, availableMinor: 748755, currentMinor: 51245, limitMinor: 800000, asOf: AS_OF },
-  { persona: "demo", accountId: A.wallet, availableMinor: null, currentMinor: 8600, limitMinor: null, asOf: AS_OF },
+  { persona: "demo", accountId: A.wallet, availableMinor: null, currentMinor: 8600, limitMinor: null, asOf: AS_OF, reportedOn: "2026-03-14" },
   { persona: "demo", accountId: A.euro, availableMinor: 120450, currentMinor: 120450, limitMinor: null, asOf: AS_OF },
   { persona: "neighbor", accountId: A.neighborChecking, availableMinor: 50000, currentMinor: 50000, limitMinor: null, asOf: AS_OF },
 ];
@@ -209,8 +209,14 @@ type CurrencySpending = {
 };
 type OverviewAccount = Pick<
   (typeof SEED_ACCOUNTS)[number],
-  "name" | "type" | "subtype" | "mask" | "currency"
-> & { currentMinor: number | null };
+  "name" | "type" | "subtype" | "mask" | "currency" | "source"
+> & {
+  currentMinor: number | null;
+  reportedMinor: number | null;
+  reportedOn: string | null;
+  sinceCount: number;
+  transactionCount: number;
+};
 
 export type ExpectedPersona = {
   accounts: number;
@@ -240,15 +246,37 @@ export type ExpectedPersona = {
 };
 
 const ACCOUNT_TYPE_ORDER = ["depository", "credit", "loan", "investment", "other"];
+const OWED_ACCOUNT_TYPES = new Set(["credit", "loan"]);
 
+// Seed rows are inserted after AS_OF, so a row dated the anchor day counts as
+// recorded after the anchor (the DAL's created_at > as_of tie-break).
 function overviewFor(persona: SeedPersona): ExpectedPersona["overview"] {
-  const current = new Map(
-    SEED_BALANCES.filter((b) => b.persona === persona).map((b) => [b.accountId, b.currentMinor ?? null]),
+  const balances = new Map(
+    SEED_BALANCES.filter((b) => b.persona === persona).map((b) => [b.accountId, b]),
   );
+  const mine = SEED_TRANSACTIONS.filter((t) => t.persona === persona);
   const accounts = SEED_ACCOUNTS.filter((a) => a.persona === persona)
-    .map(({ id, name, type, subtype, mask, currency }) => ({
-      name, type, subtype: subtype ?? null, mask: mask ?? null, currency, currentMinor: current.get(id) ?? null,
-    }))
+    .map(({ id, name, type, subtype, mask, currency, source }) => {
+      const balance = balances.get(id);
+      const reportedMinor = balance?.currentMinor ?? null;
+      const reportedOn = balance?.reportedOn ?? null;
+      const rows = mine.filter((t) => t.accountId === id);
+      const since =
+        source === "manual" && reportedOn !== null
+          ? rows.filter((t) => t.status === "posted" && t.date >= reportedOn)
+          : [];
+      const sinceMinor = since.reduce((sum, t) => sum + t.amountMinor, 0);
+      const currentMinor =
+        reportedMinor === null || source !== "manual"
+          ? reportedMinor
+          : OWED_ACCOUNT_TYPES.has(type)
+            ? reportedMinor - sinceMinor
+            : reportedMinor + sinceMinor;
+      return {
+        name, type, subtype: subtype ?? null, mask: mask ?? null, currency, source,
+        currentMinor, reportedMinor, reportedOn, sinceCount: since.length, transactionCount: rows.length,
+      };
+    })
     .sort(
       (a, b) =>
         ACCOUNT_TYPE_ORDER.indexOf(a.type) - ACCOUNT_TYPE_ORDER.indexOf(b.type) ||

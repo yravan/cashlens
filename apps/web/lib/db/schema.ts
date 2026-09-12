@@ -645,6 +645,7 @@ export const accountBalances = pgTable(
     currentMinor: bigint("current_minor", { mode: "number" }),
     limitMinor: bigint("limit_minor", { mode: "number" }),
     asOf: timestamp("as_of", { withTimezone: true }).notNull(),
+    reportedOn: date("reported_on"),
     createdAt: timestamps.createdAt,
   },
   (t) => [

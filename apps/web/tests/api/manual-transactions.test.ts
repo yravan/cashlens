@@ -1164,6 +1164,7 @@ test("the app role has only the established transaction and balance update colum
     "available_minor",
     "current_minor",
     "limit_minor",
+    "reported_on",
   ]);
 });
 

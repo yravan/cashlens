@@ -225,6 +225,20 @@
       "when": 1789102745807,
       "tag": "0031_manual_transaction_account_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789245863867,
+      "tag": "0032_offline_account_anchor",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789245865304,
+      "tag": "0033_offline_account_anchor_grant",
+      "breakpoints": true
     }
   ]
 }

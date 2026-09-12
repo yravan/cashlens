@@ -1,5 +1,6 @@
 import type { accountOverview } from "@/lib/data/ledger";
 import { formatMinorUnits } from "@/lib/ledger/minor-units";
+import { OfflineAccountActions } from "./offline-account-controls";
 
 type Overview = Awaited<ReturnType<typeof accountOverview>>;
 type Account = Overview["accounts"][number];
@@ -66,6 +67,11 @@ function AccountRow({ account }: { account: Account }) {
   ]
     .filter(Boolean)
     .join(" · ");
+  const offline = account.source === "manual";
+  const since =
+    account.sinceCount === 0
+      ? ""
+      : ` · ${account.sinceCount} transaction${account.sinceCount === 1 ? "" : "s"} since`;
   return (
     <li
       data-testid="account-row"
@@ -84,7 +90,22 @@ function AccountRow({ account }: { account: Account }) {
           </p>
         )}
         <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{account.currency}</p>
+        {offline && account.reportedMinor !== null && (
+          <p
+            data-testid="reported-balance"
+            className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400"
+          >
+            Reported {formatMinorUnits(account.reportedMinor, account.currency)}
+            {account.reportedOn && ` on ${account.reportedOn}`}
+            {since}
+          </p>
+        )}
       </div>
+      {offline && (
+        <div className="sm:col-span-2">
+          <OfflineAccountActions account={account} />
+        </div>
+      )}
     </li>
   );
 }
@@ -95,7 +116,7 @@ export function AccountsOverview({ overview }: { overview: Overview }) {
       <section className="mt-10 border-y border-zinc-200 py-8 dark:border-zinc-800">
         <h2 className="text-lg font-medium tracking-tight">No accounts yet</h2>
         <p className="mt-2 max-w-lg text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-          Connect a bank or card to bring its accounts and latest balances into one place.
+          Connect a bank or card, or add an offline account, to bring balances into one place.
         </p>
       </section>
     );
