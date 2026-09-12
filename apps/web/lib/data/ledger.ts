@@ -395,7 +395,7 @@ export async function accountOverview() {
     const shown = listed.map(({ sinceMinor, ...row }) => ({
       ...row,
       currentMinor:
-        row.reportedMinor === null || row.source !== "manual"
+        row.reportedMinor === null
           ? row.reportedMinor
           : OWED_TYPES.has(row.type)
             ? row.reportedMinor - sinceMinor
