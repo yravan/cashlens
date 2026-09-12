@@ -4,6 +4,7 @@ import { useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import type { CategoryGroup } from "@/lib/data/categories";
+import type { ManualMutationError } from "@/lib/data/manual-transactions";
 import { formatMajorUnits } from "@/lib/ledger/minor-units";
 
 type AccountOption = { id: string; name: string; currency: string };
@@ -26,14 +27,7 @@ type ManualRow = {
   merchant: string | null;
   categoryId: string | null;
 };
-type ErrorCode =
-  | "invalid_request"
-  | "transaction_not_found"
-  | "account_not_found"
-  | "category_not_found"
-  | "category_not_assignable";
-
-const ERROR_COPY: Record<ErrorCode, string> = {
+const ERROR_COPY: Record<ManualMutationError, string> = {
   invalid_request: "Check the transaction details and try again.",
   transaction_not_found: "That transaction is no longer available.",
   account_not_found: "That account is no longer available.",
@@ -54,7 +48,7 @@ function errorCopy(value: unknown, fallback: string) {
   if (typeof value !== "object" || value === null || !("error" in value)) return fallback;
   const code = value.error;
   return typeof code === "string" && Object.hasOwn(ERROR_COPY, code)
-    ? ERROR_COPY[code as ErrorCode]
+    ? ERROR_COPY[code as ManualMutationError]
     : fallback;
 }
 

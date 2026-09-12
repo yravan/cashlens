@@ -362,6 +362,34 @@ test("create writes one canonical posted manual row without changing its account
   expect(balanceAfter).toEqual(balanceBefore);
 });
 
+test("create derives denomination and exact minor units from an owned import account", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const user = await withAuth(clerkUserId, () => requireUser());
+  const [account] = await adminDb()
+    .insert(accounts)
+    .values({
+      userId: user.id,
+      name: "Imported JPY account",
+      type: "depository",
+      currency: "JPY",
+      source: "import",
+    })
+    .returning({ id: accounts.id });
+
+  const response = await withAuth(clerkUserId, () =>
+    postCreate({ ...manualInput(account.id), amount: "980" }),
+  );
+  expect(response.status).toBe(201);
+  const body = (await response.json()) as { transactionId: string };
+
+  await expect(
+    adminDb()
+      .select({ currency: transactions.currency, amountMinor: transactions.amountMinor })
+      .from(transactions)
+      .where(eq(transactions.id, body.transactionId)),
+  ).resolves.toEqual([{ currency: "JPY", amountMinor: -980 }]);
+});
+
 test("edit atomically replaces denomination and fields without changing balances", async () => {
   const clerkUserId = fakeClerkUserId();
   const user = await withAuth(clerkUserId, () => requireUser());
