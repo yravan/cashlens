@@ -71,26 +71,40 @@ export async function listCategoryGroups(): Promise<CategoryGroup[]> {
   return withRequestScope(user.clerkUserId, (tx) => categoryGroupsFor(tx, user.id));
 }
 
+export type ResolvedAssignableCategory =
+  | { ok: true; categoryId: string | null }
+  | { ok: false; error: "category_not_found" | "category_not_assignable" };
+
+export async function resolveAssignableCategory(
+  tx: ScopedTx,
+  userId: string,
+  categoryId: string | null,
+): Promise<ResolvedAssignableCategory> {
+  if (categoryId === null) return { ok: true, categoryId };
+  if (!UUID_PATTERN.test(categoryId)) return { ok: false, error: "category_not_found" };
+
+  const children = alias(categories, "children");
+  const [target] = await tx
+    .select({ children: count(children.id) })
+    .from(categories)
+    .leftJoin(children, eq(children.parentId, categories.id))
+    .where(and(eq(categories.id, categoryId), eq(categories.userId, userId)))
+    .groupBy(categories.id);
+  if (!target) return { ok: false, error: "category_not_found" };
+  if (target.children > 0) return { ok: false, error: "category_not_assignable" };
+  return { ok: true, categoryId };
+}
+
 export async function setTransactionCategory(
   transactionId: string,
   categoryId: string | null,
 ): Promise<CategoryAssignment> {
   const user = await requireUser();
   if (!UUID_PATTERN.test(transactionId)) return { error: "transaction_not_found" };
-  if (categoryId !== null && !UUID_PATTERN.test(categoryId)) return { error: "category_not_found" };
 
   return withRequestScope(user.clerkUserId, async (tx) => {
-    if (categoryId !== null) {
-      const children = alias(categories, "children");
-      const [target] = await tx
-        .select({ children: count(children.id) })
-        .from(categories)
-        .leftJoin(children, eq(children.parentId, categories.id))
-        .where(and(eq(categories.id, categoryId), eq(categories.userId, user.id)))
-        .groupBy(categories.id);
-      if (!target) return { error: "category_not_found" as const };
-      if (target.children > 0) return { error: "category_not_assignable" as const };
-    }
+    const category = await resolveAssignableCategory(tx, user.id, categoryId);
+    if (!category.ok) return { error: category.error };
 
     const [updated] = await tx
       .update(transactions)

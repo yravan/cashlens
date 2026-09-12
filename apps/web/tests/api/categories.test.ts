@@ -4,7 +4,11 @@ import { expect, test } from "vitest";
 import { POST as categoryRoute } from "@/app/api/transactions/[transactionId]/category/route";
 import { SEED_CATEGORIES, SEED_USERS } from "@/db/seed/dataset";
 import { seedDataset } from "@/db/seed/seed";
-import { listCategoryGroups, setTransactionCategory } from "@/lib/data/categories";
+import {
+  listCategoryGroups,
+  resolveAssignableCategory,
+  setTransactionCategory,
+} from "@/lib/data/categories";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
 import { accounts, categories, transactions } from "@/lib/db/schema";
@@ -222,6 +226,40 @@ test("a category group is never assignable", async () => {
     withAuth(clerkUserId, () => setTransactionCategory(transactionId, groups[0].id)),
   ).resolves.toEqual({ error: "category_not_assignable" });
   expect(await categoryOf(transactionId)).toBeNull();
+});
+
+test("the transaction-scoped resolver distinguishes leaves, groups, and hidden categories", async () => {
+  const clerkA = fakeClerkUserId();
+  const clerkB = fakeClerkUserId();
+  const a = await provision(clerkA);
+  await provision(clerkB);
+  const groupsA = await withAuth(clerkA, () => listCategoryGroups());
+  const groupsB = await withAuth(clerkB, () => listCategoryGroups());
+  const leaf = leafNamed(groupsA, "Groceries");
+
+  await withRequestScope(clerkA, async (tx) => {
+    await expect(resolveAssignableCategory(tx, a.user.id, null)).resolves.toEqual({
+      ok: true,
+      categoryId: null,
+    });
+    await expect(resolveAssignableCategory(tx, a.user.id, leaf)).resolves.toEqual({
+      ok: true,
+      categoryId: leaf,
+    });
+    await expect(resolveAssignableCategory(tx, a.user.id, groupsA[0].id)).resolves.toEqual({
+      ok: false,
+      error: "category_not_assignable",
+    });
+
+    const hidden = { ok: false, error: "category_not_found" };
+    await expect(resolveAssignableCategory(tx, a.user.id, "not-a-uuid")).resolves.toEqual(hidden);
+    await expect(
+      resolveAssignableCategory(tx, a.user.id, "00000000-0000-4000-8000-00000000dead"),
+    ).resolves.toEqual(hidden);
+    await expect(
+      resolveAssignableCategory(tx, a.user.id, leafNamed(groupsB, "Groceries")),
+    ).resolves.toEqual(hidden);
+  });
 });
 
 test("cross-user transaction and category ids disclose nothing and change nothing", async () => {

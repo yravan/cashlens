@@ -218,6 +218,13 @@
       "when": 1789102745806,
       "tag": "0030_category_taxonomy_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789102745807,
+      "tag": "0031_manual_transaction_account_grant",
+      "breakpoints": true
     }
   ]
 }
