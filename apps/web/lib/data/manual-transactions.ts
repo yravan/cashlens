@@ -28,9 +28,10 @@ type User = Awaited<ReturnType<typeof requireUser>>;
 type Operation =
   | "create_manual_transaction"
   | "update_manual_transaction"
-  | "delete_manual_transaction";
+  | "delete_manual_transaction"
+  | "delete_offline_account";
 
-async function repairTransfers(user: User, operation: Operation): Promise<void> {
+export async function repairTransfers(user: User, operation: Operation): Promise<void> {
   try {
     await matchTransfersFor(user);
   } catch (error) {

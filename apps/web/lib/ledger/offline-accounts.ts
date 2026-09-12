@@ -1,10 +1,9 @@
-import type { accountType } from "@/lib/db/schema";
 import { isIsoDate } from "./history-query";
 import { parseMajorUnits } from "./minor-units";
 
-export type OfflineAccountType = (typeof accountType.enumValues)[number];
+// Mirrors the account_type enum; lib/data stops compiling if the two drift in either direction.
+export type OfflineAccountType = "depository" | "credit" | "loan" | "investment" | "other";
 
-// Record, not a list: a new account_type has to be given a label here or the build fails.
 export const OFFLINE_TYPE_LABELS: Record<OfflineAccountType, string> = {
   depository: "Cash",
   credit: "Credit card",
