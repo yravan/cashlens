@@ -15,6 +15,10 @@ Ledger-first personal finance app. Read `specs/vision.md` for the product thesis
 ## Code style
 
 - Comments, docstrings, and prose in code: minimum, ideally zero. Code explains itself through names and structure; comment only a constraint the code can't express. Never narrate what a line does or restate it in English.
+- Reuse before writing: look for an existing helper, DAL function, component, or test pattern and extend it; add a new file or abstraction only when nothing fits. The right diff is the smallest one that does the job — no speculative generality.
+- Edit in place: change the existing function, module, or test rather than creating a parallel version beside it. Fewer files and fewer lines is the goal the simplification pass enforces.
+- No brittle heuristics: where the job is judgment over messy real-world data (merchant strings, receipts, matching), don't ship pattern matching with poor accuracy — use a smarter method: the LLM path the repo already has, or a purpose-built library or service. Keep deterministic code for exact, structural rules (money, ownership, dates, identity).
+- Reuse capabilities that exist: if the repo already has a harness for a capability, or a maintained product or library covers the job, build on it instead of a bespoke implementation. A new dependency is still a security decision (see Security).
 
 ## Security — the defining tenet
 
