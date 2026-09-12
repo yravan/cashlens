@@ -71,7 +71,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
   - **2.1.6 Connection health & history** `[P2]` — Per-institution last-sync time, error timeline, and a manual "sync now".
 - **2.2 Manual & file input** `[P1]`
   - **2.2.1 Manual transactions** `[P1]` — Add, edit, and delete transactions by hand — cash spending and anything no feed can see.
-  - **2.2.2 Statement file import** `[P1]` — Upload CSV or statement exports to backfill accounts a connection can't reach; rows land in the ledger like any other source.
+  - **2.2.2 Statement file import** `[P1]` — Upload CSV or statement exports to backfill accounts a connection can't reach; rows land in the ledger like any other source. *(Built after 2.2.3: an import needs a destination account, and an unconnected institution's account exists only as an offline account.)*
   - **2.2.3 Offline accounts** `[P1]` — Track accounts with no feed — cash, prepaid balances, niche platforms like Kalshi — by periodically updating a balance.
 - **2.3 Gmail ingestion** `[P1]`
   - **2.3.1 Gmail connect** `[P1]` — Authorize read access to the inbox, scoped to finding financial mail; disconnectable like any other source.
