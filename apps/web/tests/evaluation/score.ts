@@ -65,7 +65,7 @@ export function scoreClassification(
       failedCaseIds.add("<invalid-assignment>");
       continue;
     }
-    const { item, category, confidence } = candidate as Partial<ClassifyAssignment>;
+    const { item, category, confidence, reason } = candidate as Partial<ClassifyAssignment>;
     if (!isIndex(item, cases.length)) {
       invalid += 1;
       failedCaseIds.add("<invalid-item>");
@@ -77,7 +77,7 @@ export function scoreClassification(
       continue;
     }
     const currentCase = cases[item];
-    if (!isIndex(category, categoryLabels.length) || !isConfidence(confidence)) {
+    if (!isIndex(category, categoryLabels.length) || !isConfidence(confidence) || typeof reason !== "string" || reason.trim().length === 0) {
       invalid += 1;
       failedCaseIds.add(currentCase.id);
       continue;

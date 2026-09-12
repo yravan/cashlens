@@ -62,6 +62,12 @@ test("invalid responses are counted separately from cases without a valid assign
   expect(score.failedCaseIds).toEqual(["known"]);
 });
 
+test.each([undefined, null, 42, "", "   "])("an invalid reason (%j) cannot count as a semantic match", reason => {
+  const score = scoreClassification([{ item: 0, category: 0, confidence: "high", reason }], labels, cases.slice(0, 1));
+  expect(score).toMatchObject({ total: 1, matched: 0, wrong: 0, missing: 1, invalid: 1 });
+  expect(score.failedCaseIds).toEqual(["known"]);
+});
+
 describe("invalid confidence", () => {
   test("is explicit rather than silently omitted", () => {
     const score = scoreClassification([{ item: 0, category: 0, confidence: "certain", reason: "synthetic" }], labels, cases);
