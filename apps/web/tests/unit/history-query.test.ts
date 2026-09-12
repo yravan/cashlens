@@ -230,10 +230,21 @@ test("amounts are non-negative plain decimals, nothing else", () => {
 });
 
 test("amounts past the safe-integer range are rejected, never rounded", () => {
+  expect(parseHistoryQuery({ currency: "USD", min: "90071992547409.90" })).toEqual(
+    valid({ currency: "USD", minMinor: 9007199254740990 }),
+  );
   expect(parseHistoryQuery({ currency: "USD", min: "90071992547409.91" })).toEqual(
-    valid({ currency: "USD", minMinor: 9007199254740991 }),
+    valid({ currency: "USD", minMinor: Number.MAX_SAFE_INTEGER }),
   );
   expect(parseHistoryQuery({ currency: "USD", min: "90071992547409.92" })).toEqual(invalid);
+  expect(parseHistoryQuery({ currency: "JPY", min: "9007199254740991" })).toEqual(
+    valid({ currency: "JPY", minMinor: Number.MAX_SAFE_INTEGER }),
+  );
+  expect(parseHistoryQuery({ currency: "JPY", min: "9007199254740992" })).toEqual(invalid);
+  expect(parseHistoryQuery({ currency: "KWD", min: "9007199254740.991" })).toEqual(
+    valid({ currency: "KWD", minMinor: Number.MAX_SAFE_INTEGER }),
+  );
+  expect(parseHistoryQuery({ currency: "KWD", min: "9007199254740.992" })).toEqual(invalid);
   expect(parseHistoryQuery({ currency: "USD", min: "9".repeat(30) })).toEqual(invalid);
 });
 
@@ -304,4 +315,10 @@ test("serialization omits inactive filters and the default page", () => {
   expect(historyQueryString({ ...EMPTY, currency: "BHD", maxMinor: 1200 }, 1)).toBe(
     "currency=BHD&max=1.2",
   );
+  expect(
+    historyQueryString({ ...EMPTY, currency: "USD", minMinor: 9007199254740990 }, 1),
+  ).toBe("currency=USD&min=90071992547409.9");
+  expect(
+    historyQueryString({ ...EMPTY, currency: "KWD", maxMinor: Number.MAX_SAFE_INTEGER }, 1),
+  ).toBe("currency=KWD&max=9007199254740.991");
 });
