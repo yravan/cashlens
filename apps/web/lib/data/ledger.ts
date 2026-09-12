@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, count, desc, eq, exists, gte, ilike, isNull, lte, notExists, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, exists, gt, gte, ilike, isNull, lte, notExists, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { categoryGroupsFor } from "@/lib/data/categories";
@@ -14,6 +14,7 @@ import {
   type ParsedHistoryQuery,
   type ParsedSpendingQuery,
 } from "@/lib/ledger/history-query";
+import { OWED_TYPES } from "@/lib/ledger/offline-accounts";
 
 export async function ledgerCounts() {
   const user = await requireUser();
@@ -356,6 +357,22 @@ export type SpendingSection = SpendingByCategory["currencies"][number];
 export async function accountOverview() {
   const user = await requireUser();
   return withRequestScope(user.clerkUserId, async (tx) => {
+    const ownRows = and(
+      eq(transactions.accountId, accounts.id),
+      eq(transactions.userId, accounts.userId),
+    )!;
+    const sinceAnchor = and(
+      ownRows,
+      eq(accounts.source, "manual"),
+      eq(transactions.status, "posted"),
+      or(
+        gt(transactions.date, accountBalances.reportedOn),
+        and(
+          eq(transactions.date, accountBalances.reportedOn),
+          gt(transactions.createdAt, accountBalances.asOf),
+        ),
+      ),
+    )!;
     const listed = await tx
       .select({
         id: accounts.id,
@@ -364,15 +381,29 @@ export async function accountOverview() {
         subtype: accounts.subtype,
         mask: accounts.mask,
         currency: accounts.currency,
-        currentMinor: accountBalances.currentMinor,
+        source: accounts.source,
+        reportedMinor: accountBalances.currentMinor,
+        reportedOn: accountBalances.reportedOn,
+        sinceMinor: sql`coalesce((select sum(${transactions.amountMinor}) from ${transactions} where ${sinceAnchor}), 0)`.mapWith(Number),
+        sinceCount: sql`(select count(*) from ${transactions} where ${sinceAnchor})`.mapWith(Number),
+        transactionCount: sql`(select count(*) from ${transactions} where ${ownRows})`.mapWith(Number),
       })
       .from(accounts)
       .leftJoin(accountBalances, eq(accountBalances.accountId, accounts.id))
       .where(eq(accounts.userId, user.id))
       .orderBy(asc(accounts.type), asc(accounts.name), asc(accounts.id));
+    const shown = listed.map(({ sinceMinor, ...row }) => ({
+      ...row,
+      currentMinor:
+        row.reportedMinor === null || row.source !== "manual"
+          ? row.reportedMinor
+          : OWED_TYPES.has(row.type)
+            ? row.reportedMinor - sinceMinor
+            : row.reportedMinor + sinceMinor,
+    }));
     const total = (type: "depository" | "credit") => {
       const totals: Record<string, number> = {};
-      for (const account of listed) {
+      for (const account of shown) {
         if (account.type === type && account.currentMinor !== null) {
           totals[account.currency] = (totals[account.currency] ?? 0) + account.currentMinor;
         }
@@ -380,7 +411,7 @@ export async function accountOverview() {
       return totals;
     };
     return {
-      accounts: listed,
+      accounts: shown,
       cashOnHand: total("depository"),
       creditOwed: total("credit"),
     };

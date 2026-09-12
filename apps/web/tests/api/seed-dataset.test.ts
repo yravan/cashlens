@@ -115,11 +115,11 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     ],
     overview: {
       accounts: [
-        { name: "Berlin Checking", type: "depository", subtype: "checking", mask: "0300", currency: "EUR", currentMinor: 120450 },
-        { name: "Everyday Checking", type: "depository", subtype: "checking", mask: "0100", currency: "USD", currentMinor: 235370 },
-        { name: "Rainy Day Savings", type: "depository", subtype: "savings", mask: "0200", currency: "USD", currentMinor: 1500000 },
-        { name: "Cash Rewards Card", type: "credit", subtype: "credit card", mask: "4321", currency: "USD", currentMinor: 51245 },
-        { name: "Cash Wallet", type: "other", subtype: null, mask: null, currency: "USD", currentMinor: 8600 },
+        { name: "Berlin Checking", type: "depository", subtype: "checking", mask: "0300", currency: "EUR", source: "import", currentMinor: 120450, reportedMinor: 120450, reportedOn: null, sinceCount: 0, transactionCount: 2 },
+        { name: "Everyday Checking", type: "depository", subtype: "checking", mask: "0100", currency: "USD", source: "plaid", currentMinor: 235370, reportedMinor: 235370, reportedOn: null, sinceCount: 0, transactionCount: 7 },
+        { name: "Rainy Day Savings", type: "depository", subtype: "savings", mask: "0200", currency: "USD", source: "plaid", currentMinor: 1500000, reportedMinor: 1500000, reportedOn: null, sinceCount: 0, transactionCount: 2 },
+        { name: "Cash Rewards Card", type: "credit", subtype: "credit card", mask: "4321", currency: "USD", source: "plaid", currentMinor: 51245, reportedMinor: 51245, reportedOn: null, sinceCount: 0, transactionCount: 7 },
+        { name: "Cash Wallet", type: "other", subtype: null, mask: null, currency: "USD", source: "manual", currentMinor: 8600, reportedMinor: 8600, reportedOn: "2026-03-31", sinceCount: 0, transactionCount: 1 },
       ],
       cashOnHand: { EUR: 120450, USD: 1735370 },
       creditOwed: { USD: 51245 },
@@ -185,7 +185,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     ],
     overview: {
       accounts: [
-        { name: "Neighbor Checking", type: "depository", subtype: "checking", mask: "0900", currency: "USD", currentMinor: 50000 },
+        { name: "Neighbor Checking", type: "depository", subtype: "checking", mask: "0900", currency: "USD", source: "plaid", currentMinor: 50000, reportedMinor: 50000, reportedOn: null, sinceCount: 0, transactionCount: 2 },
       ],
       cashOnHand: { USD: 50000 },
       creditOwed: {},
