@@ -14,6 +14,10 @@ import { formatMinorUnits } from "@/lib/ledger/minor-units";
 import { AutoCategorize } from "./auto-categorize";
 import { CategorySelect } from "./category-select";
 import { HistoryFilters } from "./filter-form";
+import {
+  AddManualTransaction,
+  ManualTransactionActions,
+} from "./manual-transaction-controls";
 import { TransferMatch } from "./transfer-match";
 import { TransferUnlink } from "./transfer-unlink";
 
@@ -26,9 +30,11 @@ const pageHref = (query: HistoryQuery, page: number) => {
 
 function TransactionRow({
   row,
+  accounts,
   groups,
 }: {
   row: TransactionHistory["rows"][number];
+  accounts: TransactionHistory["options"]["accounts"];
   groups: TransactionHistory["options"]["categoryGroups"];
 }) {
   return (
@@ -83,6 +89,11 @@ function TransactionRow({
           </span>
         )}
       </span>
+      {row.source === "manual" && (
+        <div className="min-w-0 sm:col-span-3">
+          <ManualTransactionActions row={row} accounts={accounts} groups={groups} />
+        </div>
+      )}
     </li>
   );
 }
@@ -106,7 +117,15 @@ export default async function TransactionsPage({
 
   const heading = (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
+        {history.options.accounts.length > 0 && (
+          <AddManualTransaction
+            accounts={history.options.accounts}
+            groups={history.options.categoryGroups}
+          />
+        )}
+      </div>
       {history.options.currencies.length > 0 && <TransferMatch />}
       {autoCategorize && <AutoCategorize />}
     </>
@@ -130,7 +149,8 @@ export default async function TransactionsPage({
   }
 
   const { query } = parsed;
-  const ledgerEmpty = history.options.currencies.length === 0;
+  const noAccounts = history.options.accounts.length === 0;
+  const ledgerEmpty = !noAccounts && history.options.currencies.length === 0;
   const plural = history.total === 1 ? "" : "s";
   const count = isFiltered(query)
     ? `${history.total} matching transaction${plural}`
@@ -164,11 +184,11 @@ export default async function TransactionsPage({
         {count}
       </p>
 
-      {ledgerEmpty ? (
+      {noAccounts ? (
         <section className="mt-10 border-y border-zinc-200 py-8 dark:border-zinc-800">
-          <h2 className="text-lg font-medium tracking-tight">No transactions yet</h2>
+          <h2 className="text-lg font-medium tracking-tight">An account is required</h2>
           <p className="mt-2 max-w-lg text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-            Connect a bank or card and its history lands here, searchable and filterable.
+            Add or connect an account before recording a transaction.
           </p>
           <Link
             href="/accounts"
@@ -176,6 +196,13 @@ export default async function TransactionsPage({
           >
             Go to accounts
           </Link>
+        </section>
+      ) : ledgerEmpty ? (
+        <section className="mt-10 border-y border-zinc-200 py-8 dark:border-zinc-800">
+          <h2 className="text-lg font-medium tracking-tight">No transactions yet</h2>
+          <p className="mt-2 max-w-lg text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+            Add one by hand now, or connect an account to import its history.
+          </p>
         </section>
       ) : (
         <>
@@ -199,7 +226,12 @@ export default async function TransactionsPage({
               className="mt-6 divide-y divide-zinc-200 border-b border-zinc-300 dark:divide-zinc-800 dark:border-zinc-700"
             >
               {history.rows.map((row) => (
-                <TransactionRow key={row.id} row={row} groups={history.options.categoryGroups} />
+                <TransactionRow
+                  key={row.id}
+                  row={row}
+                  accounts={history.options.accounts}
+                  groups={history.options.categoryGroups}
+                />
               ))}
             </ul>
           )}

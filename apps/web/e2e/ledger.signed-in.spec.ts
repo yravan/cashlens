@@ -203,7 +203,6 @@ test.describe("ledger row-level security backstop", () => {
     for (const statement of [
       "update accounts set name = 'overwritten'",
       "update transactions set user_id = user_id",
-      "update transactions set account_id = account_id",
       "update transactions set source = source",
       "update account_balances set user_id = user_id",
       "delete from account_balances",
@@ -218,6 +217,13 @@ test.describe("ledger row-level security backstop", () => {
       "update account_balances set current_minor = 0 returning account_id",
     );
     expect(refresh.rows).toEqual([{ account_id: a.accountId }]);
+
+    const accountUpdated = await appQueryScopedAs(
+      PROBE_A,
+      "update transactions set account_id = account_id returning user_id",
+    );
+    expect(accountUpdated.rowCount).toBe(2);
+    for (const row of accountUpdated.rows) expect(row.user_id).toBe(a.userId);
 
     const modified = await appQueryScopedAs(
       PROBE_A,

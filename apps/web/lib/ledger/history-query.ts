@@ -1,4 +1,4 @@
-import { currencyExponent } from "./minor-units";
+import { formatMajorUnits, parseMajorUnits } from "./minor-units";
 
 export const HISTORY_PAGE_SIZE = 50;
 
@@ -55,7 +55,6 @@ const KEYS = new Set<string>(HISTORY_PARAMS);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CURRENCY = /^[A-Z]{3}$/;
-const AMOUNT = /^\d+(\.\d+)?$/;
 const PAGE = /^[1-9]\d*$/;
 
 export function isIsoDate(value: string): boolean {
@@ -67,23 +66,6 @@ export function isIsoDate(value: string): boolean {
     date.getUTCMonth() === month - 1 &&
     date.getUTCDate() === day
   );
-}
-
-function toMinor(value: string, currency: string): number | null {
-  if (!AMOUNT.test(value)) return null;
-  const [whole, fraction = ""] = value.split(".");
-  const digits = currencyExponent(currency);
-  if (fraction.length > digits) return null;
-  const minor = Number(whole) * 10 ** digits + Number(fraction.padEnd(digits, "0") || "0");
-  return Number.isSafeInteger(minor) ? minor : null;
-}
-
-function toMajor(minor: number, currency: string): string {
-  const digits = currencyExponent(currency);
-  const units = String(minor).padStart(digits + 1, "0");
-  const point = units.length - digits;
-  const fraction = units.slice(point).replace(/0+$/, "");
-  return fraction ? `${units.slice(0, point)}.${fraction}` : units.slice(0, point);
 }
 
 export function parseHistoryQuery(
@@ -144,7 +126,7 @@ export function parseHistoryQuery(
     const value = given.get(key);
     if (value === undefined) continue;
     if (query.currency === null) return { ok: false };
-    const minor = toMinor(value, query.currency);
+    const minor = parseMajorUnits(value, query.currency);
     if (minor === null) return { ok: false };
     query[field] = minor;
   }
@@ -176,8 +158,8 @@ export function historyQueryString(query: HistoryQuery, page: number): string {
   if (query.to !== null) params.set("to", query.to);
   if (query.currency !== null) {
     params.set("currency", query.currency);
-    if (query.minMinor !== null) params.set("min", toMajor(query.minMinor, query.currency));
-    if (query.maxMinor !== null) params.set("max", toMajor(query.maxMinor, query.currency));
+    if (query.minMinor !== null) params.set("min", formatMajorUnits(query.minMinor, query.currency));
+    if (query.maxMinor !== null) params.set("max", formatMajorUnits(query.maxMinor, query.currency));
   }
   if (page !== 1) params.set("page", String(page));
   return params.toString();

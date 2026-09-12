@@ -7,6 +7,33 @@ const EXPONENT_3 = new Set(["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"]);
 export const currencyExponent = (currency: string) =>
   EXPONENT_0.has(currency) ? 0 : EXPONENT_3.has(currency) ? 3 : 2;
 
+const PLAIN_DECIMAL = /^\d+(\.\d+)?$/;
+const MAX_SAFE_MINOR = BigInt(Number.MAX_SAFE_INTEGER);
+const MAX_SAFE_MINOR_DIGITS = String(Number.MAX_SAFE_INTEGER).length;
+
+export function parseMajorUnits(value: string, currency: string): number | null {
+  if (!PLAIN_DECIMAL.test(value)) return null;
+  const [whole, fraction = ""] = value.split(".");
+  const digits = currencyExponent(currency);
+  if (fraction.length > digits) return null;
+  const minorDigits = `${whole}${fraction.padEnd(digits, "0")}`.replace(/^0+(?=\d)/, "");
+  if (minorDigits.length > MAX_SAFE_MINOR_DIGITS) return null;
+  const minor = BigInt(minorDigits);
+  return minor <= MAX_SAFE_MINOR ? Number(minor) : null;
+}
+
+export function formatMajorUnits(minorUnits: number, currency: string): string {
+  if (!Number.isSafeInteger(minorUnits) || minorUnits < 0) {
+    throw new Error("minor units must be a non-negative safe integer");
+  }
+  const digits = currencyExponent(currency);
+  const units = String(minorUnits).padStart(digits + 1, "0");
+  if (digits === 0) return units;
+  const point = units.length - digits;
+  const fraction = units.slice(point).replace(/0+$/, "");
+  return fraction ? `${units.slice(0, point)}.${fraction}` : units.slice(0, point);
+}
+
 // The epsilon absorbs float noise below the half boundary (0.615 * 100 ===
 // 61.49999999999999); rounding is half away from zero.
 export function toMinorUnits(amount: number, currency: string): number {

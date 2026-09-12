@@ -228,7 +228,9 @@ test.describe("transaction history", () => {
     await expect(page.getByTestId("transactions-count")).toHaveText(
       "0 transactions in the ledger",
     );
-    await expect(page.getByText("No transactions yet")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "An account is required" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add transaction" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Go to accounts" })).toBeVisible();
     await expect(form(page)).toHaveCount(0);
   });
 
