@@ -1,4 +1,5 @@
 import { isIsoDate } from "./history-query";
+import { isPlainObject } from "./manual-transactions";
 import { parseMajorUnits } from "./minor-units";
 
 // Mirrors the account_type enum; lib/data stops compiling if the two drift in either direction.
@@ -40,14 +41,6 @@ const ACCOUNT_KEYS = ["name", "type", "currency", "balance", "reportedOn"] as co
 const BALANCE_KEYS = ["balance", "reportedOn"] as const;
 const CURRENCY = /^[A-Z]{3}$/;
 const BALANCE = /^-?\d+(\.\d+)?$/;
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    Object.getPrototypeOf(value) === Object.prototype
-  );
-}
 
 function hasExactKeys(body: Record<string, unknown>, keys: readonly string[]): boolean {
   const present = Object.keys(body);
