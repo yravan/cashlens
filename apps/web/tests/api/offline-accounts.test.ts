@@ -366,6 +366,43 @@ test("delete removes the offline account with its rows, balance, decisions, and 
   ).toBe(EXPECTED.demo.accounts);
 });
 
+test("delete re-matches the surviving legs once the account's own pair has cascaded away", async () => {
+  const owner = await provisionedUser();
+  const cash = await anchoredAccount({ userId: owner.id, name: "Cash", type: "depository", currentMinor: 10000 });
+  const keep = await anchoredAccount({ userId: owner.id, name: "Keep", type: "depository", currentMinor: 10000 });
+  const third = await anchoredAccount({ userId: owner.id, name: "Third", type: "depository", currentMinor: 10000 });
+  const leg = (accountId: string, amountMinor: number, description: string) => ({
+    userId: owner.id,
+    accountId,
+    amountMinor,
+    currency: "USD",
+    date: "2026-04-02",
+    description,
+    status: "posted" as const,
+    source: "manual" as const,
+    sourceId: null,
+  });
+  const [out, into, unpaired] = await adminDb()
+    .insert(transactions)
+    .values([leg(cash, -5000, "CASH OUT"), leg(keep, 5000, "KEEP IN"), leg(third, -5000, "THIRD OUT")])
+    .returning({ id: transactions.id });
+  await adminDb()
+    .insert(transferPairs)
+    .values({ userId: owner.id, outflowTransactionId: out.id, inflowTransactionId: into.id });
+
+  expect((await withAuth(owner.clerkUserId, () => postDelete(cash))).status).toBe(200);
+  expect(
+    await adminDb()
+      .select({
+        outflow: transferPairs.outflowTransactionId,
+        inflow: transferPairs.inflowTransactionId,
+        dismissedAt: transferPairs.dismissedAt,
+      })
+      .from(transferPairs)
+      .where(eq(transferPairs.userId, owner.id)),
+  ).toEqual([{ outflow: unpaired.id, inflow: into.id, dismissedAt: null }]);
+});
+
 test("every not-found answer is byte-identical and delete requires an empty object body", async () => {
   await seedDataset(adminDb());
   const owner = await provisionedUser();
