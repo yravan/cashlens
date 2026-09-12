@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import type { CategoryGroup } from "@/lib/data/categories";
 import type { ManualMutationError } from "@/lib/data/manual-transactions";
 import { formatMajorUnits } from "@/lib/ledger/minor-units";
+import { inputClass, localDate, responseErrorFor } from "../mutation-form";
 
 type AccountOption = { id: string; name: string; currency: string };
 type Draft = {
@@ -35,30 +36,7 @@ const ERROR_COPY: Record<ManualMutationError, string> = {
   category_not_assignable: "Choose a category within a group.",
 };
 
-function localDate() {
-  const now = new Date();
-  return [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
-function errorCopy(value: unknown, fallback: string) {
-  if (typeof value !== "object" || value === null || !("error" in value)) return fallback;
-  const code = value.error;
-  return typeof code === "string" && Object.hasOwn(ERROR_COPY, code)
-    ? ERROR_COPY[code as ManualMutationError]
-    : fallback;
-}
-
-async function responseError(response: Response, fallback: string) {
-  try {
-    return errorCopy(await response.json(), fallback);
-  } catch {
-    return fallback;
-  }
-}
+const responseError = responseErrorFor(ERROR_COPY);
 
 function ManualForm({
   mode,
@@ -117,9 +95,6 @@ function ManualForm({
       }
     });
   };
-
-  const inputClass =
-    "mt-1 w-full min-w-0 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900";
 
   return (
     <form

@@ -11,15 +11,15 @@ import {
   OWED_TYPES,
   type OfflineAccountType,
 } from "@/lib/ledger/offline-accounts";
+import { inputClass, localDate, responseErrorFor } from "../mutation-form";
 
 const ERROR_COPY: Record<OfflineAccountError, string> = {
   invalid_request: "Check the account details and try again.",
   account_not_found: "That account is no longer available.",
 };
 const TYPES = Object.entries(OFFLINE_TYPE_LABELS) as [OfflineAccountType, string][];
+const responseError = responseErrorFor(ERROR_COPY);
 
-const inputClass =
-  "mt-1 w-full min-w-0 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900";
 const formClass =
   "min-w-0 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950";
 const primaryButton =
@@ -29,36 +29,11 @@ const quietButton =
 const dangerButton =
   "rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50";
 
-function localDate() {
-  const now = new Date();
-  return [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-  ].join("-");
-}
-
 const balanceLabel = (type: OfflineAccountType) =>
   OWED_TYPES.has(type) ? "Amount owed" : "Current balance";
 
 const signedMajor = (minor: number, currency: string) =>
   `${minor < 0 ? "-" : ""}${formatMajorUnits(Math.abs(minor), currency)}`;
-
-function errorCopy(value: unknown, fallback: string) {
-  if (typeof value !== "object" || value === null || !("error" in value)) return fallback;
-  const code = value.error;
-  return typeof code === "string" && Object.hasOwn(ERROR_COPY, code)
-    ? ERROR_COPY[code as OfflineAccountError]
-    : fallback;
-}
-
-async function responseError(response: Response, fallback: string) {
-  try {
-    return errorCopy(await response.json(), fallback);
-  } catch {
-    return fallback;
-  }
-}
 
 const post = (endpoint: string, body: unknown) =>
   fetch(endpoint, {
