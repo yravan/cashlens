@@ -2,6 +2,11 @@
 
 ## Executive Summary
 
+The companion [vendor assessment](gmail-vendor-assessment.md) adds a required
+buy-versus-build gate: evaluate managed, push-only financial-evidence delivery
+before authorizing a custom local or confidential-cloud connector. The architecture
+options here remain conditional alternatives, not a vendor selection or build order.
+
 Cash Lens should not put a primary-mailbox Gmail refresh token into its existing
 web application's credential store. That store protects persisted credentials,
 but the application has the key and code needed to decrypt them. A compromise
