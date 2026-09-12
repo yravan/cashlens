@@ -138,6 +138,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
   - **4.5.4 Supported transaction notes** `[P1]` — Summarize evidenced products, services, subscription tiers, and payment purposes, with supporting details available to inspect.
   - **4.5.5 Understanding refresh** `[P1]` — New evidence or corrected context updates affected explanations and downstream proposals, preserving user edits and exposing stale conclusions.
   - **4.5.6 Graduated automation** `[P1]` — Confirm proposals initially; independently validated capabilities graduate to automatic application, with reversible changes and uncertain cases left unresolved.
+  - **4.5.7 Smart Deduplication** `[P1]` — With accurate transaction enrichment, deduplication becomes almost trivial with an llm!!! 
 
 ## 5. Review & Data Quality
 
