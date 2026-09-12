@@ -62,6 +62,31 @@ const adminPool = () =>
 
 export const adminDb = () => drizzle({ client: adminPool(), schema });
 
+export function appQuery(text: string, params: unknown[] = []) {
+  return withClient(urlForDb("DATABASE_URL", workerDb()), (client) =>
+    client.query(text, params),
+  );
+}
+
+export function appQueryScopedAs(
+  clerkUserId: string,
+  text: string,
+  params: unknown[] = [],
+) {
+  return withClient(urlForDb("DATABASE_URL", workerDb()), async (client) => {
+    await client.query("begin");
+    try {
+      await client.query(
+        "select set_config('app.clerk_user_id', $1, true)",
+        [clerkUserId],
+      );
+      return await client.query(text, params);
+    } finally {
+      await client.query("rollback");
+    }
+  });
+}
+
 export async function truncateAll(): Promise<void> {
   const { rows } = await adminPool().query<{ tables: string | null }>(
     "select string_agg(format('%I.%I', schemaname, tablename), ', ') as tables from pg_tables where schemaname = 'public'",
