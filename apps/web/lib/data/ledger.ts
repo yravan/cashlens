@@ -55,7 +55,7 @@ function historyConditions(userId: string, query: HistoryQuery): SQL {
 
 async function historyOptions(tx: ScopedTx, userId: string) {
   const owned = await tx
-    .select({ id: accounts.id, name: accounts.name })
+    .select({ id: accounts.id, name: accounts.name, currency: accounts.currency })
     .from(accounts)
     .where(eq(accounts.userId, userId))
     .orderBy(asc(accounts.name), asc(accounts.id));

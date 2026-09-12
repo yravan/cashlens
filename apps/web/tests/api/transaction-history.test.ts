@@ -62,7 +62,7 @@ const expectedOptions = (persona: SeedPersona) => {
   const mine = SEED_CATEGORIES.filter((c) => c.persona === persona);
   return {
     accounts: SEED_ACCOUNTS.filter((a) => a.persona === persona)
-      .map(({ id, name }) => ({ id, name }))
+      .map(({ id, name, currency }) => ({ id, name, currency }))
       .sort((a, b) => a.name.localeCompare(b.name)),
     categoryGroups: mine
       .filter((c) => c.parentId === null)
@@ -231,6 +231,50 @@ test("filters combine as one AND query", async () => {
     ),
   );
   expect(result.total).toBe(1);
+});
+
+test("account options keep their owned currencies when the ledger is empty", async () => {
+  const ownerClerkUserId = fakeClerkUserId();
+  const neighborClerkUserId = fakeClerkUserId();
+  const [owner, neighbor] = await Promise.all([
+    withAuth(ownerClerkUserId, () => requireUser()),
+    withAuth(neighborClerkUserId, () => requireUser()),
+  ]);
+  const [cash, checking] = await adminDb()
+    .insert(accounts)
+    .values([
+      {
+        userId: owner.id,
+        name: "Cash",
+        type: "depository",
+        currency: "EUR",
+        source: "manual",
+      },
+      {
+        userId: owner.id,
+        name: "Checking",
+        type: "depository",
+        currency: "USD",
+        source: "plaid",
+      },
+      {
+        userId: neighbor.id,
+        name: "Neighbor wallet",
+        type: "depository",
+        currency: "JPY",
+        source: "manual",
+      },
+    ])
+    .returning({ id: accounts.id, userId: accounts.userId });
+
+  const result = await withAuth(ownerClerkUserId, () => transactionHistory(filters()));
+
+  expect(result.rows).toEqual([]);
+  expect(result.options.accounts).toEqual([
+    { id: cash.id, name: "Cash", currency: "EUR" },
+    { id: checking.id, name: "Checking", currency: "USD" },
+  ]);
+  expect(result.options.currencies).toEqual([]);
 });
 
 async function provisionLedger(rowCount: number) {
