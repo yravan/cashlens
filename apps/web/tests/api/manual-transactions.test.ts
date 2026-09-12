@@ -5,8 +5,11 @@ import { expect, test, vi } from "vitest";
 import { POST as deleteRoute } from "@/app/api/transactions/[transactionId]/manual/delete/route";
 import { POST as updateRoute } from "@/app/api/transactions/[transactionId]/manual/route";
 import { POST as createRoute } from "@/app/api/transactions/manual/route";
-import { requireUser } from "@/lib/data/users";
+import { autoCategorizeBatch, uncategorizedCount } from "@/lib/data/auto-categorize";
+import { cashFlowSummary, spendingByCategory, transactionHistory } from "@/lib/data/ledger";
+import { recurringOverview } from "@/lib/data/recurring";
 import { matchTransfers } from "@/lib/data/transfers";
+import { requireUser } from "@/lib/data/users";
 import {
   accountBalances,
   accounts,
@@ -15,8 +18,25 @@ import {
   transactions,
   transferPairs,
 } from "@/lib/db/schema";
+import { DEFAULT_CATEGORIES } from "@/lib/ledger/default-categories";
+import { parseHistoryQuery, parseSpendingQuery } from "@/lib/ledger/history-query";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb, appQuery, appQueryScopedAs } from "../harness/db";
+import {
+  classificationRequests,
+  primeClassification,
+  resetOpenRouterSubstitute,
+} from "../harness/openrouter";
+
+const CATEGORY_LABELS = DEFAULT_CATEGORIES.flatMap(({ group, categories: leaves }) =>
+  leaves.map((leaf) => `${group} > ${leaf}`),
+);
+
+const categoryLabelIndex = (name: string) => {
+  const index = CATEGORY_LABELS.findIndex((label) => label.endsWith(`> ${name}`));
+  if (index < 0) throw new Error(`no default leaf named ${name}`);
+  return index;
+};
 
 const manualInput = (accountId: string, categoryId: string | null = null) => ({
   accountId,
@@ -1198,4 +1218,357 @@ test("matcher failure is sanitized and cannot reverse a committed create", async
     );
     info.mockRestore();
   }
+});
+
+test("flows through every canonical ledger consumer", async () => {
+  resetOpenRouterSubstitute();
+  const clerkUserId = fakeClerkUserId();
+  const user = await withAuth(clerkUserId, () => requireUser());
+  const [spendingAccount, receivingAccount] = await adminDb()
+    .insert(accounts)
+    .values([
+      {
+        userId: user.id,
+        name: "Everyday checking",
+        type: "depository",
+        currency: "USD",
+        source: "plaid",
+      },
+      {
+        userId: user.id,
+        name: "Cash reserve",
+        type: "depository",
+        currency: "USD",
+        source: "manual",
+      },
+    ])
+    .returning({ id: accounts.id });
+  await adminDb().insert(accountBalances).values([
+    {
+      accountId: spendingAccount.id,
+      userId: user.id,
+      availableMinor: 72000,
+      currentMinor: 75000,
+      asOf: new Date("2026-09-11T12:00:00Z"),
+    },
+    {
+      accountId: receivingAccount.id,
+      userId: user.id,
+      currentMinor: 18000,
+      limitMinor: 25000,
+      asOf: new Date("2026-09-11T12:00:00Z"),
+    },
+  ]);
+
+  const balances = () =>
+    adminDb()
+      .select()
+      .from(accountBalances)
+      .where(eq(accountBalances.userId, user.id))
+      .orderBy(accountBalances.accountId);
+  const balancesBefore = await balances();
+  const expectBalancesUnchanged = async () => expect(await balances()).toEqual(balancesBefore);
+  const create = async (body: unknown) => {
+    const response = await withAuth(clerkUserId, () => postCreate(body));
+    expect(response.status).toBe(201);
+    const result = (await response.json()) as { transactionId: string };
+    expect(result).toEqual({ transactionId: expect.any(String) });
+    return result.transactionId;
+  };
+  const historyQuery = parseHistoryQuery({});
+  const spendingQuery = parseSpendingQuery({});
+  if (!historyQuery.ok || !spendingQuery.ok) throw new Error("empty queries must parse");
+  const history = () => withAuth(clerkUserId, () => transactionHistory(historyQuery));
+  const flow = () => withAuth(clerkUserId, () => cashFlowSummary());
+  const spending = () => withAuth(clerkUserId, () => spendingByCategory(spendingQuery));
+  const recurring = () => withAuth(clerkUserId, () => recurringOverview());
+  const queueCount = () => withAuth(clerkUserId, () => uncategorizedCount());
+  const stream = {
+    accountId: spendingAccount.id,
+    currency: "USD",
+    direction: "outflow",
+    normalizedName: "ORBIT GYM",
+    name: "Orbit Gym",
+    cadence: "monthly",
+    typicalAmountMinor: -1299,
+    lastAmountMinor: -1299,
+    firstDate: "2026-01-03",
+    lastDate: "2026-03-03",
+    occurrences: 3,
+    confidence: "high",
+    status: "proposed",
+  } as const;
+  const expectRecurring = async (present: boolean) =>
+    expect(await recurring()).toEqual({ streams: present ? [stream] : [] });
+  const expectFlow = async (
+    months: Awaited<ReturnType<typeof cashFlowSummary>>["currencies"][number]["months"],
+    transferRows: number,
+  ) =>
+    expect(await flow()).toEqual({
+      currencies: [{ currency: "USD", months }],
+      pendingCount: 0,
+      transferRows,
+    });
+
+  const januaryId = await create({
+    ...manualInput(spendingAccount.id),
+    amount: "12.99",
+    date: "2026-01-03",
+    description: "January gym dues",
+    merchant: "Orbit Gym",
+  });
+  const februaryId = await create({
+    ...manualInput(spendingAccount.id),
+    amount: "12.99",
+    date: "2026-02-03",
+    description: "February gym dues",
+    merchant: "Orbit Gym",
+  });
+  const marchId = await create({
+    ...manualInput(spendingAccount.id),
+    amount: "12.99",
+    date: "2026-03-03",
+    description: "March gym dues",
+    merchant: "Orbit Gym",
+  });
+
+  expect(
+    (await history()).rows.map((row) => [
+      row.id,
+      row.date,
+      row.amountMinor,
+      row.currency,
+      row.source,
+      row.accountName,
+      row.categoryName,
+      row.transferPairId,
+    ]),
+  ).toEqual([
+    [
+      marchId,
+      "2026-03-03",
+      -1299,
+      "USD",
+      "manual",
+      "Everyday checking",
+      null,
+      null,
+    ],
+    [
+      februaryId,
+      "2026-02-03",
+      -1299,
+      "USD",
+      "manual",
+      "Everyday checking",
+      null,
+      null,
+    ],
+    [
+      januaryId,
+      "2026-01-03",
+      -1299,
+      "USD",
+      "manual",
+      "Everyday checking",
+      null,
+      null,
+    ],
+  ]);
+  expect(await queueCount()).toBe(3);
+  await expectFlow(
+    ["03", "02", "01"].map((month) => ({
+      month: `2026-${month}`,
+      inflowMinor: 0,
+      outflowMinor: -1299,
+      netMinor: -1299,
+    })),
+    0,
+  );
+  expect((await spending()).currencies).toEqual([
+    {
+      currency: "USD",
+      totals: { spentMinor: -3897, receivedMinor: 0, netMinor: -3897 },
+      groups: [],
+      uncategorized: { spentMinor: -3897, receivedMinor: 0, netMinor: -3897 },
+    },
+  ]);
+  await expectRecurring(true);
+  await expectBalancesUnchanged();
+
+  const inflowId = await create({
+    ...manualInput(receivingAccount.id),
+    direction: "inflow",
+    amount: "12.99",
+    date: "2026-03-06",
+    description: "March account transfer",
+    merchant: "Reserve transfer",
+  });
+  const [pair] = await transferPairsFor(user.id);
+  expect(pair).toMatchObject({
+    id: expect.any(String),
+    outflowId: marchId,
+    inflowId,
+    dismissedAt: null,
+  });
+  expect(
+    (await history()).rows
+      .filter((row) => row.transferPairId !== null)
+      .map((row) => [row.id, row.transferPairId, row.transferCounterpart]),
+  ).toEqual([
+    [inflowId, pair.id, "Everyday checking"],
+    [marchId, pair.id, "Cash reserve"],
+  ]);
+  await expectFlow(
+    ["02", "01"].map((month) => ({
+      month: `2026-${month}`,
+      inflowMinor: 0,
+      outflowMinor: -1299,
+      netMinor: -1299,
+    })),
+    2,
+  );
+  expect((await spending()).currencies[0]).toMatchObject({
+    totals: { spentMinor: -2598, receivedMinor: 0, netMinor: -2598 },
+    groups: [],
+    uncategorized: { spentMinor: -2598, receivedMinor: 0, netMinor: -2598 },
+  });
+  expect(await queueCount()).toBe(2);
+  await expectRecurring(false);
+  await expectBalancesUnchanged();
+
+  primeClassification([
+    {
+      item: 0,
+      category: categoryLabelIndex("Fitness"),
+      confidence: "high",
+      reason: "Recurring fitness merchant",
+    },
+  ]);
+  expect(await withAuth(clerkUserId, () => autoCategorizeBatch())).toEqual({
+    attempted: 2,
+    categorized: 1,
+    remaining: 1,
+  });
+  expect(classificationRequests).toHaveLength(1);
+  const prompt = JSON.parse(
+    classificationRequests[0].body.messages.find((message) => message.role === "user")!.content,
+  ) as { transactions: Record<string, unknown>[] };
+  expect(prompt.transactions).toEqual([
+    { id: 0, direction: "out", merchant: "Orbit Gym", description: "February gym dues" },
+    { id: 1, direction: "out", merchant: "Orbit Gym", description: "January gym dues" },
+  ]);
+
+  const states = await adminDb()
+    .select({
+      id: transactions.id,
+      categoryId: transactions.categoryId,
+      source: transactions.categorySource,
+      confidence: transactions.categoryConfidence,
+      reason: transactions.categoryReason,
+      runId: transactions.categoryRunId,
+      revision: transactions.categoryRevision,
+    })
+    .from(transactions)
+    .where(eq(transactions.userId, user.id))
+    .orderBy(transactions.date);
+  expect(
+    states.map((row) => [
+      row.id,
+      row.categoryId,
+      row.source,
+      row.confidence,
+      row.reason,
+      row.runId,
+      row.revision,
+    ]),
+  ).toEqual([
+    [januaryId, null, null, null, null, null, 0],
+    [
+      februaryId,
+      expect.any(String),
+      "auto",
+      "high",
+      "Recurring fitness merchant",
+      expect.any(String),
+      1,
+    ],
+    [marchId, null, null, null, null, null, 0],
+    [inflowId, null, null, null, null, null, 0],
+  ]);
+  expect((await history()).rows.find((row) => row.id === februaryId)).toMatchObject({
+    categoryName: "Fitness",
+    categorySource: "auto",
+    categoryConfidence: "high",
+    categoryReason: "Recurring fitness merchant",
+  });
+  const runId = states.find((row) => row.id === februaryId)?.runId;
+  if (!runId) throw new Error("categorized row must link its classification run");
+  await expect(
+    adminDb()
+      .select({
+        ownerUserId: classificationRuns.ownerUserId,
+        kind: classificationRuns.kind,
+        status: classificationRuns.status,
+        attempted: classificationRuns.attempted,
+        applied: classificationRuns.applied,
+        skipped: classificationRuns.skipped,
+      })
+      .from(classificationRuns)
+      .where(eq(classificationRuns.id, runId)),
+  ).resolves.toEqual([
+    {
+      ownerUserId: user.id,
+      kind: "automatic_initial",
+      status: "succeeded",
+      attempted: 2,
+      applied: 1,
+      skipped: 1,
+    },
+  ]);
+  await expectBalancesUnchanged();
+
+  const edited = await withAuth(clerkUserId, () =>
+    postUpdate(inflowId, {
+      ...manualInput(receivingAccount.id),
+      direction: "inflow",
+      amount: "13.00",
+      date: "2026-03-10",
+      description: "March account transfer",
+      merchant: "Reserve transfer",
+    }),
+  );
+  expect(edited.status).toBe(200);
+  expect(await transferPairsFor(user.id)).toEqual([]);
+  expect((await history()).rows.every((row) => row.transferPairId === null)).toBe(true);
+  await expectFlow(
+    [
+      { month: "2026-03", inflowMinor: 1300, outflowMinor: -1299, netMinor: 1 },
+      { month: "2026-02", inflowMinor: 0, outflowMinor: -1299, netMinor: -1299 },
+      { month: "2026-01", inflowMinor: 0, outflowMinor: -1299, netMinor: -1299 },
+    ],
+    0,
+  );
+  const restored = (await spending()).currencies[0];
+  expect(restored.totals).toEqual({ spentMinor: -3897, receivedMinor: 1300, netMinor: -2597 });
+  expect(restored.uncategorized).toEqual({
+    spentMinor: -2598,
+    receivedMinor: 1300,
+    netMinor: -1298,
+  });
+  expect(
+    restored.groups.map((group) => [
+      group.name,
+      group.netMinor,
+      group.categories.map((category) => [category.name, category.netMinor]),
+    ]),
+  ).toEqual([["Health & Wellness", -1299, [["Fitness", -1299]]]]);
+  await expectRecurring(true);
+  await expectBalancesUnchanged();
+
+  const deleted = await withAuth(clerkUserId, () => postDelete(januaryId));
+  expect(deleted.status).toBe(200);
+  await expectRecurring(false);
+  expect((await history()).rows.map((row) => row.id)).not.toContain(januaryId);
+  await expectBalancesUnchanged();
 });
