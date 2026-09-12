@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   if (denied) return denied;
 
   const parsed = parseOfflineAccountInput(await request.json().catch(() => null));
-  if (!parsed.ok) return offlineAccountResponse({ error: "invalid_request" }, 201);
+  if (!parsed.ok) return offlineAccountResponse({ error: "invalid_request" });
 
   return offlineAccountResponse(await createOfflineAccount(parsed.input), 201);
 }

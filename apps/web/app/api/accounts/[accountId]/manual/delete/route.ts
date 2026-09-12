@@ -11,8 +11,8 @@ export async function POST(
   if (denied) return denied;
 
   const body: unknown = await request.json().catch(() => null);
-  if (!isEmptyMutationBody(body)) return offlineAccountResponse({ error: "invalid_request" }, 200);
+  if (!isEmptyMutationBody(body)) return offlineAccountResponse({ error: "invalid_request" });
 
   const { accountId } = await params;
-  return offlineAccountResponse(await deleteOfflineAccount(accountId), 200);
+  return offlineAccountResponse(await deleteOfflineAccount(accountId));
 }

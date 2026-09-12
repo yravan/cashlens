@@ -11,8 +11,8 @@ export async function POST(
   if (denied) return denied;
 
   const parsed = parseOfflineBalanceInput(await request.json().catch(() => null));
-  if (!parsed.ok) return offlineAccountResponse({ error: "invalid_request" }, 200);
+  if (!parsed.ok) return offlineAccountResponse({ error: "invalid_request" });
 
   const { accountId } = await params;
-  return offlineAccountResponse(await updateOfflineBalance(accountId, parsed.input), 200);
+  return offlineAccountResponse(await updateOfflineBalance(accountId, parsed.input));
 }
