@@ -131,6 +131,13 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
   - **4.2.4 Re-categorization runs** `[P2]` — Re-run categorization over history after taxonomy or rule changes, with a preview of what would change.
 - **4.3 Line-item categorization** `[P1]` — Receipt line items get their own categories, so one Costco run truthfully splits into groceries versus household. Aggregations use items when present.
 - **4.4 Merchant enrichment** `[P1]` — Cryptic bank strings resolve to clean merchant names and logos, shared across a merchant's transactions — so "BILL PAY" and processor prefixes finally say who was paid.
+- **4.5 Transaction understanding** `[P1]`
+  - **4.5.1 Evidence & provenance** `[P1]` — Each transaction fact links to its supporting sources; confirmed facts, inferences, conflicts, and missing evidence stay distinguishable.
+  - **4.5.2 Transaction investigation** `[P1]` — Search relevant connected emails and records to explain a payment, including the actual service behind a booking platform or processor.
+  - **4.5.3 Personal context & clarification** `[P1]` — Volunteer information or answer grouped questions; editable, time-scoped knowledge explains related transactions without repeated questioning.
+  - **4.5.4 Supported transaction notes** `[P1]` — Summarize evidenced products, services, subscription tiers, and payment purposes, with supporting details available to inspect.
+  - **4.5.5 Understanding refresh** `[P1]` — New evidence or corrected context updates affected explanations and downstream proposals, preserving user edits and exposing stale conclusions.
+  - **4.5.6 Graduated automation** `[P1]` — Confirm proposals initially; independently validated capabilities graduate to automatic application, with reversible changes and uncertain cases left unresolved.
 
 ## 5. Review & Data Quality
 
@@ -212,6 +219,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 - **10.5 Developer documentation** `[P1]` — A quickstart that takes a fresh machine to a running app and green tests in minutes; updated as the project evolves.
 - **10.6 Preview deployments** `[P1]` — Every proposed change can be seen running at its own temporary address before it merges — reviewed in the browser, not just the diff.
 - **10.7 Security scanning** `[MVP]` — Every change is automatically checked for leaked secrets, vulnerable dependencies, and known risky patterns; findings block merge.
+- **10.8 Transaction understanding evaluation** `[P1]` — Measure evidence retrieval, factual support, item allocations, correction propagation, and downstream totals against independently checked cases before expanding automation.
 
 ---
 
