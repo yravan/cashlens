@@ -190,7 +190,7 @@ export const SEED_BALANCES: SeedRow<typeof accountBalances.$inferInsert>[] = [
   { persona: "demo", accountId: A.checking, availableMinor: 234120, currentMinor: 235370, limitMinor: null, asOf: AS_OF },
   { persona: "demo", accountId: A.savings, availableMinor: 1500000, currentMinor: 1500000, limitMinor: null, asOf: AS_OF },
   { persona: "demo", accountId: A.card, availableMinor: 748755, currentMinor: 51245, limitMinor: 800000, asOf: AS_OF },
-  { persona: "demo", accountId: A.wallet, availableMinor: null, currentMinor: 8600, limitMinor: null, asOf: AS_OF, reportedOn: "2026-03-31" },
+  { persona: "demo", accountId: A.wallet, availableMinor: null, currentMinor: 8600, limitMinor: null, asOf: AS_OF, reportedOn: "2026-03-14" },
   { persona: "demo", accountId: A.euro, availableMinor: 120450, currentMinor: 120450, limitMinor: null, asOf: AS_OF },
   { persona: "neighbor", accountId: A.neighborChecking, availableMinor: 50000, currentMinor: 50000, limitMinor: null, asOf: AS_OF },
 ];

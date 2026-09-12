@@ -119,7 +119,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
         { name: "Everyday Checking", type: "depository", subtype: "checking", mask: "0100", currency: "USD", source: "plaid", currentMinor: 235370, reportedMinor: 235370, reportedOn: null, sinceCount: 0, transactionCount: 7 },
         { name: "Rainy Day Savings", type: "depository", subtype: "savings", mask: "0200", currency: "USD", source: "plaid", currentMinor: 1500000, reportedMinor: 1500000, reportedOn: null, sinceCount: 0, transactionCount: 2 },
         { name: "Cash Rewards Card", type: "credit", subtype: "credit card", mask: "4321", currency: "USD", source: "plaid", currentMinor: 51245, reportedMinor: 51245, reportedOn: null, sinceCount: 0, transactionCount: 7 },
-        { name: "Cash Wallet", type: "other", subtype: null, mask: null, currency: "USD", source: "manual", currentMinor: 8600, reportedMinor: 8600, reportedOn: "2026-03-31", sinceCount: 0, transactionCount: 1 },
+        { name: "Cash Wallet", type: "other", subtype: null, mask: null, currency: "USD", source: "manual", currentMinor: 6800, reportedMinor: 8600, reportedOn: "2026-03-14", sinceCount: 1, transactionCount: 1 },
       ],
       cashOnHand: { EUR: 120450, USD: 1735370 },
       creditOwed: { USD: 51245 },
