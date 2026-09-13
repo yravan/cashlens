@@ -144,7 +144,7 @@ collector or independently administered managed service.
 | Revocation, deletion, recovery, independent administration | Apps Script access removed; rerun required authorization and was cancelled. Copied tokens, in-flight requests, deletion, and recovery not tested | Remaining account-level tests plus vendor evidence for inaccessible infrastructure/backups |
 | Vendor security assurance | Public claims; Parseur report request submitted and awaiting approval | Audit scope/report, credential/data lifecycle, incident and recovery controls, subprocessors |
 
-## Live Test Sequence
+## Required Qualification Sequence
 
 1. Use a disposable Gmail account that is not anyone's recovery address. Populate
    it with known receipt, appointment, refund, unrelated-mail, and fake recovery
@@ -166,6 +166,21 @@ collector or independently administered managed service.
    the chosen trusted boundary. Synthetic security canaries cannot establish real
    receipt coverage. General messages must not appear in public artifacts or be
    sent to an unapproved model/vendor during this evaluation.
+
+### Recorded Deviation
+
+The executed work did not complete this sequence before processing real mail.
+The user approved a secondary account containing existing personal correspondence
+for testing. Its status as a disposable account or a non-recovery address was
+not established. Google-owned retrieval and isolated local archive/model probes
+then used that account before the planned complete-pipeline, compromised-backend,
+and disposable-corpus gates had passed. The later five synthetic model-canary
+cases do not retroactively satisfy those gates.
+
+Account-use approval is not security qualification. These runs provide bounded
+feasibility observations, not evidence that the required admission sequence was
+followed or that primary-mailbox integration is ready. The absent qualification
+tests remain prerequisites for expanding real-mail access or automatic release.
 
 Initial browser attempts failed before navigation; browser access subsequently
 recovered. The current [live checkpoint](gmail-live-checkpoint.md) records vendor

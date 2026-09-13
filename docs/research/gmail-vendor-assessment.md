@@ -227,8 +227,10 @@ change future destinations or request broader upstream data.
   after outages. Then verify deletion across raw files, extracted text, logs, caches,
   backups, and model providers to the extent the vendor contract allows.
 
-No real-mailbox pilot has been run. Public capability claims cannot establish
-quality or security outcomes on Cash Lens's records.
+No vendor real-mailbox pilot has been run. Separate Google-owned retrieval and
+offline local-model experiments are recorded in the companion reports; they do
+not validate vendor handling. Public capability claims cannot establish quality
+or security outcomes on Cash Lens's records.
 
 ## Vendor Questions Ready to Send
 

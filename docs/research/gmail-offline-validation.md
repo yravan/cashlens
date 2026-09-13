@@ -3,9 +3,10 @@
 ## Finding
 
 A local archive is a viable candidate for historical investigation without a
-live Gmail credential in Cash Lens. It is not a complete autonomous integration:
-export acquisition, ongoing updates, real receipt extraction, and safe release
-of notes remain unverified. No real mailbox was exported or processed here.
+live Gmail credential in Cash Lens. A user-approved secondary-account export
+was acquired and 187 messages were parsed; bounded real-mail model pilots ran
+as recorded below. It is not a complete autonomous integration: ongoing updates,
+receipt extraction accuracy, and safe release of notes remain unverified.
 
 Google documents that Gmail exports contain message content, headers,
 attachments, and labels, including archived messages. Deleted data cannot be
@@ -221,6 +222,11 @@ monetary evidence and four abstained. **The positive claim is unverified.**
 No independently annotated answer or source-span reconciliation was available.
 The validator checks neither monetary grounding nor cross-field consistency;
 valid output cannot be credited as a correct receipt, amount, or privacy pass.
+The 8,000-character admission bound is not a token-fit check for the configured
+4,096-token context and 256-token output limit. Prompt token counts were not
+recorded; this run does not validate long-message or multilingual admission.
+Future corpus runs need explicit token-budget admission and overflow tests,
+not silent truncation or an assumption that character counts guarantee fit.
 Only aggregate counts were returned. Raw inputs and model responses were not
 exported or persisted by the pilot, and no data was sent to Cash Lens. The
 container finished with exit code zero and was automatically removed.
