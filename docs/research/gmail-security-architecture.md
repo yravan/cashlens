@@ -46,10 +46,15 @@ An LLM deciding that a message is financial is not a hard security boundary.
 
 This assessment reflects public documentation accessed on September 12, 2026,
 and a source-level inspection of Cash Lens. Recommendations and threat analyses
-are architectural judgments, not vendor guarantees. No mailbox, credentials,
-production configuration, or live account-recovery flow was accessed or tested.
-No provider prices, integration timelines, or statistical security guarantees
-are asserted.
+are architectural judgments, not vendor guarantees. Subsequent bounded tests
+retrieved messages from a user-approved secondary Gmail account through Apps
+Script and a Takeout archive; local extraction ran without network access.
+The [method validation](gmail-method-validation.md) and
+[offline evidence](gmail-offline-validation.md) distinguish executed results
+from unverified requirements. No primary mailbox, secret credential values,
+production configuration, or live account-recovery flow was accessed in these
+experiments. No provider prices, integration timelines, or statistical security
+guarantees are asserted.
 
 The local baseline is commit `70e0a08`, with the transaction-understanding roadmap
 from PR80. `apps/web/lib/crypto/credentials.ts` reads a runtime keyring, derives
@@ -62,8 +67,9 @@ design observation, not evidence that a credential has been compromised.
 
 The existing roadmap's relevant-email filtering and minimal-retention commitments
 remain useful, but do not establish resistance to full web-runtime compromise.
-Architecture selection must become a Gmail launch prerequisite. The research
-below does not itself modify the feature tree or authorize inbox access.
+Architecture selection must become a Gmail launch prerequisite. The feature tree
+now names this requirement under 9.5 and connects Gmail authorization to it;
+neither that scope change nor this research authorizes new inbox access.
 
 ## Threat Model
 
@@ -432,11 +438,12 @@ model judgment.
 | 5. Limited real-data pilot | Explicit authorization, confirmation-first releases, sensitive logging disabled, measured utility and failure cases. |
 | 6. Graduated operation | Promote only independently evaluated capabilities; keep a local pause/revoke control, audit trail, regression gates, and a documented rollback path. |
 
-Before implementation, update leaf 2.3.1 with the selected authorization boundary
-and connect it explicitly to 4.5.1/4.5.2, 9.2, and 10.8. Add a focused connector
-isolation/release-security leaf if the chosen architecture needs its own ownership.
-This is proposed follow-up, not an automatic expansion into desktop or enclave
-implementation under the existing Gmail node.
+The feature tree now makes independent authorization explicit in 2.3.1 and splits
+mailbox authority, evidence release, and processor lifecycle into 9.5.1-9.5.3.
+Leaf 10.8 explicitly includes private-data leakage evaluation. Detailed designs
+must connect these leaves to evidence/provenance (4.5.1), investigation (4.5.2),
+graduated automation (4.5.6), and data minimization (9.2). The tree does not select
+a vendor or authorize desktop/enclave implementation under the Gmail-connect leaf.
 
 Unresolved questions are concrete: acceptable offline delay, approved model/data
 recipients, local update custody, output confidentiality, retention interpretation,

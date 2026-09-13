@@ -3,8 +3,10 @@
 ## Status
 
 September 12, 2026. Research remains incomplete: no primary mailbox has been
-connected, no vendor has been certified, and no live Gmail retrieval has been
-tested. Companion reports cover the [architecture](gmail-security-architecture.md)
+connected and no vendor has been certified. Live Google-hosted pagination and
+purchase-category payload retrieval are now recorded in the
+[live checkpoint](gmail-live-checkpoint.md); full pipeline validation remains
+incomplete. Companion reports cover the [architecture](gmail-security-architecture.md)
 and [vendors](gmail-vendor-assessment.md). This record adds executable
 counterexamples and a Google-hosted, independently administered candidate.
 
@@ -46,11 +48,19 @@ adequate security verifier.
 | Reconcile integer allocations to a fixed total | Still admitted arbitrarily selected allocations | Reconciliation alone cannot prevent a malicious extractor encoding information in numbers |
 | Fixed HTTP destination with a 307 response | Default Node fetch transmitted the POST body to the second server; manual redirect mode did not | Pinning the first URL is insufficient; redirects require explicit handling |
 
-The fixtures deliberately supply contaminated extraction results. They do not
+These original Node fixtures deliberately supply contaminated extraction results. They do not
 show that a particular LLM produces them, measure their frequency, or test Gmail
 search syntax, MIME parsing, OCR, vendor webhooks, TLS, or Google Apps Script.
 The integer example demonstrates a channel, not an observed model exploit.
 Likewise, default Node redirect behavior is not evidence of a vendor's behavior.
+
+Subsequent [offline actual-model tests](gmail-offline-validation.md) added five
+invented security cases using the real extraction call: unrelated-code and
+role-delimiter cases both abstained; receipt-only, receipt-plus-code, and
+receipt-plus-code-with-malicious-instructions cases all preserved exact known
+purchase amounts without copying the code. These two unsuccessful attacks are
+bounded observations, not proof that the output channel is safe. Real-mail
+accuracy and richer-output privacy remain unverified.
 
 These counterexamples reject broad guarantees based only on filters or output
 schemas. They do not reject automatic investigation: keep rich evidence inside
@@ -124,15 +134,15 @@ collector or independently administered managed service.
 
 | Requirement | Current evidence | Next necessary proof |
 | --- | --- | --- |
-| Full available history, unknown merchants, relevant non-receipt context | API capabilities researched; keyword counterexample executed | Real Gmail corpus with held-out relevant documents and measured discovery recall |
-| Exact receipt items, adjustments, refunds, split categories | Prior scope; mixed receipt experiment only | Real body/PDF/image extraction, annotated amounts and reconciliation, unknowns retained |
+| Full available history, unknown merchants, relevant non-receipt context | Secondary-account API enumerated 187 IDs; Takeout parsed 187 messages; identity reconciliation not performed. HTML audit found four money-syntax candidates missed by plain text | Held-out, independently labeled relevant documents and measured discovery recall; counts and currency syntax are not ground truth |
+| Exact receipt items, adjustments, refunds, split categories | Three purchase-labeled bodies all abstained. Five later HTML/plain money-syntax candidates produced one unverified monetary claim and four abstentions; no accuracy result | Real body/PDF/image extraction, annotated amounts and reconciliation, unknowns retained |
 | Supported subscription and payment-purpose notes | Roadmap scope only | Source-grounded notes evaluated for unsupported assertions and private-content leakage |
 | Cash Lens compromise cannot read general Gmail | Architectural conditions; no deployed candidate tested | Operate from a compromised test backend with all its credentials and attempt upstream reads/policy changes |
-| Reject mixed-content and prompt-injection leakage | Counterexamples reproduced | Adversarial MIME/HTML/PDF corpus tested through actual extractors and release controls |
-| Multiple retrieval methods tested end to end | Not done; output strategies tested locally | At least two live candidate pipelines on a disposable Gmail account |
+| Reject mixed-content and prompt-injection leakage | Counterexamples reproduced; actual local model excluded the exact numeric canary in five invented cases, including two unsuccessful injection attempts | Held-out adversarial MIME/HTML/PDF corpus, richer outputs, and actual release controls; five cases cannot establish a failure rate |
+| Multiple retrieval methods tested end to end | Live Apps Script retrieval and Takeout/local parsing exercised; neither complete financial-evidence pipeline validated | At least two complete candidate pipelines with measured coverage and release behavior |
 | Automatic ongoing operation and backfill | Google scheduling and quotas documented | Measured restarts, sleep independence, retries, cursor correctness, quota recovery |
-| Revocation, deletion, recovery, independent administration | Public documentation and proposed controls only | Account-level tests plus vendor evidence for inaccessible infrastructure/backups |
-| Vendor security assurance | Public claims only | Audit scope/report, credential/data lifecycle, incident and recovery controls, subprocessors |
+| Revocation, deletion, recovery, independent administration | Apps Script access removed; rerun required authorization and was cancelled. Copied tokens, in-flight requests, deletion, and recovery not tested | Remaining account-level tests plus vendor evidence for inaccessible infrastructure/backups |
+| Vendor security assurance | Public claims; Parseur report request submitted and awaiting approval | Audit scope/report, credential/data lifecycle, incident and recovery controls, subprocessors |
 
 ## Live Test Sequence
 
@@ -157,9 +167,14 @@ collector or independently administered managed service.
    receipt coverage. General messages must not appear in public artifacts or be
    sent to an unapproved model/vendor during this evaluation.
 
-Browser testing was attempted twice but the browser execution tool rejected both
-calls before any navigation. No vendor signup or OAuth grant occurred. Live
-account testing remains pending. Independent security/simplification review reran
+Initial browser attempts failed before navigation; browser access subsequently
+recovered. The current [live checkpoint](gmail-live-checkpoint.md) records vendor
+page observations and the submitted audit request awaiting reports. No vendor account or
+vendor Gmail OAuth grant was created. The user subsequently approved a secondary
+account with existing correspondence for testing. Its Google-owned script has
+executed read-only connectivity and message-retrieval probes; consult the live
+checkpoint for exact evidence and limits. Independent
+security/simplification review reran
 all seven experiments successfully and requested the authority-boundary wording
 clarification incorporated above. That review is not an external security audit.
 

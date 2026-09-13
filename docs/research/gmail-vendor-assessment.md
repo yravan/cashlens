@@ -3,8 +3,12 @@
 ## Decision Summary
 
 Assessment date: September 12, 2026. Public documentation review, not a live
-integration test or vendor security certification. No accounts were created,
-emails accessed or forwarded, vendors contacted, or subscriptions purchased.
+vendor integration test or security certification. A subsequent Parseur
+assurance-report request was submitted with explicit approval; reports have
+not been received or reviewed. No vendor mailbox grant, receipt forwarding,
+vendor subscription, or purchase occurred. The
+[live checkpoint](gmail-live-checkpoint.md) records that request, and separate
+Google-owned/local experiments are recorded in [method validation](gmail-method-validation.md).
 
 There are credible managed alternatives. A custom desktop connector is not the
 default decision until these alternatives have been evaluated. However, no
