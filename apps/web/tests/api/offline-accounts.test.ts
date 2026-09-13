@@ -500,10 +500,9 @@ test("the neighbor cannot see, re-anchor, rename, or delete the owner's offline 
     ),
   ).toEqual([]);
   expect(
-    await withRequestScope(neighbor.clerkUserId, (tx) =>
-      tx.update(accounts).set({ name: "Taken over" }).where(eq(accounts.id, mine)).returning({ id: accounts.id }),
-    ),
-  ).toEqual([]);
+    (await withRequestScope(neighbor.clerkUserId, (tx) => tx.update(accounts).set({ name: "Taken over" })))
+      .rowCount,
+  ).toBe(0);
   expect((await withAuth(neighbor.clerkUserId, () => accountOverview())).accounts).toEqual([]);
   expect(await accountName(mine)).toBe("Mine");
   expect(
