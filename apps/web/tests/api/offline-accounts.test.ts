@@ -416,8 +416,9 @@ test("delete re-matches the surviving legs once the account's own pair has casca
 test("rename trims the new name, stamps updated_at, and the overview shows it", async () => {
   const owner = await provisionedUser();
   const mine = await anchoredAccount({ userId: owner.id, name: "Mine", type: "other", currentMinor: 1 });
+  const updatedAtMicros = sql<string>`${accounts.updatedAt}::text`;
   const [before] = await adminDb()
-    .select({ updatedAt: accounts.updatedAt })
+    .select({ updatedAt: updatedAtMicros })
     .from(accounts)
     .where(eq(accounts.id, mine));
 
@@ -425,11 +426,11 @@ test("rename trims the new name, stamps updated_at, and the overview shows it", 
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ accountId: mine });
   const [after] = await adminDb()
-    .select({ name: accounts.name, updatedAt: accounts.updatedAt })
+    .select({ name: accounts.name, updatedAt: updatedAtMicros })
     .from(accounts)
     .where(eq(accounts.id, mine));
   expect(after.name).toBe("Kalshi");
-  expect(after.updatedAt.getTime()).toBeGreaterThan(before.updatedAt.getTime());
+  expect(after.updatedAt > before.updatedAt).toBe(true);
   expect(overviewRow(await withAuth(owner.clerkUserId, () => accountOverview()), mine).name).toBe("Kalshi");
 
   expect(
