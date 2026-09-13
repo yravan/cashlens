@@ -201,7 +201,8 @@ test.describe("ledger row-level security backstop", () => {
 
   test("the app role's ledger write surface: inserts, balances, lifecycle, and pending settlement", async () => {
     for (const statement of [
-      "update accounts set name = 'overwritten'",
+      "update accounts set type = type",
+      "update accounts set user_id = user_id",
       "update transactions set user_id = user_id",
       "update transactions set source = source",
       "update account_balances set user_id = user_id",
@@ -217,6 +218,12 @@ test.describe("ledger row-level security backstop", () => {
       "update account_balances set current_minor = 0 returning account_id",
     );
     expect(refresh.rows).toEqual([{ account_id: a.accountId }]);
+
+    const renamed = await appQueryScopedAs(
+      PROBE_A,
+      "update accounts set name = 'overwritten' returning user_id",
+    );
+    expect(renamed.rows).toEqual([{ user_id: a.userId }]);
 
     const accountUpdated = await appQueryScopedAs(
       PROBE_A,

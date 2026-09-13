@@ -1141,7 +1141,8 @@ test("delete cascades its pair before matching the surviving half elsewhere", as
   expect(pairs[0].id).not.toBe(original.id);
 });
 
-test("the app role has only the established transaction and balance update columns", async () => {
+test("the app role has only the established transaction, balance, and account update columns", async () => {
+  await expect(updatePrivilegeColumns("accounts")).resolves.toEqual(["name", "updated_at"]);
   await expect(updatePrivilegeColumns("transactions")).resolves.toEqual([
     "account_id",
     "amount_minor",
