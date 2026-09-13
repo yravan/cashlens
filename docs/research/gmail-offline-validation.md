@@ -69,65 +69,29 @@ before the TCP attempt. The negative-control container was also removed.
 
 ## Limits And Architecture
 
-### Native Pilot Preparation
+### Runtime And Artifact
 
-A separate native pilot is being prepared; it has not processed mail. Homebrew's
-core bottle installed `llama.cpp` 0.4.0 and `ggml` 0.23.0 on this 128-GiB Mac.
-The CLI documents `--offline`, `--no-display-prompt`, and disabled-by-default
-prompt-directory logging. These flags are not an OS security boundary.
-
-An initial macOS `sandbox-exec` profile, `(version 1)(allow default)(deny
-network*)`, blocked curl's DNS lookup and a direct IPv4 connection with the
-hostname resolved explicitly. The unsandboxed control fetched the same public
-site with HTTP 200. This tests curl under that profile, not inference, filesystem
-confinement, IPv6, helper-process escape, or resistance to host administrators.
-The allow-default profile is insufficient for processing private mail: it does
-not restrict filesystem access or output. It is not a proposed production policy.
-
-Google Takeout accepted a one-time Mail-only export of the user-approved secondary
-account, using an emailed download link rather than an external storage
-destination. Google subsequently offered the completed export for download;
-following that link required password re-verification, left to the account
-owner. The download subsequently appeared locally and was evaluated as described
-below; personal correspondence remains private despite approval for testing.
-
-The model-download candidate is Unsloth's `Qwen3.5-27B-Q4_K_M.gguf`, pinned to
-repository revision `3221f178a6b842d04f1fb42f1c413534adcc0a6a`. The public model
-API reports 16,740,812,704 bytes and SHA-256
+The verified model is Unsloth's `Qwen3.5-27B-Q4_K_M.gguf`, repository revision
+`3221f178a6b842d04f1fb42f1c413534adcc0a6a`, size 16,740,812,704 bytes, SHA-256
 `84b5f7f112156d63836a01a69dc3f11a6ba63b10a23b8ca7a7efaf52d5a2d806`.
-These identify a third-party quantization, not an independent audit or a
-verified local download. Do not load an incomplete or hash-mismatched file.
-The bounded download timed out after 600 seconds with 6,006,521,661 bytes;
-the partial file is preserved outside the repository with a `.part` suffix.
-It was subsequently resumed, completed at the expected size, and SHA-256
-verified against the value above before being renamed to `.gguf`. The artifact
-remains outside the repository. `llama-cli` 0.4.0 failed under a deny-all-network
-profile with `failed to get a free port`: this version starts an internal server.
-Do not treat its `--offline` option as meaning it needs no sockets. The standalone
-`llama-completion` executable is being tested without relaxing the network deny.
+The completed local artifact matched these public metadata values before use
+and remains outside the repository. This verifies artifact identity, not model
+safety or an independent audit of the third-party quantization.
 [Model repository](https://huggingface.co/unsloth/Qwen3.5-27B-GGUF).
 
-The standalone runner then generated locally with networking denied, `/Users`
-reads denied except the model directory, `/Users` writes denied, and a cleared
-environment. It initially failed an exact-output smoke test: `/no_think` did not
-disable reasoning, and 128 tokens were exhausted before the answer. A run with
-`--log-disable` also hid generated output, so exit status alone was insufficient.
-Using the upstream template's explicit non-thinking assistant prefix with
-`--no-conversation` produced `READY` and end-of-text within a 16-token cap.
-[Upstream chat template](https://huggingface.co/Qwen/Qwen3.5-27B/blob/main/chat_template.jinja).
-The corrected prompt used `<|im_start|>user`, `<|im_end|>`, and
-`<|im_start|>assistant\n<think>\n\n</think>\n\n`, matching the template's
-`enable_thinking=false` branch. This proves a harmless inference can run under
-the tested profile; it does not establish extraction quality or a complete
-privacy boundary. The profile still allows non-home filesystem access and is
-not ready for private-mail ingestion. No mail content was supplied to the model.
+| Experiment | Observed result and limit |
+| --- | --- |
+| Native runtime | Homebrew core installed llama.cpp 0.4.0 and ggml 0.23.0. CLI offline/logging flags are not an OS security boundary. |
+| Native network profile | An allow-default, deny-network sandbox blocked curl DNS and explicit-address IPv4 connections; the unsandboxed control returned HTTP 200. This does not test other clients, IPv6, filesystem isolation, or host compromise. |
+| Native llama-cli | Failed trying to obtain a free port for its internal server despite offline mode. Standalone llama-completion was used instead. |
+| Native harmless inference | With networking denied, home reads restricted to the model, home writes denied, and a cleared environment, llama-completion returned READY using the explicit non-thinking template. Non-home filesystem access remained allowed; this profile was never approved or used for private mail. |
+| Rejected smoke-test settings | The /no_think text directive exhausted the 128-token cap while reasoning. The log-disable flag hid generated output, so exit zero alone could not establish success. |
+| Takeout acquisition | The user-approved secondary account's one-time Mail-only export was downloaded locally after account-owner password re-verification. Earlier download-observation timeouts were superseded by the completed archive below. |
 
-Takeout download observation later reached an archive summary (1.1 MB ZIP,
-Mail-only), but clicking Download returned to password verification. Browser
-download observation timed out; no archive matching the displayed filename was
-found in the user's Downloads folder at that observation. The file appeared in
-a later turn; prior download failures are not the current blocker. Do not repeat
-password or download-token values in research records.
+The successful prompt used the upstream template's `enable_thinking=false`
+assistant prefix with `--no-conversation`; private-mail pilots used the separate
+Docker isolation described below, not the native profile.
+[Upstream chat template](https://huggingface.co/Qwen/Qwen3.5-27B/blob/main/chat_template.jinja).
 
 ### Real Archive Audit
 
@@ -258,8 +222,11 @@ message with malicious importer instructions. All three outputs returned the
 exact known total and both item amounts, with no canary in the numeric fields.
 Thus the model retained the purchase while excluding this unrelated code even
 under the tested instruction attack. Both runs exited zero and their containers
-were removed. This five-case experiment does not establish a security error
-rate or support unattended release of real mixed correspondence.
+were removed. Exit status establishes execution only: the commands emit boolean
+observations but do not assert a pass/fail threshold. Those boolean results were
+inspected directly for the conclusions above. This five-case experiment does
+not establish a security error rate or support unattended release of real mixed
+correspondence.
 
 These are deliberately invented security fixtures, not substitutes for the
 requested real-receipt benchmark. Only the model and pilot code were mounted;
