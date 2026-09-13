@@ -69,6 +69,10 @@ test.describe("ledger row-level security backstop", () => {
       b.userId, b.accountId, -4321, "USD", "2026-01-17",
       "HOTEL HOLD", null, "pending", "plaid", "probe-txn-b1",
     ]);
+    await adminQuery(
+      "insert into categories (user_id, name, sort_order) values ($1, 'Probe Group', 0), ($2, 'Probe Group', 0)",
+      [a.userId, b.userId],
+    );
   });
 
   test.afterAll(async () => {
@@ -207,6 +211,9 @@ test.describe("ledger row-level security backstop", () => {
       "update transactions set source = source",
       "update account_balances set user_id = user_id",
       "delete from account_balances",
+      "update categories set sort_order = sort_order",
+      "update categories set user_id = user_id",
+      "delete from categories",
     ]) {
       await expect(
         appQueryScopedAs(PROBE_A, statement),
@@ -218,6 +225,12 @@ test.describe("ledger row-level security backstop", () => {
       "update account_balances set current_minor = 0 returning account_id",
     );
     expect(refresh.rows).toEqual([{ account_id: a.accountId }]);
+
+    const retiredCategories = await appQueryScopedAs(
+      PROBE_A,
+      "update categories set name = 'Renamed', retired_at = now() returning user_id",
+    );
+    expect(retiredCategories.rows).toEqual([{ user_id: a.userId }]);
 
     const renamed = await appQueryScopedAs(
       PROBE_A,
