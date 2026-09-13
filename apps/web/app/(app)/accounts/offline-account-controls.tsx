@@ -1,6 +1,13 @@
 "use client";
 
-import { useId, useRef, useState, useTransition, type FormEvent } from "react";
+import {
+  useId,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 
 import type { OfflineAccountError } from "@/lib/data/offline-accounts";
@@ -111,6 +118,46 @@ function ErrorLine({ error }: { error: string | null }) {
     <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">
       {error}
     </p>
+  );
+}
+
+function RowForm({
+  label,
+  submitLabel,
+  pending,
+  error,
+  onSubmit,
+  onCancel,
+  children,
+}: {
+  label: string;
+  submitLabel: string;
+  pending: boolean;
+  error: string | null;
+  onSubmit: () => void;
+  onCancel: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <form
+      aria-label={label}
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+      className={`mt-3 ${formClass}`}
+    >
+      <div className="grid min-w-0 gap-4 sm:max-w-sm">{children}</div>
+      <ErrorLine error={error} />
+      <div className="mt-4 flex flex-wrap gap-3">
+        <button type="submit" disabled={pending} className={primaryButton}>
+          {pending ? "Saving…" : submitLabel}
+        </button>
+        <button type="button" onClick={onCancel} disabled={pending} className={quietButton}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -243,53 +290,77 @@ export function OfflineAccountActions({
   };
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"idle" | "balance" | "delete">("idle");
+  const [mode, setMode] = useState<"idle" | "balance" | "rename" | "delete">("idle");
   const [balance, setBalance] = useState("");
+  const [name, setName] = useState(account.name);
   const { error, setError, pending, run } = useMutation(() => {
     setMode("idle");
     router.refresh();
   });
-  const close = () => {
-    setMode("idle");
+  const open = (next: typeof mode) => {
     setError(null);
+    setMode(next);
   };
+  const close = () => open("idle");
   const consequence = `${account.transactionCount} transaction${
     account.transactionCount === 1 ? "" : "s"
   }`;
 
   if (mode === "balance") {
     return (
-      <form
-        aria-label="Update balance"
-        onSubmit={(event) => {
-          event.preventDefault();
+      <RowForm
+        label="Update balance"
+        submitLabel="Save balance"
+        pending={pending}
+        error={error}
+        onCancel={close}
+        onSubmit={() =>
           run(
             `/api/accounts/${account.id}/manual`,
             { balance, reportedOn: localDate() },
             "Couldn’t update the balance. Try again.",
-          );
-        }}
-        className={`mt-3 ${formClass}`}
+          )
+        }
       >
-        <div className="grid min-w-0 gap-4 sm:max-w-sm">
-          <BalanceField
-            type={account.type}
-            currency={account.currency}
-            value={balance}
-            onChange={setBalance}
+        <BalanceField
+          type={account.type}
+          currency={account.currency}
+          value={balance}
+          onChange={setBalance}
+          disabled={pending}
+        />
+      </RowForm>
+    );
+  }
+
+  if (mode === "rename") {
+    return (
+      <RowForm
+        label="Rename account"
+        submitLabel="Save name"
+        pending={pending}
+        error={error}
+        onCancel={close}
+        onSubmit={() =>
+          run(
+            `/api/accounts/${account.id}/manual/rename`,
+            { name },
+            "Couldn’t rename the account. Try again.",
+          )
+        }
+      >
+        <label className="min-w-0 text-sm font-medium">
+          Name
+          <input
+            required
+            maxLength={200}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
             disabled={pending}
+            className={inputClass}
           />
-        </div>
-        <ErrorLine error={error} />
-        <div className="mt-4 flex flex-wrap gap-3">
-          <button type="submit" disabled={pending} className={primaryButton}>
-            {pending ? "Saving…" : "Save balance"}
-          </button>
-          <button type="button" onClick={close} disabled={pending} className={quietButton}>
-            Cancel
-          </button>
-        </div>
-      </form>
+        </label>
+      </RowForm>
     );
   }
 
@@ -336,8 +407,7 @@ export function OfflineAccountActions({
               ? ""
               : signedMajor(account.reportedMinor, account.currency),
           );
-          setError(null);
-          setMode("balance");
+          open("balance");
         }}
         className="underline underline-offset-4"
       >
@@ -346,9 +416,16 @@ export function OfflineAccountActions({
       <button
         type="button"
         onClick={() => {
-          setError(null);
-          setMode("delete");
+          setName(account.name);
+          open("rename");
         }}
+        className="underline underline-offset-4"
+      >
+        Rename
+      </button>
+      <button
+        type="button"
+        onClick={() => open("delete")}
         className="text-red-700 underline underline-offset-4 dark:text-red-400"
       >
         Delete

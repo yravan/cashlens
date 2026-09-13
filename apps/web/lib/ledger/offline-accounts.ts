@@ -35,10 +35,12 @@ export type OfflineAccountInput = {
   reportedOn: string;
 };
 export type OfflineBalanceInput = { balance: string; reportedOn: string };
+export type OfflineRenameInput = { name: string };
 export type ParsedOfflineInput<T> = { ok: true; input: T } | { ok: false };
 
 const ACCOUNT_KEYS = ["name", "type", "currency", "balance", "reportedOn"] as const;
 const BALANCE_KEYS = ["balance", "reportedOn"] as const;
+const RENAME_KEYS = ["name"] as const;
 const CURRENCY = /^[A-Z]{3}$/;
 const BALANCE = /^-?\d+(\.\d+)?$/;
 
@@ -53,11 +55,18 @@ const isBalance = (value: unknown): value is string =>
   typeof value === "string" && value.length <= 32 && BALANCE.test(value);
 const isDay = (value: unknown): value is string => typeof value === "string" && isIsoDate(value);
 
+function parseName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const name = value.trim();
+  return name.length === 0 || name.length > 200 ? null : name;
+}
+
 export function parseOfflineAccountInput(body: unknown): ParsedOfflineInput<OfflineAccountInput> {
   if (!isPlainObject(body) || !hasExactKeys(body, ACCOUNT_KEYS)) return { ok: false };
-  const { name, type, currency, balance, reportedOn } = body;
+  const { type, currency, balance, reportedOn } = body;
+  const name = parseName(body.name);
   if (
-    typeof name !== "string" ||
+    name === null ||
     !isAccountType(type) ||
     typeof currency !== "string" ||
     !CURRENCY.test(currency) ||
@@ -66,9 +75,13 @@ export function parseOfflineAccountInput(body: unknown): ParsedOfflineInput<Offl
   ) {
     return { ok: false };
   }
-  const normalizedName = name.trim();
-  if (normalizedName.length === 0 || normalizedName.length > 200) return { ok: false };
-  return { ok: true, input: { name: normalizedName, type, currency, balance, reportedOn } };
+  return { ok: true, input: { name, type, currency, balance, reportedOn } };
+}
+
+export function parseRenameInput(body: unknown): ParsedOfflineInput<OfflineRenameInput> {
+  if (!isPlainObject(body) || !hasExactKeys(body, RENAME_KEYS)) return { ok: false };
+  const name = parseName(body.name);
+  return name === null ? { ok: false } : { ok: true, input: { name } };
 }
 
 export function parseOfflineBalanceInput(body: unknown): ParsedOfflineInput<OfflineBalanceInput> {

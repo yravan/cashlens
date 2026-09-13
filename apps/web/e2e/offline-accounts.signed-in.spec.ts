@@ -149,6 +149,17 @@ test.describe("offline accounts", () => {
     );
     await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH + 8000));
 
+    await accountRow(page, "Petty Cash").getByRole("button", { name: "Rename" }).click();
+    const rename = page.getByRole("form", { name: "Rename account" });
+    await expect(rename.getByLabel("Name")).toHaveValue("Petty Cash");
+    await rename.getByLabel("Name").fill("  Coffee Tin  ");
+    await waitForMutation(page, `/api/accounts/${accountId}/manual/rename`, 200, () =>
+      rename.getByRole("button", { name: "Save name" }).click(),
+    );
+    await expect(accountRow(page, "Coffee Tin")).toContainText(usd(8000));
+    await expect(page.getByTestId("account-group-depository")).not.toContainText("Petty Cash");
+    expect((await offlineAccount(userA, "Coffee Tin")).rows[0].id).toBe(accountId);
+
     const contextB = await browser.newContext({
       baseURL,
       storageState: await signedInState(browser, "b"),
@@ -157,7 +168,7 @@ test.describe("offline accounts", () => {
       const pageB = await contextB.newPage();
       await pageB.goto("/accounts");
       await expect(pageB.getByTestId("accounts-count")).toHaveText("1 account in the ledger");
-      await expect(pageB.getByText("Petty Cash")).toHaveCount(0);
+      await expect(pageB.getByText("Coffee Tin")).toHaveCount(0);
       await expect(pageB.getByTestId("cash-on-hand-USD")).toHaveText(
         usd(EXPECTED.neighbor.overview.cashOnHand.USD),
       );
@@ -165,24 +176,24 @@ test.describe("offline accounts", () => {
       await contextB.close();
     }
 
-    await accountRow(page, "Petty Cash").getByRole("button", { name: "Delete", exact: true }).click();
+    await accountRow(page, "Coffee Tin").getByRole("button", { name: "Delete", exact: true }).click();
     const confirm = page.getByTestId("delete-account-confirm");
     await expect(confirm).toContainText(
-      "Delete Petty Cash and its 1 transaction? This cannot be undone.",
+      "Delete Coffee Tin and its 1 transaction? This cannot be undone.",
     );
     await confirm.getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByTestId("delete-account-confirm")).toHaveCount(0);
-    await accountRow(page, "Petty Cash").getByRole("button", { name: "Delete", exact: true }).click();
+    await accountRow(page, "Coffee Tin").getByRole("button", { name: "Delete", exact: true }).click();
     await waitForMutation(page, `/api/accounts/${accountId}/manual/delete`, 200, () =>
       page
         .getByTestId("delete-account-confirm")
         .getByRole("button", { name: "Delete account" })
         .click(),
     );
-    await expect(accountRow(page, "Petty Cash")).toHaveCount(0);
+    await expect(accountRow(page, "Coffee Tin")).toHaveCount(0);
     await expect(page.getByTestId("accounts-count")).toHaveText("5 accounts in the ledger");
     await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH));
-    expect((await offlineAccount(userA, "Petty Cash")).rowCount).toBe(0);
+    expect((await offlineAccount(userA, "Coffee Tin")).rowCount).toBe(0);
     expect(
       (
         await adminQuery(
@@ -192,12 +203,12 @@ test.describe("offline accounts", () => {
       ).rows[0].n,
     ).toBe(0);
     await expect(page.getByTestId("account-group-other")).toContainText("Cash Wallet");
-    await expect(
-      accountRow(page, "Cash Rewards Card").getByRole("button", { name: "Update balance" }),
-    ).toHaveCount(0);
+    for (const name of ["Update balance", "Rename"]) {
+      await expect(accountRow(page, "Cash Rewards Card").getByRole("button", { name })).toHaveCount(0);
+    }
   });
 
-  test("adds an owed account and re-anchors at 320px without horizontal overflow", async ({
+  test("adds an owed account, re-anchors, and renames at 320px without horizontal overflow", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 320, height: 800 });
@@ -221,10 +232,20 @@ test.describe("offline accounts", () => {
       update.getByRole("button", { name: "Save balance" }).click(),
     );
     await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED - 500));
-    expect(
-      await page.evaluate(
+
+    const overflow = () =>
+      page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      ),
-    ).toBeLessThanOrEqual(0);
+      );
+    await accountRow(page, "Store Card").getByRole("button", { name: "Rename" }).click();
+    const rename = page.getByRole("form", { name: "Rename account" });
+    await rename.getByLabel("Name").fill("Department Store Card With A Very Long Name");
+    expect(await overflow()).toBeLessThanOrEqual(0);
+    await waitForMutation(page, `/api/accounts/${id}/manual/rename`, 200, () =>
+      rename.getByRole("button", { name: "Save name" }).click(),
+    );
+    await expect(accountRow(page, "Department Store Card")).toContainText(usd(-500));
+    await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED - 500));
+    expect(await overflow()).toBeLessThanOrEqual(0);
   });
 });

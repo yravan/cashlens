@@ -7,6 +7,7 @@ import {
   offlineBalanceMinor,
   parseOfflineAccountInput,
   parseOfflineBalanceInput,
+  parseRenameInput,
 } from "@/lib/ledger/offline-accounts";
 
 const VALID = {
@@ -88,6 +89,23 @@ test("reportedOn must be a real calendar day", () => {
   expect(parseOfflineBalanceInput({ balance: "1", reportedOn: "2024-02-29" })).toMatchObject({
     ok: true,
   });
+});
+
+test("the rename body is closed to exactly one key and shares the create name rule", () => {
+  expect(parseRenameInput({ name: "  Kalshi  " })).toEqual({ ok: true, input: { name: "Kalshi" } });
+  expect(parseRenameInput({ name: ` ${"x".repeat(200)} ` })).toEqual({
+    ok: true,
+    input: { name: "x".repeat(200) },
+  });
+  for (const name of ["", "   ", "x".repeat(201), 7, null, undefined, ["x"]]) {
+    expect(parseRenameInput({ name })).toEqual(invalid);
+  }
+  for (const body of [{}, { name: "x", extra: 1 }, { name: "x", balance: "1" }, { title: "x" }]) {
+    expect(parseRenameInput(body)).toEqual(invalid);
+  }
+  for (const body of [null, [], "{}", Object.create(null), "Kalshi"]) {
+    expect(parseRenameInput(body)).toEqual(invalid);
+  }
 });
 
 test("the balance body is closed to exactly two keys", () => {
