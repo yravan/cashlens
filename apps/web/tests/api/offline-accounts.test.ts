@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 
 import { POST as deleteRoute } from "@/app/api/accounts/[accountId]/manual/delete/route";
+import { POST as renameRoute } from "@/app/api/accounts/[accountId]/manual/rename/route";
 import { POST as updateRoute } from "@/app/api/accounts/[accountId]/manual/route";
 import { POST as createRoute } from "@/app/api/accounts/manual/route";
 import { EXPECTED, SEED_USERS } from "@/db/seed/dataset";
@@ -183,11 +184,20 @@ const postDeleteRaw = (accountId: string, body: RequestBody, origin?: string) =>
     request(`http://localhost/api/accounts/${accountId}/manual/delete`, body, origin),
     { params: Promise.resolve({ accountId }) },
   );
+const postRenameRaw = (accountId: string, body: RequestBody, origin?: string) =>
+  renameRoute(
+    request(`http://localhost/api/accounts/${accountId}/manual/rename`, body, origin),
+    { params: Promise.resolve({ accountId }) },
+  );
 const postCreate = (body: unknown) => postCreateRaw(JSON.stringify(body));
 const postUpdate = (accountId: string, body: unknown) =>
   postUpdateRaw(accountId, JSON.stringify(body));
 const postDelete = (accountId: string, body: unknown = {}) =>
   postDeleteRaw(accountId, JSON.stringify(body));
+const postRename = (accountId: string, body: unknown) =>
+  postRenameRaw(accountId, JSON.stringify(body));
+const accountName = async (accountId: string) =>
+  (await adminDb().select({ name: accounts.name }).from(accounts).where(eq(accounts.id, accountId)))[0]?.name;
 
 const responseBytes = async (response: Response) => ({
   status: response.status,
@@ -403,13 +413,38 @@ test("delete re-matches the surviving legs once the account's own pair has casca
   ).toEqual([{ outflow: unpaired.id, inflow: into.id, dismissedAt: null }]);
 });
 
+test("rename trims the new name, stamps updated_at, and the overview shows it", async () => {
+  const owner = await provisionedUser();
+  const mine = await anchoredAccount({ userId: owner.id, name: "Mine", type: "other", currentMinor: 1 });
+  const [before] = await adminDb()
+    .select({ updatedAt: accounts.updatedAt })
+    .from(accounts)
+    .where(eq(accounts.id, mine));
+
+  const response = await withAuth(owner.clerkUserId, () => postRename(mine, { name: "  Kalshi  " }));
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ accountId: mine });
+  const [after] = await adminDb()
+    .select({ name: accounts.name, updatedAt: accounts.updatedAt })
+    .from(accounts)
+    .where(eq(accounts.id, mine));
+  expect(after.name).toBe("Kalshi");
+  expect(after.updatedAt.getTime()).toBeGreaterThan(before.updatedAt.getTime());
+  expect(overviewRow(await withAuth(owner.clerkUserId, () => accountOverview()), mine).name).toBe("Kalshi");
+
+  expect(
+    await responseBytes(await withAuth(owner.clerkUserId, () => postRename(mine, { name: "   " }))),
+  ).toEqual(jsonBytes(400, "invalid_request"));
+  expect(await accountName(mine)).toBe("Kalshi");
+});
+
 test("every not-found answer is byte-identical and delete requires an empty object body", async () => {
   await seedDataset(adminDb());
   const owner = await provisionedUser();
   const mine = await anchoredAccount({ userId: owner.id, name: "Mine", type: "other", currentMinor: 1 });
   const myPlaid = await anchoredAccount({ userId: owner.id, name: "My bank", type: "depository", source: "plaid", currentMinor: 1 });
   const [seedWallet] = await adminDb()
-    .select({ id: accounts.id })
+    .select({ id: accounts.id, name: accounts.name })
     .from(accounts)
     .where(and(eq(accounts.userId, SEED_USERS.demo.id), eq(accounts.source, "manual")));
   const notFound = jsonBytes(404, "account_not_found");
@@ -420,6 +455,9 @@ test("every not-found answer is byte-identical and delete requires an empty obje
         await withAuth(owner.clerkUserId, () => postUpdate(target, { balance: "1", reportedOn: "2026-09-12" })),
       ),
     ).toEqual(notFound);
+    expect(
+      await responseBytes(await withAuth(owner.clerkUserId, () => postRename(target, { name: "Renamed" }))),
+    ).toEqual(notFound);
     expect(await responseBytes(await withAuth(owner.clerkUserId, () => postDelete(target)))).toEqual(notFound);
   }
   expect(
@@ -428,17 +466,22 @@ test("every not-found answer is byte-identical and delete requires an empty obje
       .from(accountBalances)
       .where(eq(accountBalances.accountId, seedWallet.id)),
   ).toEqual([{ currentMinor: 8600 }]);
-  expect((await adminDb().select().from(accounts).where(eq(accounts.id, myPlaid))).length).toBe(1);
+  expect(await accountName(seedWallet.id)).toBe(seedWallet.name);
+  expect(await accountName(myPlaid)).toBe("My bank");
 
   const badBody = jsonBytes(400, "invalid_request");
   expect(
     await responseBytes(await withAuth(owner.clerkUserId, () => postDelete(mine, { confirm: true }))),
   ).toEqual(badBody);
   expect(await responseBytes(await withAuth(owner.clerkUserId, () => postDeleteRaw(mine, "[]")))).toEqual(badBody);
-  expect((await adminDb().select().from(accounts).where(eq(accounts.id, mine))).length).toBe(1);
+  expect(
+    await responseBytes(await withAuth(owner.clerkUserId, () => postRename(mine, { name: "Renamed", extra: 1 }))),
+  ).toEqual(badBody);
+  expect(await responseBytes(await withAuth(owner.clerkUserId, () => postRenameRaw(mine, "[]")))).toEqual(badBody);
+  expect(await accountName(mine)).toBe("Mine");
 });
 
-test("the neighbor cannot see, re-anchor, or delete the owner's offline account, even with a raw query", async () => {
+test("the neighbor cannot see, re-anchor, rename, or delete the owner's offline account, even with a raw query", async () => {
   const owner = await provisionedUser();
   const neighbor = await provisionedUser();
   const mine = await anchoredAccount({ userId: owner.id, name: "Mine", type: "other", currentMinor: 777 });
@@ -446,6 +489,7 @@ test("the neighbor cannot see, re-anchor, or delete the owner's offline account,
   expect(
     (await withAuth(neighbor.clerkUserId, () => postUpdate(mine, { balance: "1", reportedOn: "2026-09-12" }))).status,
   ).toBe(404);
+  expect((await withAuth(neighbor.clerkUserId, () => postRename(mine, { name: "Taken over" }))).status).toBe(404);
   expect((await withAuth(neighbor.clerkUserId, () => postDelete(mine))).status).toBe(404);
   expect(
     await withRequestScope(neighbor.clerkUserId, (tx) =>
@@ -455,7 +499,13 @@ test("the neighbor cannot see, re-anchor, or delete the owner's offline account,
         .leftJoin(accountBalances, eq(accountBalances.accountId, accounts.id)),
     ),
   ).toEqual([]);
+  expect(
+    await withRequestScope(neighbor.clerkUserId, (tx) =>
+      tx.update(accounts).set({ name: "Taken over" }).where(eq(accounts.id, mine)).returning({ id: accounts.id }),
+    ),
+  ).toEqual([]);
   expect((await withAuth(neighbor.clerkUserId, () => accountOverview())).accounts).toEqual([]);
+  expect(await accountName(mine)).toBe("Mine");
   expect(
     await adminDb()
       .select({ currentMinor: accountBalances.currentMinor })
@@ -474,12 +524,15 @@ test("guard, parse, and resolution are ordered 401, 403, 400, 404 on every route
 
   expect(await responseBytes(await postCreateRaw("not json"))).toEqual(unauthorized);
   expect(await responseBytes(await postUpdateRaw("not-a-uuid", "not json"))).toEqual(unauthorized);
+  expect(await responseBytes(await postRenameRaw("not-a-uuid", "not json"))).toEqual(unauthorized);
   expect(await responseBytes(await postDeleteRaw("not-a-uuid", "not json"))).toEqual(unauthorized);
   expect(await responseBytes(await withAuth(owner.clerkUserId, () => postCreateRaw("not json", evil)))).toEqual(crossOrigin);
   expect(await responseBytes(await withAuth(owner.clerkUserId, () => postUpdateRaw("not-a-uuid", "not json", evil)))).toEqual(crossOrigin);
+  expect(await responseBytes(await withAuth(owner.clerkUserId, () => postRenameRaw("not-a-uuid", "not json", evil)))).toEqual(crossOrigin);
   expect(await responseBytes(await withAuth(owner.clerkUserId, () => postDeleteRaw("not-a-uuid", "not json", evil)))).toEqual(crossOrigin);
   expect(await responseBytes(await withAuth(owner.clerkUserId, () => postCreateRaw("not json")))).toEqual(badBody);
   expect(await responseBytes(await withAuth(owner.clerkUserId, () => postUpdateRaw("not-a-uuid", "not json")))).toEqual(badBody);
+  expect(await responseBytes(await withAuth(owner.clerkUserId, () => postRenameRaw("not-a-uuid", "not json")))).toEqual(badBody);
   expect(await responseBytes(await withAuth(owner.clerkUserId, () => postDeleteRaw("not-a-uuid", '{"x":1}')))).toEqual(badBody);
   expect(
     (await withAuth(owner.clerkUserId, () => postCreateRaw(JSON.stringify(CREATE), "http://localhost"))).status,
@@ -487,4 +540,5 @@ test("guard, parse, and resolution are ordered 401, 403, 400, 404 on every route
   expect(
     (await withAuth(owner.clerkUserId, () => postUpdate(mine, { balance: "2", reportedOn: "2026-09-12" }))).status,
   ).toBe(200);
+  expect((await withAuth(owner.clerkUserId, () => postRename(mine, { name: "Still mine" }))).status).toBe(200);
 });

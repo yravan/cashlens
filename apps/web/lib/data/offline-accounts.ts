@@ -10,6 +10,7 @@ import {
   offlineBalanceMinor,
   type OfflineAccountInput,
   type OfflineBalanceInput,
+  type OfflineRenameInput,
 } from "@/lib/ledger/offline-accounts";
 
 export type OfflineAccountError = "invalid_request" | "account_not_found";
@@ -84,6 +85,23 @@ export async function updateOfflineBalance(
       .values({ accountId: account.id, userId: user.id, ...anchor })
       .onConflictDoUpdate({ target: accountBalances.accountId, set: anchor });
     return { accountId: account.id };
+  });
+}
+
+export async function renameOfflineAccount(
+  accountId: string,
+  input: OfflineRenameInput,
+): Promise<OfflineAccountResult> {
+  const user = await requireUser();
+  if (!UUID_PATTERN.test(accountId)) return { error: "account_not_found" };
+
+  return withRequestScope(user.clerkUserId, async (tx) => {
+    const [renamed] = await tx
+      .update(accounts)
+      .set({ name: input.name, updatedAt: sql`now()` })
+      .where(manualAccount(accountId, user.id))
+      .returning({ id: accounts.id });
+    return renamed ? { accountId: renamed.id } : { error: "account_not_found" as const };
   });
 }
 
