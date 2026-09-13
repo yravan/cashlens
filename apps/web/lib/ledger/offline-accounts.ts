@@ -44,7 +44,7 @@ const RENAME_KEYS = ["name"] as const;
 const CURRENCY = /^[A-Z]{3}$/;
 const BALANCE = /^-?\d+(\.\d+)?$/;
 
-function hasExactKeys(body: Record<string, unknown>, keys: readonly string[]): boolean {
+export function hasExactKeys(body: Record<string, unknown>, keys: readonly string[]): boolean {
   const present = Object.keys(body);
   return present.length === keys.length && keys.every((key) => Object.hasOwn(body, key));
 }
