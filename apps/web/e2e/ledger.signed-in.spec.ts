@@ -228,7 +228,7 @@ test.describe("ledger row-level security backstop", () => {
 
     const retiredCategories = await appQueryScopedAs(
       PROBE_A,
-      "update categories set name = 'Renamed', retired_at = now() returning user_id",
+      "update categories set name = 'Renamed', retired_at = now() where name = 'Probe Group' returning user_id",
     );
     expect(retiredCategories.rows).toEqual([{ user_id: a.userId }]);
 
