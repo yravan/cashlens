@@ -1,4 +1,5 @@
 import Form from "next/form";
+import Link from "next/link";
 
 import type { TransactionHistory } from "@/lib/data/ledger";
 import type { HistoryParam } from "@/lib/ledger/history-query";
@@ -44,22 +45,30 @@ export function HistoryFilters({
           ))}
         </select>
       </label>
-      <label className={field}>
-        Category
-        <select name="category" defaultValue={values("category")} className={control}>
-          <option value="">All categories</option>
-          <option value="uncategorized">Uncategorized</option>
-          {options.categoryGroups.map((group) => (
-            <optgroup key={group.id} label={group.name}>
-              {group.categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </label>
+      <div className="min-w-0">
+        <label className={field}>
+          Category
+          <select name="category" defaultValue={values("category")} className={control}>
+            <option value="">All categories</option>
+            <option value="uncategorized">Uncategorized</option>
+            {options.categoryGroups.map((group) => (
+              <optgroup key={group.id} label={group.name}>
+                {group.categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+        <Link
+          href="/categories"
+          className="mt-1 inline-block text-xs text-zinc-600 underline underline-offset-4 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+        >
+          Edit categories
+        </Link>
+      </div>
       <label className={field}>
         From
         <input type="date" name="from" defaultValue={values("from")} className={control} />
