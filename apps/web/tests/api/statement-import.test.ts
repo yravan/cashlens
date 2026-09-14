@@ -294,7 +294,9 @@ test("every not-found answer is byte-identical and no rejected body lands a row"
   const demoBefore = await countRows(SEED_USERS.demo.id);
 
   for (const target of ["not-a-uuid", randomUUID(), seedWallet.id, myPlaid, myStamped]) {
-    expect(await responseBytes(await withAuth(owner.clerkUserId, () => post(target, STATEMENT))), target).toEqual(notFound);
+    for (const rows of [STATEMENT, [row("2026-04-02", "-1.234", "x")]]) {
+      expect(await responseBytes(await withAuth(owner.clerkUserId, () => post(target, rows))), target).toEqual(notFound);
+    }
   }
   for (const body of [
     "not json",
