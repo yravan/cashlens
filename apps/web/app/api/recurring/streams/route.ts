@@ -8,7 +8,10 @@ export async function POST(request: Request) {
   const body: unknown = await request.json().catch(() => null);
   const identity = parseStreamIdentity(body);
   const status = (body as { status?: unknown } | null)?.status;
-  if (identity === null || (status !== "confirmed" && status !== "dismissed")) {
+  if (
+    identity === null ||
+    (status !== "confirmed" && status !== "dismissed" && status !== "canceled")
+  ) {
     return Response.json({ error: "invalid_request" }, { status: 400 });
   }
 

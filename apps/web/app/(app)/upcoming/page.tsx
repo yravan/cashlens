@@ -234,7 +234,7 @@ export default async function UpcomingPage({
               <p className="mt-1 max-w-xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
                 These recurring items have missed two or more expected dates, so they no longer
                 project — and they are left out of the totals above. If one was canceled,{" "}
-                <Link href="/recurring" className="underline underline-offset-4">dismiss it under Recurring</Link>.
+                <Link href="/recurring" className="underline underline-offset-4">mark it canceled under Recurring</Link>.
               </p>
               <ul className="mt-2 divide-y divide-zinc-200 dark:divide-zinc-800">
                 {overview.stale.map((stream) => (

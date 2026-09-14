@@ -51,6 +51,28 @@ test("dismissing a stream removes its projection and total; re-confirming restor
   });
 });
 
+test("canceling a stream removes its projection and total exactly like dismissing it", async () => {
+  await seedDataset(adminDb());
+  const clerkUserId = SEED_USERS.demo.clerkUserId;
+  const streamflix = demoStream("STREAMFLIX");
+
+  await withAuth(clerkUserId, () => setRecurringStatus(streamflix, "canceled"));
+  const canceled = await overviewAs("demo", SEED_UPCOMING_REFERENCE);
+  expect(canceled.trackedCount).toBe(1);
+  expect(canceled.currencies).toEqual([
+    { ...EXPECTED.demo.upcoming.currencies[0], toLeaveMinor: 0, charges: [] },
+  ]);
+  expect(canceled.stale).toEqual([]);
+  expect((await overviewAs("demo", "2026-09-01")).stale.map((s) => s.name)).toEqual(["Acme Corp"]);
+
+  await withAuth(clerkUserId, () => setRecurringStatus(streamflix, "confirmed"));
+  expect(await overviewAs("demo", SEED_UPCOMING_REFERENCE)).toEqual({
+    reference: SEED_UPCOMING_REFERENCE,
+    trackedCount: 2,
+    ...EXPECTED.demo.upcoming,
+  });
+});
+
 test("a reference after an expected date marks it overdue and still counts it", async () => {
   await seedDataset(adminDb());
 

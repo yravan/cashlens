@@ -180,6 +180,23 @@ test("dismissed streams neither project nor count as stale", () => {
   expect(projected.stale).toEqual([]);
 });
 
+test("canceled streams leave the projection entirely: neither listed nor stale", () => {
+  const active = stream();
+  const canceled = stream({ status: "canceled" });
+  const dead = stream({ status: "canceled", lastDate: "2025-01-10" });
+  const projected = projectUpcoming([active, canceled, dead], "2026-04-01");
+  expect(projected.currencies).toEqual([
+    {
+      currency: "USD",
+      toLeaveMinor: -2300,
+      toArriveMinor: 0,
+      charges: [occurrenceOf(active, "2026-04-29")],
+      deposits: [],
+    },
+  ]);
+  expect(projected.stale).toEqual([]);
+});
+
 test("proposed and confirmed both project", () => {
   const proposed = stream({ status: "proposed" });
   const confirmed = stream({ status: "confirmed" });

@@ -10,11 +10,20 @@ import {
   type RecurringStream,
 } from "@/lib/ledger/recurring-detection";
 import { isIsoDate } from "@/lib/ledger/history-query";
+import {
+  annualTotals,
+  tracked,
+  type AnnualTotal,
+  type StreamStatus,
+} from "@/lib/ledger/subscriptions";
 import { projectUpcoming } from "@/lib/ledger/upcoming";
 
-export type RecurringDecision = "confirmed" | "dismissed";
-export type RecurringStatus = "proposed" | RecurringDecision;
-export type RecurringOverviewStream = RecurringStream & { status: RecurringStatus };
+export type RecurringDecision = Exclude<StreamStatus, "proposed">;
+export type RecurringStatus = StreamStatus;
+export type RecurringOverviewStream = RecurringStream & {
+  status: RecurringStatus;
+  decidedOn: string | null;
+};
 
 export type StreamIdentity = Pick<
   RecurringStream,
@@ -66,7 +75,10 @@ async function detectFor(tx: ScopedTx, userId: string): Promise<RecurringStream[
   return detectRecurringStreams(rows, excluded);
 }
 
-export async function recurringOverview(): Promise<{ streams: RecurringOverviewStream[] }> {
+export async function recurringOverview(): Promise<{
+  streams: RecurringOverviewStream[];
+  annual: AnnualTotal[];
+}> {
   const user = await requireUser();
   return withRequestScope(user.clerkUserId, async (tx) => {
     const detected = await detectFor(tx, user.id);
@@ -77,16 +89,20 @@ export async function recurringOverview(): Promise<{ streams: RecurringOverviewS
         direction: recurringStreams.direction,
         normalizedName: recurringStreams.normalizedName,
         status: recurringStreams.status,
+        updatedAt: recurringStreams.updatedAt,
       })
       .from(recurringStreams)
       .where(eq(recurringStreams.userId, user.id));
-    const decisionBy = new Map(decisions.map((row) => [identityKey(row), row.status]));
-    return {
-      streams: detected.map((stream) => ({
+    const decisionBy = new Map(decisions.map((row) => [identityKey(row), row]));
+    const streams: RecurringOverviewStream[] = detected.map((stream) => {
+      const decision = decisionBy.get(identityKey(stream));
+      return {
         ...stream,
-        status: decisionBy.get(identityKey(stream)) ?? "proposed",
-      })),
-    };
+        status: decision?.status ?? "proposed",
+        decidedOn: decision ? decision.updatedAt.toISOString().slice(0, 10) : null,
+      };
+    });
+    return { streams, annual: annualTotals(streams) };
   });
 }
 
@@ -97,7 +113,7 @@ export async function upcomingOverview(reference: string) {
     throw new Error("upcoming reference must be a real ISO date");
   }
   const { streams } = await recurringOverview();
-  const trackedCount = streams.filter((stream) => stream.status !== "dismissed").length;
+  const trackedCount = streams.filter((stream) => tracked(stream.status)).length;
   return { reference, trackedCount, ...projectUpcoming(streams, reference) };
 }
 

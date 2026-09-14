@@ -576,6 +576,7 @@ export const transferPairs = pgTable(
 export const recurringStreamStatus = pgEnum("recurring_stream_status", [
   "confirmed",
   "dismissed",
+  "canceled",
 ]);
 
 export const flowDirection = pgEnum("flow_direction", ["inflow", "outflow"]);

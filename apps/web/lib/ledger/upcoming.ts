@@ -5,10 +5,9 @@ import {
   type RecurringDirection,
   type RecurringStream,
 } from "./recurring-detection";
+import { tracked, type StreamStatus } from "./subscriptions";
 
-export type UpcomingInput = RecurringStream & {
-  status: "proposed" | "confirmed" | "dismissed";
-};
+export type UpcomingInput = RecurringStream & { status: StreamStatus };
 
 export type UpcomingStream = {
   accountId: string;
@@ -70,7 +69,7 @@ export function projectUpcoming(
   const stale: UpcomingStream[] = [];
   const listed: UpcomingOccurrence[] = [];
   for (const stream of streams) {
-    if (stream.status === "dismissed") continue;
+    if (!tracked(stream.status)) continue;
     const base: UpcomingStream = {
       accountId: stream.accountId,
       currency: stream.currency,
