@@ -115,7 +115,7 @@ async function childCount(tx: ScopedTx, userId: string, categoryId: string): Pro
   const [target] = await tx
     .select({ children: count(children.id) })
     .from(categories)
-    .leftJoin(children, eq(children.parentId, categories.id))
+    .leftJoin(children, and(eq(children.parentId, categories.id), eq(children.userId, userId)))
     .where(ownCategory(categoryId, userId))
     .groupBy(categories.id);
   return target?.children ?? null;
