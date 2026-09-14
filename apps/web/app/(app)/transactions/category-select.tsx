@@ -8,11 +8,13 @@ import type { CategoryGroup } from "@/lib/data/categories";
 export function CategorySelect({
   transactionId,
   categoryId,
+  categoryName,
   label,
   groups,
 }: {
   transactionId: string;
   categoryId: string | null;
+  categoryName: string | null;
   label: string;
   groups: CategoryGroup[];
 }) {
@@ -25,6 +27,9 @@ export function CategorySelect({
     setSeen(categoryId);
     setValue(categoryId ?? "");
   }
+  const listed = groups.some((group) =>
+    group.categories.some((category) => category.id === categoryId),
+  );
 
   const save = async (next: string) => {
     setValue(next);
@@ -55,6 +60,7 @@ export function CategorySelect({
         className="w-full max-w-56 rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900"
       >
         <option value="">Uncategorized</option>
+        {categoryId !== null && !listed && <option value={categoryId}>{categoryName}</option>}
         {groups.map((group) => (
           <optgroup key={group.id} label={group.name}>
             {group.categories.map((category) => (

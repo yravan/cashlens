@@ -61,6 +61,7 @@ function TransactionRow({
         <CategorySelect
           transactionId={row.id}
           categoryId={row.categoryId}
+          categoryName={row.categoryName}
           label={`${row.merchant ?? row.description} on ${row.date}`}
           groups={groups}
         />
