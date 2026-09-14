@@ -94,7 +94,7 @@ export async function importRows(rows: StatementRow[], currency: string): Promis
   const imported: ImportRow[] = [];
   for (const row of rows) {
     const amountMinor = offlineBalanceMinor(row.amount, currency);
-    if (amountMinor === null) return null;
+    if (amountMinor === null || amountMinor === 0) return null;
     const tuple = `${row.date}\n${amountMinor}\n${collapse(row.description)}`;
     const occurrence = (seen.get(tuple) ?? 0) + 1;
     seen.set(tuple, occurrence);

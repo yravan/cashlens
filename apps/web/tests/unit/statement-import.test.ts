@@ -129,6 +129,8 @@ test("rows convert at the currency exponent and carry a normalized content key w
   ]);
   await expect(importRows([row("2026-03-14", "1.5", "Half a yen")], "JPY")).resolves.toBeNull();
   await expect(importRows([row("2026-03-14", "1.234", "Tenth of a cent")], "USD")).resolves.toBeNull();
+  await expect(importRows([row("2026-03-14", "0.00", "Nothing moved")], "USD")).resolves.toBeNull();
+  await expect(importRows([row("2026-03-14", "-0", "Nothing moved")], "JPY")).resolves.toBeNull();
   await expect(
     importRows([row("2026-03-14", "1", "fine"), row("2026-03-14", "1.234", "too fine")], "USD"),
   ).resolves.toBeNull();
