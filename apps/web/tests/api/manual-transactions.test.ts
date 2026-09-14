@@ -495,7 +495,7 @@ test("edit atomically replaces denomination and fields without changing balances
   );
 });
 
-test("delete removes only manual targets and repeats as the same not-found result", async () => {
+test("delete removes manual and import targets and repeats as the same not-found result", async () => {
   const clerkUserId = fakeClerkUserId();
   const user = await withAuth(clerkUserId, () => requireUser());
   const [account] = await adminDb()
@@ -532,19 +532,33 @@ test("delete removes only manual targets and repeats as the same not-found resul
         source: "plaid",
         sourceId: "provider-row",
       },
+      {
+        userId: user.id,
+        accountId: account.id,
+        amountMinor: -700,
+        currency: "USD",
+        date: "2026-09-11",
+        description: "Statement",
+        status: "posted",
+        source: "import",
+        sourceId: "statement-row",
+      },
     ])
     .returning({ id: transactions.id, source: transactions.source });
   const manual = inserted.find((row) => row.source === "manual")!;
   const provider = inserted.find((row) => row.source === "plaid")!;
+  const imported = inserted.find((row) => row.source === "import")!;
 
-  const deleted = await withAuth(clerkUserId, () => postDelete(manual.id));
-  expect(deleted.status).toBe(200);
-  expect(await deleted.json()).toEqual({ transactionId: manual.id });
-  expect(
-    await adminDb().select({ id: transactions.id }).from(transactions).where(eq(transactions.id, manual.id)),
-  ).toEqual([]);
+  for (const own of [manual, imported]) {
+    const deleted = await withAuth(clerkUserId, () => postDelete(own.id));
+    expect(deleted.status).toBe(200);
+    expect(await deleted.json()).toEqual({ transactionId: own.id });
+    expect(
+      await adminDb().select({ id: transactions.id }).from(transactions).where(eq(transactions.id, own.id)),
+    ).toEqual([]);
+  }
 
-  for (const transactionId of [manual.id, provider.id]) {
+  for (const transactionId of [manual.id, imported.id, provider.id]) {
     const missing = await withAuth(clerkUserId, () => postDelete(transactionId));
     expect(missing.status).toBe(404);
     expect(await missing.text()).toBe('{"error":"transaction_not_found"}');
@@ -686,25 +700,21 @@ test("edit and delete conceal malformed, missing, foreign, and provider targets 
     .select()
     .from(transactions)
     .orderBy(transactions.id);
-  const concealed = [
-    "not-a-uuid",
-    randomUUID(),
-    data.neighborManual,
-    data.ownerPlaid,
-    data.ownerImport,
-  ];
+  const concealed = ["not-a-uuid", randomUUID(), data.neighborManual, data.ownerPlaid];
   const expected = {
     status: 404,
     contentType: "application/json",
     body: '{"error":"transaction_not_found"}',
   };
 
-  for (const transactionId of concealed) {
+  for (const transactionId of [...concealed, data.ownerImport]) {
     await expect(
       withAuth(data.ownerClerkUserId, () =>
         postUpdate(transactionId, manualInput(data.ownerAccount, data.ownerLeaf)),
       ).then(responseBytes),
     ).resolves.toEqual(expected);
+  }
+  for (const transactionId of concealed) {
     await expect(
       withAuth(data.ownerClerkUserId, () => postDelete(transactionId)).then(
         responseBytes,

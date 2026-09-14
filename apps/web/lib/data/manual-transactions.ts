@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
 import { resolveAssignableCategory } from "@/lib/data/categories";
@@ -210,7 +210,7 @@ export async function deleteManualTransaction(
         and(
           eq(transactions.id, transactionId),
           eq(transactions.userId, user.id),
-          eq(transactions.source, "manual"),
+          inArray(transactions.source, ["manual", "import"]),
         ),
       )
       .returning({ id: transactions.id });
