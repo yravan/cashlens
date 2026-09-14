@@ -4,6 +4,8 @@ import { offlineAccountResponse } from "@/lib/api/offline-accounts";
 import { importStatementRows } from "@/lib/data/offline-accounts";
 import { MAX_IMPORT_BODY_BYTES, parseStatementImportInput } from "@/lib/ledger/statement-import";
 
+export const maxDuration = 60;
+
 const parseJson = (text: string): unknown => {
   try {
     return JSON.parse(text);
