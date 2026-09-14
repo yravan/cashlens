@@ -102,7 +102,7 @@ function AccountRow({ account }: { account: Account }) {
         )}
       </div>
       {offline && (
-        <div className="sm:col-span-2">
+        <div className="min-w-0 sm:col-span-2">
           <OfflineAccountActions account={account} />
         </div>
       )}

@@ -90,7 +90,7 @@ function TransactionRow({
           </span>
         )}
       </span>
-      {row.source === "manual" && (
+      {row.source !== "plaid" && (
         <div className="min-w-0 sm:col-span-3">
           <ManualTransactionActions row={row} accounts={accounts} groups={groups} />
         </div>

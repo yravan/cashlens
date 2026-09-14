@@ -19,6 +19,7 @@ import {
   type OfflineAccountType,
 } from "@/lib/ledger/offline-accounts";
 import { inputClass, localDate, responseErrorFor } from "../mutation-form";
+import { StatementImport } from "./statement-import";
 
 const ERROR_COPY: Record<OfflineAccountError, string> = {
   invalid_request: "Check the account details and try again.",
@@ -286,11 +287,12 @@ export function OfflineAccountActions({
     type: OfflineAccountType;
     currency: string;
     reportedMinor: number | null;
+    reportedOn: string | null;
     transactionCount: number;
   };
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"idle" | "balance" | "rename" | "delete">("idle");
+  const [mode, setMode] = useState<"idle" | "balance" | "rename" | "import" | "delete">("idle");
   const [balance, setBalance] = useState("");
   const [name, setName] = useState(account.name);
   const { error, setError, pending, run } = useMutation(() => {
@@ -364,6 +366,10 @@ export function OfflineAccountActions({
     );
   }
 
+  if (mode === "import") {
+    return <StatementImport account={account} onClose={close} />;
+  }
+
   if (mode === "delete") {
     return (
       <div
@@ -422,6 +428,9 @@ export function OfflineAccountActions({
         className="underline underline-offset-4"
       >
         Rename
+      </button>
+      <button type="button" onClick={() => open("import")} className="underline underline-offset-4">
+        Import
       </button>
       <button
         type="button"
