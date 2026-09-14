@@ -1,6 +1,7 @@
 import type { accountBalances, accounts, categories, transactions, users } from "../../lib/db/schema.ts";
 import { DEFAULT_CATEGORIES } from "../../lib/ledger/default-categories.ts";
 import type { RecurringStream } from "../../lib/ledger/recurring-detection.ts";
+import type { AnnualTotal } from "../../lib/ledger/subscriptions.ts";
 import type { UpcomingProjection } from "../../lib/ledger/upcoming.ts";
 
 export const SEED_PERSONAS = ["demo", "neighbor", "empty"] as const;
@@ -184,6 +185,15 @@ const SEED_UPCOMING: Record<SeedPersona, UpcomingProjection> = {
   empty: QUIET_APRIL,
 };
 
+// 6.4.3 yearly cost, hand-derived from the streams above (twelve monthly
+// charges of the typical amount, charges and deposits kept apart), never
+// computed by the rule.
+const SEED_ANNUAL: Record<SeedPersona, AnnualTotal[]> = {
+  demo: [{ currency: "USD", outMinor: -27600, inMinor: 3000000 }],
+  neighbor: [],
+  empty: [],
+};
+
 const AS_OF = new Date("2026-03-31T12:00:00Z");
 
 export const SEED_BALANCES: SeedRow<typeof accountBalances.$inferInsert>[] = [
@@ -243,6 +253,7 @@ export type ExpectedPersona = {
   };
   recurring: RecurringStream[];
   upcoming: UpcomingProjection;
+  annual: AnnualTotal[];
 };
 
 const ACCOUNT_TYPE_ORDER = ["depository", "credit", "loan", "investment", "other"];
@@ -414,6 +425,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     },
     recurring: SEED_RECURRING_STREAMS[persona],
     upcoming: SEED_UPCOMING[persona],
+    annual: SEED_ANNUAL[persona],
   };
 }
 

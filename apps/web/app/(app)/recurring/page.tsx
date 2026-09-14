@@ -2,6 +2,12 @@ import type { Metadata } from "next";
 
 import { recurringOverview, type RecurringOverviewStream } from "@/lib/data/recurring";
 import { formatMinorUnits } from "@/lib/ledger/minor-units";
+import {
+  annualAmountMinor,
+  chargedAfterCancel,
+  priceIncreased,
+  type AnnualTotal,
+} from "@/lib/ledger/subscriptions";
 import { TransferMatch } from "../transactions/transfer-match";
 import { StreamActions } from "./stream-actions";
 
@@ -28,6 +34,7 @@ const signed = (minor: number, currency: string) =>
   `${minor > 0 ? "+" : ""}${formatMinorUnits(minor, currency)}`;
 
 function StreamRow({ stream }: { stream: RecurringOverviewStream }) {
+  const canceledOn = chargedAfterCancel(stream) ? stream.decidedOn : null;
   return (
     <li
       data-testid="recurring-stream"
@@ -39,14 +46,69 @@ function StreamRow({ stream }: { stream: RecurringOverviewStream }) {
           {CADENCE_LABEL[stream.cadence]} · last on {shortDate(stream.lastDate)} ·{" "}
           {stream.occurrences} occurrences, {CONFIDENCE_LABEL[stream.confidence]}
         </p>
+        {priceIncreased(stream) && (
+          <p data-testid="price-increase" className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+            Price up · last {signed(stream.lastAmountMinor, stream.currency)}, usually{" "}
+            {signed(stream.typicalAmountMinor, stream.currency)}
+          </p>
+        )}
+        {canceledOn && (
+          <p data-testid="charged-after-cancel" className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+            Charged {shortDate(stream.lastDate)}, after you marked it canceled on {shortDate(canceledOn)}
+          </p>
+        )}
       </div>
-      <div className="flex items-baseline gap-4">
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <p data-testid="stream-amount" className="font-mono text-sm font-medium tabular-nums">
           {signed(stream.typicalAmountMinor, stream.currency)}
         </p>
-        <StreamActions stream={stream} />
+        <p data-testid="stream-annual" className="font-mono text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+          {signed(annualAmountMinor(stream), stream.currency)}/yr
+        </p>
+        <StreamActions stream={stream} chargedAfter={canceledOn !== null} />
       </div>
     </li>
+  );
+}
+
+function AnnualSummary({ annual }: { annual: AnnualTotal[] }) {
+  if (annual.length === 0) return null;
+  return (
+    <section
+      aria-labelledby="annual"
+      data-testid="recurring-annual"
+      className="mt-6 border-y border-zinc-200 py-4 dark:border-zinc-800"
+    >
+      <h2 id="annual" className="text-sm font-medium">
+        Per year
+      </h2>
+      <ul className="mt-2 space-y-1">
+        {annual.map((total) => (
+          <li
+            key={total.currency}
+            data-testid={`annual-${total.currency}`}
+            className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm"
+          >
+            <span className="text-zinc-500 dark:text-zinc-400">{total.currency}</span>
+            <span>
+              <span data-testid="annual-out" className="font-mono font-medium tabular-nums">
+                {signed(total.outMinor, total.currency)}
+              </span>{" "}
+              in charges
+            </span>
+            <span>
+              <span data-testid="annual-in" className="font-mono font-medium tabular-nums">
+                {signed(total.inMinor, total.currency)}
+              </span>{" "}
+              in deposits
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 max-w-xl text-xs leading-5 text-zinc-500 dark:text-zinc-400">
+        Counts streams to review and confirmed. Canceled and dismissed are left out.
+      </p>
+    </section>
   );
 }
 
@@ -81,7 +143,7 @@ function StreamSection({
 }
 
 export default async function RecurringPage() {
-  const { streams } = await recurringOverview();
+  const { streams, annual } = await recurringOverview();
   const by = (status: RecurringOverviewStream["status"]) =>
     streams.filter((stream) => stream.status === status);
 
@@ -100,6 +162,7 @@ export default async function RecurringPage() {
         </p>
       ) : (
         <>
+          <AnnualSummary annual={annual} />
           <StreamSection
             id="proposed"
             heading="To review"
@@ -107,6 +170,12 @@ export default async function RecurringPage() {
             streams={by("proposed")}
           />
           <StreamSection id="confirmed" heading="Confirmed" streams={by("confirmed")} />
+          <StreamSection
+            id="canceled"
+            heading="Canceled"
+            note="Marked canceled. Left out of Upcoming and the yearly total; a charge dated after the cancel day is flagged here."
+            streams={by("canceled")}
+          />
           <StreamSection
             id="dismissed"
             heading="Dismissed"

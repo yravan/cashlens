@@ -1,0 +1,1 @@
+ALTER TYPE "public"."recurring_stream_status" ADD VALUE 'canceled';

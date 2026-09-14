@@ -1327,9 +1327,13 @@ test("flows through every canonical ledger consumer", async () => {
     occurrences: 3,
     confidence: "high",
     status: "proposed",
+    decidedOn: null,
   } as const;
   const expectRecurring = async (present: boolean) =>
-    expect(await recurring()).toEqual({ streams: present ? [stream] : [] });
+    expect(await recurring()).toEqual({
+      streams: present ? [stream] : [],
+      annual: present ? [{ currency: "USD", outMinor: -15588, inMinor: 0 }] : [],
+    });
   const expectFlow = async (
     months: Awaited<ReturnType<typeof cashFlowSummary>>["currencies"][number]["months"],
     transferRows: number,

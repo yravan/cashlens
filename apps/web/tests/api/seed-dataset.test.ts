@@ -9,6 +9,7 @@ import { requireUser } from "@/lib/data/users";
 import { accountBalances, accounts, categories, transactions, users } from "@/lib/db/schema";
 import { DEFAULT_CATEGORIES } from "@/lib/ledger/default-categories";
 import { detectRecurringStreams } from "@/lib/ledger/recurring-detection";
+import { annualTotals } from "@/lib/ledger/subscriptions";
 import { projectUpcoming } from "@/lib/ledger/upcoming";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
@@ -147,6 +148,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
       ],
       stale: [],
     },
+    annual: [{ currency: "USD", outMinor: -27600, inMinor: 3000000 }],
   });
   expect(EXPECTED.neighbor).toEqual({
     accounts: 1,
@@ -194,6 +196,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     transfers: { pairs: [], pairedRows: 0, autoQueue: 1 },
     recurring: [],
     upcoming: { monthEnd: "2026-04-30", currencies: [], stale: [] },
+    annual: [],
   });
   expect(EXPECTED.empty).toEqual({
     accounts: 0,
@@ -212,6 +215,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     transfers: { pairs: [], pairedRows: 0, autoQueue: 0 },
     recurring: [],
     upcoming: { monthEnd: "2026-04-30", currencies: [], stale: [] },
+    annual: [],
   });
 });
 
@@ -408,6 +412,13 @@ test("the dataset's upcoming month is exactly what 6.4.2's projector finds in th
   }
 });
 
+test("the dataset's yearly totals are exactly what 6.4.3's rule finds in the streams", () => {
+  for (const persona of SEED_PERSONAS) {
+    const streams = EXPECTED[persona].recurring.map((s) => ({ ...s, status: "proposed" as const }));
+    expect(annualTotals(streams)).toEqual(EXPECTED[persona].annual);
+  }
+});
+
 test("the dataset's transfer pairs are the two hand-verified zero-sum moves, matchable by 3.3.1's rule", () => {
   const byId = new Map(SEED_TRANSACTIONS.map((t) => [t.id, t]));
   const label = (id: string) => `${byId.get(id)!.date} ${byId.get(id)!.description}`;
@@ -433,7 +444,7 @@ test("the dataset's transfer pairs are the two hand-verified zero-sum moves, mat
   }
 });
 
-async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending" | "recurring" | "upcoming">> {
+async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending" | "recurring" | "upcoming" | "annual">> {
   const db = adminDb();
   const mine = eq(transactions.userId, userId);
   const posted = await db
@@ -475,7 +486,7 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
   };
 }
 
-function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending" | "recurring" | "upcoming"> {
+function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending" | "recurring" | "upcoming" | "annual"> {
   const { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted } =
     EXPECTED[persona];
   return { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted };

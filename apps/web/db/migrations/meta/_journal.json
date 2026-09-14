@@ -267,6 +267,13 @@
       "when": 1789290487000,
       "tag": "0037_category_edit_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1789366136418,
+      "tag": "0038_recurring_stream_canceled",
+      "breakpoints": true
     }
   ]
 }
