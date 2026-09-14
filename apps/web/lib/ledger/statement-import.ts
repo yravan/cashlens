@@ -1,5 +1,6 @@
 import { isIsoDate } from "./history-query";
 import { isPlainObject } from "./manual-transactions";
+import { PLAIN_DECIMAL } from "./minor-units";
 import {
   hasExactKeys,
   offlineBalanceMinor,
@@ -26,7 +27,6 @@ const SYNONYMS: Record<keyof MappingGuess, string[]> = {
   description: ["description", "payee", "merchant", "name", "memo", "narrative", "details"],
 };
 const DATE_PARTS = /^\s*(\d{1,4})[-/.](\d{1,2})[-/.](\d{1,4})\s*$/;
-const PLAIN_DECIMAL = /^\d+(\.\d+)?$/;
 const SIGNED_DECIMAL = /^-?\d+(\.\d+)?$/;
 const ROW_KEYS = ["date", "amount", "description"] as const;
 
