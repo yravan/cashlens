@@ -44,7 +44,7 @@ const RENAME_KEYS = ["name"] as const;
 const CURRENCY = /^[A-Z]{3}$/;
 const BALANCE = /^-?\d+(\.\d+)?$/;
 
-function hasExactKeys(body: Record<string, unknown>, keys: readonly string[]): boolean {
+export function hasExactKeys(body: Record<string, unknown>, keys: readonly string[]): boolean {
   const present = Object.keys(body);
   return present.length === keys.length && keys.every((key) => Object.hasOwn(body, key));
 }
@@ -55,7 +55,7 @@ const isBalance = (value: unknown): value is string =>
   typeof value === "string" && value.length <= 32 && BALANCE.test(value);
 const isDay = (value: unknown): value is string => typeof value === "string" && isIsoDate(value);
 
-function parseName(value: unknown): string | null {
+export function parseName(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const name = value.trim();
   return name.length === 0 || name.length > 200 ? null : name;

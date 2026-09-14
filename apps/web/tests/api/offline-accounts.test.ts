@@ -9,7 +9,6 @@ import { POST as createRoute } from "@/app/api/accounts/manual/route";
 import { EXPECTED, SEED_USERS } from "@/db/seed/dataset";
 import { seedDataset } from "@/db/seed/seed";
 import { accountOverview } from "@/lib/data/ledger";
-import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
 import {
   accountBalances,
@@ -18,47 +17,16 @@ import {
   transactions,
   transferPairs,
 } from "@/lib/db/schema";
-import { fakeClerkUserId, withAuth } from "../harness/clerk";
+import { withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
-
-async function provisionedUser() {
-  const clerkUserId = fakeClerkUserId();
-  const user = await withAuth(clerkUserId, () => requireUser());
-  return { clerkUserId, id: user.id };
-}
-
-type AnchoredAccount = {
-  userId: string;
-  name: string;
-  type: "depository" | "credit" | "loan" | "investment" | "other";
-  source?: "plaid" | "manual" | "import";
-  currentMinor: number;
-  reportedOn?: string | null;
-};
-
-async function anchoredAccount(row: AnchoredAccount) {
-  const [account] = await adminDb()
-    .insert(accounts)
-    .values({
-      userId: row.userId,
-      name: row.name,
-      type: row.type,
-      currency: "USD",
-      source: row.source ?? "manual",
-      sourceId: row.source && row.source !== "manual" ? `seed-${randomUUID()}` : null,
-    })
-    .returning({ id: accounts.id });
-  await adminDb().insert(accountBalances).values({
-    accountId: account.id,
-    userId: row.userId,
-    availableMinor: null,
-    currentMinor: row.currentMinor,
-    limitMinor: null,
-    asOf: new Date("2026-04-01T12:00:00Z"),
-    reportedOn: row.reportedOn === undefined ? "2026-04-01" : row.reportedOn,
-  });
-  return account.id;
-}
+import {
+  anchoredAccount,
+  jsonBytes,
+  provisionedUser,
+  request,
+  type RequestBody,
+  responseBytes,
+} from "./offline-helpers";
 
 const AROUND_THE_ANCHOR = [
   { date: "2026-04-02", amountMinor: -500, createdAt: "2026-04-01T11:00:00Z", status: "posted" },
@@ -159,20 +127,6 @@ test("an offline account without an anchor day or without a balance row shows th
   });
 });
 
-type RequestBody = BodyInit | null;
-
-const request = (url: string, body: RequestBody, origin?: string) =>
-  new Request(url, {
-    method: "POST",
-    headers: {
-      host: "localhost",
-      "content-type": "application/json",
-      ...(origin ? { origin } : {}),
-    },
-    body,
-    duplex: "half",
-  } as RequestInit);
-
 const postCreateRaw = (body: RequestBody, origin?: string) =>
   createRoute(request("http://localhost/api/accounts/manual", body, origin));
 const postUpdateRaw = (accountId: string, body: RequestBody, origin?: string) =>
@@ -198,18 +152,6 @@ const postRename = (accountId: string, body: unknown) =>
   postRenameRaw(accountId, JSON.stringify(body));
 const accountName = async (accountId: string) =>
   (await adminDb().select({ name: accounts.name }).from(accounts).where(eq(accounts.id, accountId)))[0]?.name;
-
-const responseBytes = async (response: Response) => ({
-  status: response.status,
-  contentType: response.headers.get("content-type"),
-  body: await response.text(),
-});
-
-const jsonBytes = (status: number, error: string) => ({
-  status,
-  contentType: "application/json",
-  body: JSON.stringify({ error }),
-});
 
 const CREATE = {
   name: "  Kalshi  ",
