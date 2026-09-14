@@ -4,16 +4,30 @@ import { expect, test } from "vitest";
 import {
   guessMapping,
   importRows,
+  interpretStatement,
   MAX_IMPORT_BODY_BYTES,
   MAX_IMPORT_ROWS,
   normalizeAmount,
   parseStatementDate,
   parseStatementImportInput,
   statementAmount,
+  type StatementMapping,
 } from "@/lib/ledger/statement-import";
 
 const invalid = { ok: false };
 const row = (date: string, amount: string, description: string) => ({ date, amount, description });
+const mapping = (over: Partial<StatementMapping> = {}): StatementMapping => ({
+  date: "Date",
+  amount: "Amount",
+  outflow: "",
+  inflow: "",
+  description: "Description",
+  layout: "signed",
+  order: "mdy",
+  decimalMark: ".",
+  flip: false,
+  ...over,
+});
 const key = (date: string, minor: number, description: string, occurrence: number) =>
   createHash("sha256").update(`${date}\n${minor}\n${description}\n${occurrence}`).digest("hex");
 
@@ -255,4 +269,68 @@ test("header guessing picks the first synonym match per field, case- and space-i
   });
   expect(guessMapping(["Foo", "Bar"])).toEqual(NONE);
   expect(guessMapping([])).toEqual(NONE);
+});
+
+test("preview interpretation maps records through the chosen columns and settings", () => {
+  const records = [
+    { Date: "03/10/2026", Description: " E2E FARMERS MARKET ", Amount: "(12.50)" },
+    { Date: "04/01/2026", Description: "E2E BOOK SALE", Amount: "$9.75" },
+  ];
+  expect(interpretStatement({ data: records, errors: [] }, mapping(), "USD")).toEqual({
+    rows: [
+      { date: "2026-03-10", amount: "-12.50", description: "E2E FARMERS MARKET", amountMinor: -1250 },
+      { date: "2026-04-01", amount: "9.75", description: "E2E BOOK SALE", amountMinor: 975 },
+    ],
+    malformed: [],
+  });
+  expect(interpretStatement({ data: records, errors: [] }, mapping({ order: "ymd" }), "USD")).toEqual({
+    rows: [],
+    malformed: [2, 3],
+  });
+  expect(
+    interpretStatement({ data: records, errors: [] }, mapping({ flip: true }), "USD").rows.map(
+      (row) => row.amountMinor,
+    ),
+  ).toEqual([1250, -975]);
+});
+
+test("preview interpretation flags parser errors, ambiguous pairs, zero, exponent, and blank descriptions by spreadsheet row", () => {
+  const split = mapping({ layout: "split", outflow: "Debit", inflow: "Credit", order: "dmy", decimalMark: "," });
+  expect(
+    interpretStatement(
+      {
+        data: [
+          { Date: "10.03.2026", Debit: "1.234,50", Credit: "", Description: "RENT" },
+          { Date: "11.03.2026", Debit: "", Credit: "20,00", Description: "REFUND" },
+          { Date: "12.03.2026", Debit: "5,00", Credit: "5,00", Description: "BOTH" },
+          { Date: "13.03.2026", Debit: "", Credit: "", Description: "NEITHER" },
+        ],
+        errors: [{ row: 1 }, {}],
+      },
+      split,
+      "EUR",
+    ),
+  ).toEqual({
+    rows: [{ date: "2026-03-10", amount: "-1234.50", description: "RENT", amountMinor: -123450 }],
+    malformed: [3, 4, 5],
+  });
+  expect(
+    interpretStatement(
+      {
+        data: [
+          { Date: "2026-03-10", Amount: "12.5", Description: "FRACTION" },
+          { Date: "2026-03-10", Amount: "0", Description: "ZERO" },
+          { Date: "2026-03-10", Amount: "100", Description: "   " },
+          { Date: "2026-03-10", Description: "MISSING" },
+          { Date: "2026-03-10", Amount: "-100", Description: "OK" },
+        ],
+        errors: [],
+      },
+      mapping({ order: "ymd" }),
+      "JPY",
+    ),
+  ).toEqual({
+    rows: [{ date: "2026-03-10", amount: "-100", description: "OK", amountMinor: -100 }],
+    malformed: [2, 3, 4, 5],
+  });
 });

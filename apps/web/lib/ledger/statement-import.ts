@@ -18,6 +18,18 @@ export type StatementRow = { date: string; amount: string; description: string }
 export type StatementImportInput = { rows: StatementRow[] };
 export type ImportRow = { date: string; amountMinor: number; description: string; sourceId: string };
 export type MappingGuess = Record<"date" | "amount" | "outflow" | "inflow" | "description", string | null>;
+export type StatementMapping = Record<keyof MappingGuess, string> & {
+  layout: "signed" | "split";
+  order: DateOrder;
+  decimalMark: DecimalMark;
+  flip: boolean;
+};
+export type ParsedStatement = {
+  data: Record<string, string | undefined>[];
+  errors: { row?: number }[];
+};
+export type PreviewRow = StatementRow & { amountMinor: number };
+export type StatementPreview = { rows: PreviewRow[]; malformed: number[] };
 
 const SYNONYMS: Record<keyof MappingGuess, string[]> = {
   date: ["date", "transaction date", "posted date", "posting date", "booking date", "value date"],
@@ -82,6 +94,42 @@ export function statementAmount(cells: AmountCells, decimalMark: DecimalMark, fl
       : pairedAmount(cells.outflow, cells.inflow, decimalMark);
   if (amount === null || !flip || !moves(amount)) return amount;
   return amount.startsWith("-") ? amount.slice(1) : `-${amount}`;
+}
+
+function previewRow(
+  record: Record<string, string | undefined>,
+  mapping: StatementMapping,
+  currency: string,
+): PreviewRow | null {
+  const cell = (column: string) => record[column] ?? "";
+  const date = parseStatementDate(cell(mapping.date), mapping.order);
+  const amount = statementAmount(
+    mapping.layout === "signed"
+      ? { amount: cell(mapping.amount) }
+      : { outflow: cell(mapping.outflow), inflow: cell(mapping.inflow) },
+    mapping.decimalMark,
+    mapping.flip,
+  );
+  const description = parseName(cell(mapping.description));
+  if (date === null || amount === null || description === null) return null;
+  const amountMinor = offlineBalanceMinor(amount, currency);
+  if (amountMinor === null || amountMinor === 0) return null;
+  return { date, amount, description, amountMinor };
+}
+
+export function interpretStatement(
+  parsed: ParsedStatement,
+  mapping: StatementMapping,
+  currency: string,
+): StatementPreview {
+  const flagged = new Set(parsed.errors.map((error) => error.row));
+  const preview: StatementPreview = { rows: [], malformed: [] };
+  parsed.data.forEach((record, index) => {
+    const row = flagged.has(index) ? null : previewRow(record, mapping, currency);
+    if (row === null) preview.malformed.push(index + 2);
+    else preview.rows.push(row);
+  });
+  return preview;
 }
 
 async function sha256Hex(text: string): Promise<string> {
