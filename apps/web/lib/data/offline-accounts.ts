@@ -5,16 +5,23 @@ import { UUID_PATTERN } from "@/lib/crypto/credentials";
 import { repairTransfers } from "@/lib/data/manual-transactions";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
-import { accountBalances, accounts } from "@/lib/db/schema";
+import { accountBalances, accounts, transactions } from "@/lib/db/schema";
 import {
   offlineBalanceMinor,
   type OfflineAccountInput,
   type OfflineBalanceInput,
   type OfflineRenameInput,
 } from "@/lib/ledger/offline-accounts";
+import { importRows, type StatementImportInput } from "@/lib/ledger/statement-import";
+import { logEvent } from "@/lib/log";
 
 export type OfflineAccountError = "invalid_request" | "account_not_found";
 export type OfflineAccountResult = { accountId: string } | { error: OfflineAccountError };
+export type StatementImportResult =
+  | { accountId: string; inserted: number; skipped: number }
+  | { error: OfflineAccountError };
+
+const IMPORT_CHUNK = 500;
 
 const manualAccount = (accountId: string, userId: string) =>
   and(eq(accounts.id, accountId), eq(accounts.userId, userId), eq(accounts.source, "manual"));
@@ -118,5 +125,57 @@ export async function deleteOfflineAccount(accountId: string): Promise<OfflineAc
   });
 
   if (!("error" in result)) await repairTransfers(user, "delete_offline_account");
+  return result;
+}
+
+export async function importStatementRows(
+  accountId: string,
+  input: StatementImportInput,
+): Promise<StatementImportResult> {
+  const user = await requireUser();
+  if (!UUID_PATTERN.test(accountId)) return { error: "account_not_found" };
+
+  const result = await withRequestScope(user.clerkUserId, async (tx) => {
+    const [account] = await tx
+      .select({ id: accounts.id, currency: accounts.currency })
+      .from(accounts)
+      .where(manualAccount(accountId, user.id));
+    if (!account) return { error: "account_not_found" as const };
+    const rows = await importRows(input.rows, account.currency);
+    if (rows === null) return { error: "invalid_request" as const };
+
+    let inserted = 0;
+    for (let at = 0; at < rows.length; at += IMPORT_CHUNK) {
+      const chunk = await tx
+        .insert(transactions)
+        .values(
+          rows.slice(at, at + IMPORT_CHUNK).map((row) => ({
+            userId: user.id,
+            accountId: account.id,
+            amountMinor: row.amountMinor,
+            currency: account.currency,
+            date: row.date,
+            description: row.description,
+            merchant: null,
+            status: "posted" as const,
+            source: "import" as const,
+            sourceId: row.sourceId,
+          })),
+        )
+        .onConflictDoNothing();
+      inserted += chunk.rowCount ?? 0;
+    }
+    return { accountId: account.id, inserted, skipped: rows.length - inserted };
+  });
+
+  if (!("error" in result)) {
+    logEvent("statement_import.run", {
+      accountId: result.accountId,
+      received: input.rows.length,
+      inserted: result.inserted,
+      skipped: result.skipped,
+    });
+    await repairTransfers(user, "import_statement");
+  }
   return result;
 }

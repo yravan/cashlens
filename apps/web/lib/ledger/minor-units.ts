@@ -7,7 +7,7 @@ const EXPONENT_3 = new Set(["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"]);
 export const currencyExponent = (currency: string) =>
   EXPONENT_0.has(currency) ? 0 : EXPONENT_3.has(currency) ? 3 : 2;
 
-const PLAIN_DECIMAL = /^\d+(\.\d+)?$/;
+export const PLAIN_DECIMAL = /^\d+(\.\d+)?$/;
 const MAX_SAFE_MINOR = BigInt(Number.MAX_SAFE_INTEGER);
 const MAX_SAFE_MINOR_DIGITS = String(Number.MAX_SAFE_INTEGER).length;
 

@@ -29,7 +29,8 @@ type Operation =
   | "create_manual_transaction"
   | "update_manual_transaction"
   | "delete_manual_transaction"
-  | "delete_offline_account";
+  | "delete_offline_account"
+  | "import_statement";
 
 export async function repairTransfers(user: User, operation: Operation): Promise<void> {
   try {
