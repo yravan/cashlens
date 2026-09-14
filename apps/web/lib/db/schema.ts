@@ -237,6 +237,7 @@ export const categories = pgTable(
     parentId: uuid("parent_id"),
     name: text("name").notNull(),
     sortOrder: integer("sort_order").notNull(),
+    retiredAt: timestamp("retired_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
@@ -258,6 +259,12 @@ export const categories = pgTable(
       sql`name = btrim(name) and char_length(name) between 1 and 60`,
     ),
     ...ownRowPolicies("categories"),
+    pgPolicy("categories_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
   ],
 );
 

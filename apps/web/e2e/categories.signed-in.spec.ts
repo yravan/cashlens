@@ -106,4 +106,29 @@ test.describe("category assignment", () => {
       await contextB.close();
     }
   });
+
+  test("a leaf promoted to a group keeps showing on the rows assigned to it", async ({ page }) => {
+    await page.goto("/transactions");
+    await expect(page.getByTestId("signed-in-email")).toBeVisible();
+    const userA = await userIdOf("a");
+    const userB = await userIdOf("b");
+    await adminQuery("delete from accounts where user_id in ($1, $2)", [userA, userB]);
+    await adminQuery("delete from categories where user_id in ($1, $2)", [userA, userB]);
+    await seedLedgerFixture({ demo: userA, neighbor: userB });
+    const groceries: string = (
+      await adminQuery("select id from categories where user_id = $1 and name = 'Groceries'", [userA])
+    ).rows[0].id;
+
+    const promoted = await page.request.post(`/api/categories/${groceries}`, {
+      data: { name: "Groceries", parentId: null, retired: false },
+    });
+    expect(promoted.status()).toBe(200);
+
+    await page.goto("/transactions");
+    const maple = row(page, "Maple Market").getByRole("combobox");
+    await expect(maple).toHaveCount(1);
+    await expect(maple.locator("option:checked")).toHaveText("Groceries");
+    await expect(maple).toHaveValue(groceries);
+    await expect(maple.locator("optgroup option", { hasText: "Groceries" })).toHaveCount(0);
+  });
 });
