@@ -185,7 +185,7 @@ export async function updateCategory(
       );
     if (clash) return { error: "name_taken" as const };
 
-    const [updated] = await tx
+    await tx
       .update(categories)
       .set({
         name: input.name,
@@ -193,9 +193,8 @@ export async function updateCategory(
         retiredAt: input.retired ? sql`coalesce(${categories.retiredAt}, now())` : null,
         updatedAt: sql`now()`,
       })
-      .where(ownCategory(categoryId, user.id))
-      .returning({ id: categories.id });
-    return updated ? { categoryId: updated.id } : { error: "category_not_found" as const };
+      .where(ownCategory(categoryId, user.id));
+    return { categoryId };
   });
 }
 
