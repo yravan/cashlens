@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import Papa from "papaparse";
 import { expect, test } from "vitest";
 
 import {
@@ -292,6 +293,39 @@ test("preview interpretation maps records through the chosen columns and setting
       (row) => row.amountMinor,
     ),
   ).toEqual([1250, -975]);
+});
+
+test("quote errors fail the entire file closed", () => {
+  const parsed = Papa.parse<Record<string, string>>(
+    `Date,Amount,Description
+03/10/2026,(12.50),E2E FARMERS MARKET
+03/20/2026,(6.00),"E2E LAUNDRY`,
+    {
+      header: true,
+      skipEmptyLines: "greedy",
+      transformHeader: (header) => header.trim(),
+    },
+  );
+  expect(interpretStatement({ data: parsed.data, errors: parsed.errors }, mapping(), "USD")).toEqual({
+    rows: [],
+    malformed: [2, 3],
+  });
+});
+
+test("prototype-chain mapped cells are malformed instead of throwing", () => {
+  expect(
+    interpretStatement(
+      {
+        data: [{ Date: "03/10/2026", Description: "E2E COFFEE" }],
+        errors: [],
+      },
+      mapping({ amount: "constructor" }),
+      "USD",
+    ),
+  ).toEqual({
+    rows: [],
+    malformed: [2],
+  });
 });
 
 test("preview interpretation flags parser errors, ambiguous pairs, zero, exponent, and blank descriptions by spreadsheet row", () => {

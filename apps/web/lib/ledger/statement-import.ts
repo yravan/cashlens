@@ -26,7 +26,7 @@ export type StatementMapping = Record<keyof MappingGuess, string> & {
 };
 export type ParsedStatement = {
   data: Record<string, string | undefined>[];
-  errors: { row?: number }[];
+  errors: { type?: string; row?: number }[];
 };
 export type PreviewRow = StatementRow & { amountMinor: number };
 export type StatementPreview = { rows: PreviewRow[]; malformed: number[] };
@@ -101,7 +101,10 @@ function previewRow(
   mapping: StatementMapping,
   currency: string,
 ): PreviewRow | null {
-  const cell = (column: string) => record[column] ?? "";
+  const cell = (column: string) => {
+    const value = record[column];
+    return typeof value === "string" ? value : "";
+  };
   const date = parseStatementDate(cell(mapping.date), mapping.order);
   const amount = statementAmount(
     mapping.layout === "signed"
@@ -122,6 +125,9 @@ export function interpretStatement(
   mapping: StatementMapping,
   currency: string,
 ): StatementPreview {
+  if (parsed.errors.some((error) => error.type === "Quotes")) {
+    return { rows: [], malformed: parsed.data.map((_, index) => index + 2) };
+  }
   const flagged = new Set(parsed.errors.map((error) => error.row));
   const preview: StatementPreview = { rows: [], malformed: [] };
   parsed.data.forEach((record, index) => {
