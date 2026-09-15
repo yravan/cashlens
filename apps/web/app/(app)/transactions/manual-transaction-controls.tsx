@@ -20,6 +20,7 @@ type Draft = {
 };
 type ManualRow = {
   id: string;
+  source: "plaid" | "manual" | "import";
   accountId: string;
   amountMinor: number;
   currency: string;
@@ -376,9 +377,11 @@ export function ManualTransactionActions({
         </>
       ) : (
         <>
-          <button type="button" onClick={edit} className="underline underline-offset-4">
-            Edit
-          </button>
+          {row.source === "manual" && (
+            <button type="button" onClick={edit} className="underline underline-offset-4">
+              Edit
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
