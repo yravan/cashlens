@@ -76,6 +76,31 @@ test.describe("upcoming expenses view", () => {
     await expect(page).toHaveURL("/upcoming");
   });
 
+  test("a known obligation renders when no recurring pattern exists", async ({ page }) => {
+    const userId = await userIdOf("a");
+    const account = await adminQuery(
+      "select id from accounts where user_id = $1 and name = 'Everyday Checking'",
+      [userId],
+    );
+    await adminQuery("delete from transactions where user_id = $1", [userId]);
+    await adminQuery(
+      `insert into scheduled_obligations
+         (user_id, account_id, name, amount_minor, currency, cadence, starts_on)
+       values ($1, $2, 'Rent', 180000, 'USD', 'once', '2026-04-15')`,
+      [userId, account.rows[0].id],
+    );
+
+    await page.goto("/upcoming?on=2026-04-01");
+
+    await expect(page.getByTestId("upcoming-empty")).toHaveCount(0);
+    await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$1,800.00", {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("upcoming-charge")).toContainText(
+      "RentOne time · expected Apr 15, 2026-$1,800.00",
+    );
+  });
+
   test("an expected date the reference has passed is labeled not-seen and still counted", async ({
     page,
   }) => {

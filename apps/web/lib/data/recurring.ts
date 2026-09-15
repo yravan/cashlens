@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
+import { activeObligationsFor } from "@/lib/data/obligations";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope, type ScopedTx } from "@/lib/db/client";
 import { recurringStreams, transactions, transferPairs } from "@/lib/db/schema";
@@ -75,35 +76,40 @@ async function detectFor(tx: ScopedTx, userId: string): Promise<RecurringStream[
   return detectRecurringStreams(rows, excluded);
 }
 
+async function recurringOverviewFor(
+  tx: ScopedTx,
+  userId: string,
+): Promise<{ streams: RecurringOverviewStream[]; annual: AnnualTotal[] }> {
+  const detected = await detectFor(tx, userId);
+  const decisions = await tx
+    .select({
+      accountId: recurringStreams.accountId,
+      currency: recurringStreams.currency,
+      direction: recurringStreams.direction,
+      normalizedName: recurringStreams.normalizedName,
+      status: recurringStreams.status,
+      updatedAt: recurringStreams.updatedAt,
+    })
+    .from(recurringStreams)
+    .where(eq(recurringStreams.userId, userId));
+  const decisionBy = new Map(decisions.map((row) => [identityKey(row), row]));
+  const streams: RecurringOverviewStream[] = detected.map((stream) => {
+    const decision = decisionBy.get(identityKey(stream));
+    return {
+      ...stream,
+      status: decision?.status ?? "proposed",
+      decidedOn: decision ? decision.updatedAt.toISOString().slice(0, 10) : null,
+    };
+  });
+  return { streams, annual: annualTotals(streams) };
+}
+
 export async function recurringOverview(): Promise<{
   streams: RecurringOverviewStream[];
   annual: AnnualTotal[];
 }> {
   const user = await requireUser();
-  return withRequestScope(user.clerkUserId, async (tx) => {
-    const detected = await detectFor(tx, user.id);
-    const decisions = await tx
-      .select({
-        accountId: recurringStreams.accountId,
-        currency: recurringStreams.currency,
-        direction: recurringStreams.direction,
-        normalizedName: recurringStreams.normalizedName,
-        status: recurringStreams.status,
-        updatedAt: recurringStreams.updatedAt,
-      })
-      .from(recurringStreams)
-      .where(eq(recurringStreams.userId, user.id));
-    const decisionBy = new Map(decisions.map((row) => [identityKey(row), row]));
-    const streams: RecurringOverviewStream[] = detected.map((stream) => {
-      const decision = decisionBy.get(identityKey(stream));
-      return {
-        ...stream,
-        status: decision?.status ?? "proposed",
-        decidedOn: decision ? decision.updatedAt.toISOString().slice(0, 10) : null,
-      };
-    });
-    return { streams, annual: annualTotals(streams) };
-  });
+  return withRequestScope(user.clerkUserId, (tx) => recurringOverviewFor(tx, user.id));
 }
 
 export type RecurringOverview = Awaited<ReturnType<typeof recurringOverview>>;
@@ -112,9 +118,17 @@ export async function upcomingOverview(reference: string) {
   if (!isIsoDate(reference)) {
     throw new Error("upcoming reference must be a real ISO date");
   }
-  const { streams } = await recurringOverview();
-  const trackedCount = streams.filter((stream) => tracked(stream.status)).length;
-  return { reference, trackedCount, ...projectUpcoming(streams, reference) };
+  const user = await requireUser();
+  return withRequestScope(user.clerkUserId, async (tx) => {
+    const { streams } = await recurringOverviewFor(tx, user.id);
+    const obligations = await activeObligationsFor(tx, user.id);
+    const trackedCount = streams.filter((stream) => tracked(stream.status)).length;
+    return {
+      reference,
+      trackedCount,
+      ...projectUpcoming(streams, reference, obligations),
+    };
+  });
 }
 
 export type UpcomingOverview = Awaited<ReturnType<typeof upcomingOverview>>;

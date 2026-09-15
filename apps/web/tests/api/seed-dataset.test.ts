@@ -139,10 +139,10 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
           toLeaveMinor: -2300,
           toArriveMinor: 250000,
           charges: [
-            { accountId: seedAccount("demo", "Cash Rewards Card"), currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -2300, lastDate: "2026-03-29", date: "2026-04-29", overdue: false },
+            { source: "detected", accountId: seedAccount("demo", "Cash Rewards Card"), currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -2300, lastDate: "2026-03-29", date: "2026-04-29", overdue: false, possibleOverlap: false },
           ],
           deposits: [
-            { accountId: seedAccount("demo", "Everyday Checking"), currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: 250000, lastDate: "2026-03-27", date: "2026-04-27", overdue: false },
+            { source: "detected", accountId: seedAccount("demo", "Everyday Checking"), currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: 250000, lastDate: "2026-03-27", date: "2026-04-27", overdue: false, possibleOverlap: false },
           ],
         },
       ],

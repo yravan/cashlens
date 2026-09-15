@@ -172,10 +172,10 @@ const SEED_UPCOMING: Record<SeedPersona, UpcomingProjection> = {
         toLeaveMinor: -2300,
         toArriveMinor: 250000,
         charges: [
-          { accountId: A.card, currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -2300, lastDate: "2026-03-29", date: "2026-04-29", overdue: false },
+          { source: "detected", accountId: A.card, currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -2300, lastDate: "2026-03-29", date: "2026-04-29", overdue: false, possibleOverlap: false },
         ],
         deposits: [
-          { accountId: A.checking, currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: 250000, lastDate: "2026-03-27", date: "2026-04-27", overdue: false },
+          { source: "detected", accountId: A.checking, currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: 250000, lastDate: "2026-03-27", date: "2026-04-27", overdue: false, possibleOverlap: false },
         ],
       },
     ],
