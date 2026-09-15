@@ -207,6 +207,12 @@ test.describe("taxonomy editing", () => {
 
     await page.getByRole("button", { name: "Add group" }).click();
     const addGroup = page.getByRole("form", { name: "Add group" });
+    await addGroup.getByLabel("Name").fill("   ");
+    await waitForMutation(page, "/api/categories", 400, () =>
+      addGroup.getByRole("button", { name: "Add group" }).click(),
+    );
+    await expect(addGroup.getByRole("alert")).toHaveText("Enter a name of 1 to 60 characters.");
+
     await addGroup.getByLabel("Name").fill("  Pets  ");
     await waitForMutation(page, "/api/categories", 201, () =>
       addGroup.getByRole("button", { name: "Add group" }).click(),

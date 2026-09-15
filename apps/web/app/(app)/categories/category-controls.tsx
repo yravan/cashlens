@@ -16,7 +16,8 @@ export type CategoryRow = {
 export type GroupOption = { id: string; name: string };
 type Action = "rename" | "move";
 
-const ERROR_COPY: Record<CategoryMutationError, string> = {
+const ERROR_COPY: Record<CategoryMutationError | "invalid_request", string> = {
+  invalid_request: "Enter a name of 1 to 60 characters.",
   category_not_found: "That category is no longer available.",
   parent_not_found: "That group is no longer available.",
   has_children: "Move its categories out first.",
