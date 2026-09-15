@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useId,
-  useRef,
-  useState,
-  useTransition,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import type { OfflineAccountError } from "@/lib/data/offline-accounts";
@@ -18,7 +11,17 @@ import {
   OWED_TYPES,
   type OfflineAccountType,
 } from "@/lib/ledger/offline-accounts";
-import { inputClass, localDate, responseErrorFor } from "../mutation-form";
+import {
+  ErrorLine,
+  formClass,
+  inputClass,
+  localDate,
+  primaryButton,
+  quietButton,
+  responseErrorFor,
+  RowForm,
+  useMutation,
+} from "../mutation-form";
 import { StatementImport } from "./statement-import";
 
 const ERROR_COPY: Record<OfflineAccountError, string> = {
@@ -28,12 +31,6 @@ const ERROR_COPY: Record<OfflineAccountError, string> = {
 const TYPES = Object.entries(OFFLINE_TYPE_LABELS) as [OfflineAccountType, string][];
 const responseError = responseErrorFor(ERROR_COPY);
 
-const formClass =
-  "min-w-0 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950";
-const primaryButton =
-  "rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900";
-const quietButton =
-  "rounded-md border border-zinc-300 px-4 py-2 text-sm disabled:opacity-50 dark:border-zinc-700";
 const dangerButton =
   "rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50";
 
@@ -42,39 +39,6 @@ const balanceLabel = (type: OfflineAccountType) =>
 
 const signedMajor = (minor: number, currency: string) =>
   `${minor < 0 ? "-" : ""}${formatMajorUnits(Math.abs(minor), currency)}`;
-
-const post = (endpoint: string, body: unknown) =>
-  fetch(endpoint, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-function useMutation(onDone: () => void) {
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const submittingRef = useRef(false);
-  const run = (endpoint: string, body: unknown, failure: string) => {
-    if (submittingRef.current) return;
-    submittingRef.current = true;
-    setError(null);
-    startTransition(async () => {
-      try {
-        const response = await post(endpoint, body);
-        if (!response.ok) {
-          setError(await responseError(response, failure));
-          return;
-        }
-        onDone();
-      } catch {
-        setError(failure);
-      } finally {
-        submittingRef.current = false;
-      }
-    });
-  };
-  return { error, setError, pending, run };
-}
 
 function BalanceField({
   type,
@@ -113,55 +77,6 @@ function BalanceField({
   );
 }
 
-function ErrorLine({ error }: { error: string | null }) {
-  if (!error) return null;
-  return (
-    <p role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">
-      {error}
-    </p>
-  );
-}
-
-function RowForm({
-  label,
-  submitLabel,
-  pending,
-  error,
-  onSubmit,
-  onCancel,
-  children,
-}: {
-  label: string;
-  submitLabel: string;
-  pending: boolean;
-  error: string | null;
-  onSubmit: () => void;
-  onCancel: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <form
-      aria-label={label}
-      onSubmit={(event) => {
-        event.preventDefault();
-        onSubmit();
-      }}
-      className={`mt-3 ${formClass}`}
-    >
-      <div className="grid min-w-0 gap-4 sm:max-w-sm">{children}</div>
-      <ErrorLine error={error} />
-      <div className="mt-4 flex flex-wrap gap-3">
-        <button type="submit" disabled={pending} className={primaryButton}>
-          {pending ? "Saving…" : submitLabel}
-        </button>
-        <button type="button" onClick={onCancel} disabled={pending} className={quietButton}>
-          Cancel
-        </button>
-      </div>
-    </form>
-  );
-}
-
 export function AddOfflineAccount({ currencies }: { currencies: string[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -169,7 +84,7 @@ export function AddOfflineAccount({ currencies }: { currencies: string[] }) {
   const [type, setType] = useState<OfflineAccountType>("depository");
   const [currency, setCurrency] = useState("USD");
   const [balance, setBalance] = useState("");
-  const { error, setError, pending, run } = useMutation(() => {
+  const { error, setError, pending, run } = useMutation(responseError, () => {
     setOpen(false);
     setName("");
     setBalance("");
@@ -295,7 +210,7 @@ export function OfflineAccountActions({
   const [mode, setMode] = useState<"idle" | "balance" | "rename" | "import" | "delete">("idle");
   const [balance, setBalance] = useState("");
   const [name, setName] = useState(account.name);
-  const { error, setError, pending, run } = useMutation(() => {
+  const { error, setError, pending, run } = useMutation(responseError, () => {
     setMode("idle");
     router.refresh();
   });
