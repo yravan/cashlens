@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { POST as editRoute } from "@/app/api/obligations/[obligationId]/route";
 import { POST as endRoute } from "@/app/api/obligations/[obligationId]/end/route";
@@ -297,6 +297,51 @@ test("scheduled obligations force RLS and raw app-role reads stay own-row", asyn
     `),
   );
   expect(visible.rows).toEqual([{ userId: owner.id, name: "Owner rent" }]);
+});
+
+test("raw app-role updates affect only the request-scoped user's obligations", async () => {
+  const owner = await provisionedUser();
+  const neighbor = await provisionedUser();
+  const ownerAccountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Owner checking",
+    type: "depository",
+    currentMinor: 0,
+  });
+  const neighborAccountId = await anchoredAccount({
+    userId: neighbor.id,
+    name: "Neighbor checking",
+    type: "depository",
+    currentMinor: 0,
+  });
+  await insertAs(owner.clerkUserId, owner.id, ownerAccountId, "Owner rent");
+  await insertAs(neighbor.clerkUserId, neighbor.id, neighborAccountId, "Neighbor rent");
+
+  const updated = await withRequestScope(owner.clerkUserId, (tx) =>
+    tx.execute(sql`
+      update scheduled_obligations
+      set name = 'Scoped update', updated_at = now()
+    `),
+  );
+  expect(updated.rowCount).toBe(1);
+
+  const visible = await withRequestScope(owner.clerkUserId, (tx) =>
+    tx.execute(sql`
+      select user_id::text as "userId", name
+      from scheduled_obligations
+    `),
+  );
+  expect(visible.rows).toEqual([{ userId: owner.id, name: "Scoped update" }]);
+
+  const stored = await adminDb().execute(sql`
+    select user_id::text as "userId", name
+    from scheduled_obligations
+    order by name
+  `);
+  expect(stored.rows).toEqual([
+    { userId: neighbor.id, name: "Neighbor rent" },
+    { userId: owner.id, name: "Scoped update" },
+  ]);
 });
 
 test("the app role has only the declared scheduled-obligation write surface", async () => {
@@ -1220,6 +1265,7 @@ test("all obligation routes sanitize unexpected database failures", async () => 
     for each statement execute function test_reject_obligation_write()
   `);
 
+  const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
   try {
     const serverError = { status: 500, body: '{"error":"server_error"}' };
     expect(
@@ -1239,7 +1285,25 @@ test("all obligation routes sanitize unexpected database failures", async () => 
         await withAuth(owner.clerkUserId, () => postEnd(obligationId, {})),
       ),
     ).toEqual(serverError);
+
+    const logs = info.mock.calls.map(([line]) => line);
+    expect(logs).toEqual([
+      JSON.stringify({
+        event: "obligation_mutation.run_failed",
+        errorClass: "DrizzleQueryError",
+      }),
+      JSON.stringify({
+        event: "obligation_mutation.run_failed",
+        errorClass: "DrizzleQueryError",
+      }),
+      JSON.stringify({
+        event: "obligation_mutation.run_failed",
+        errorClass: "DrizzleQueryError",
+      }),
+    ]);
+    expect(logs.join("\n")).not.toMatch(/PRIVATE|Rent|1800\.00/);
   } finally {
+    info.mockRestore();
     await adminDb().execute(sql`
       drop trigger if exists test_reject_obligation_write on scheduled_obligations
     `);

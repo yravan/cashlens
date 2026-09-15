@@ -1,4 +1,5 @@
 import type { ObligationMutation } from "@/lib/data/obligations";
+import { errorClass, logEvent } from "@/lib/log";
 
 const STATUS = {
   invalid_request: 400,
@@ -20,7 +21,8 @@ export async function runObligationMutation(
 ): Promise<Response> {
   try {
     return obligationResponse(await action(), successStatus);
-  } catch {
+  } catch (error) {
+    logEvent("obligation_mutation.run_failed", { errorClass: errorClass(error) });
     return Response.json({ error: "server_error" }, { status: 500 });
   }
 }

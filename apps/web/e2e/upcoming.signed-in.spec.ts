@@ -59,6 +59,10 @@ test.describe("upcoming expenses view", () => {
     await expect(charge).toContainText("Monthly · expected Apr 29, 2026 · last on Mar 29, 2026");
     await expect(charge).toContainText("-$23.00");
     await expect(charge).not.toContainText("not seen");
+    await expect(charge.getByRole("link", { name: "Streamflix" })).toHaveAttribute(
+      "href",
+      /^\/transactions\?account=[0-9a-f-]+&q=Streamflix$/,
+    );
 
     const deposit = page.getByTestId("upcoming-deposit");
     await expect(deposit).toHaveCount(1);
@@ -76,7 +80,9 @@ test.describe("upcoming expenses view", () => {
     await expect(page).toHaveURL("/upcoming");
   });
 
-  test("a known obligation renders when no recurring pattern exists", async ({ page }) => {
+  test("a passed known obligation uses neutral copy and never links to transactions", async ({
+    page,
+  }) => {
     const userId = await userIdOf("a");
     const account = await adminQuery(
       "select id from accounts where user_id = $1 and name = 'Everyday Checking'",
@@ -90,15 +96,27 @@ test.describe("upcoming expenses view", () => {
       [userId, account.rows[0].id],
     );
 
-    await page.goto("/upcoming?on=2026-04-01");
+    await page.goto("/upcoming?on=2026-04-20");
 
     await expect(page.getByTestId("upcoming-empty")).toHaveCount(0);
     await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$1,800.00", {
       timeout: 30_000,
     });
-    await expect(page.getByTestId("upcoming-charge")).toContainText(
-      "RentOne time · expected Apr 15, 2026-$1,800.00",
-    );
+    const charge = page.getByTestId("upcoming-charge");
+    await expect(charge).toContainText("Rent");
+    await expect(charge).toContainText("One time · expected Apr 15, 2026 — Scheduled date passed");
+    await expect(charge).toContainText("-$1,800.00");
+    await expect(charge).not.toContainText("not seen yet");
+    await expect(charge.locator('a[href^="/transactions?"]')).toHaveCount(0);
+
+    const calendarEntry = page
+      .getByTestId("upcoming-calendar")
+      .locator("td")
+      .filter({ hasText: "Rent" });
+    await expect(calendarEntry).toContainText("15");
+    await expect(calendarEntry).toContainText("Scheduled date passed");
+    await expect(calendarEntry).not.toContainText("not seen yet");
+    await expect(calendarEntry.locator("a")).toHaveCount(0);
   });
 
   test("an expected date the reference has passed is labeled not-seen and still counted", async ({
@@ -113,6 +131,12 @@ test.describe("upcoming expenses view", () => {
     await expect(deposit).toContainText("expected Apr 27, 2026 — not seen yet");
     await expect(page.getByTestId("upcoming-to-arrive")).toHaveText("+$2,500.00");
     await expect(page.getByTestId("upcoming-charge")).not.toContainText("not seen");
+    const calendarEntry = page
+      .getByTestId("upcoming-calendar")
+      .locator("td")
+      .filter({ hasText: "Acme Corp" });
+    await expect(calendarEntry).toContainText("expected but not seen yet");
+    await expect(calendarEntry).not.toContainText("Scheduled date passed");
   });
 
   test("a January month-end subscription stays due on March 31 after February", async ({ page }) => {

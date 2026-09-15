@@ -181,13 +181,6 @@ export function projectUpcoming(
     if (obligation.cadence === "monthly") {
       const referenceYear = Number(reference.slice(0, 4));
       const referenceMonth = Number(reference.slice(5, 7)) - 1;
-      const startMonth =
-        Number(obligation.startsOn.slice(0, 4)) * 12 +
-        Number(obligation.startsOn.slice(5, 7)) -
-        1;
-      const referenceMonthIndex = referenceYear * 12 + referenceMonth;
-      if (referenceMonthIndex < startMonth) continue;
-
       const current = monthlyDate(obligation.startsOn, referenceYear, referenceMonth);
       const referencePrevious = dateFromDayNumber(dayNumber(reference) - 1);
       const passedLimit =

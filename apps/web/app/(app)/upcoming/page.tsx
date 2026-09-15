@@ -84,7 +84,13 @@ function MonthCalendar({ overview }: { overview: UpcomingOverview }) {
                       <p key={occurrenceKey(occurrence)} className="mt-0.5 truncate">
                         <span className="font-medium">{occurrence.overdue ? "! " : ""}{occurrence.name}</span>{" "}
                         <span className="text-zinc-500 tabular-nums dark:text-zinc-400">{signed(occurrence.amountMinor, occurrence.currency)}</span>
-                        {occurrence.overdue && <span className="sr-only"> — expected but not seen yet</span>}
+                        {occurrence.overdue && (
+                          <span className="sr-only">
+                            {occurrence.source === "obligation"
+                              ? " — Scheduled date passed"
+                              : " — expected but not seen yet"}
+                          </span>
+                        )}
                       </p>
                     ))}
                   </td>
@@ -103,13 +109,21 @@ function OccurrenceRow({ occurrence, kind }: { occurrence: UpcomingOccurrence; k
   return (
     <li data-testid={`upcoming-${kind}`} className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 py-3">
       <div className="min-w-0">
-        <Link href={`/transactions?${query.toString()}`} className="text-sm font-medium underline-offset-4 hover:underline">
-          {occurrence.name}
-        </Link>
+        {occurrence.source === "obligation" ? (
+          <span className="text-sm font-medium">{occurrence.name}</span>
+        ) : (
+          <Link href={`/transactions?${query.toString()}`} className="text-sm font-medium underline-offset-4 hover:underline">
+            {occurrence.name}
+          </Link>
+        )}
         <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
           {CADENCE_LABEL[occurrence.cadence]} · expected {shortDate(occurrence.date)}
           {occurrence.overdue && (
-            <span className="font-medium text-red-700 dark:text-red-400"> — not seen yet</span>
+            <span className="font-medium text-red-700 dark:text-red-400">
+              {occurrence.source === "obligation"
+                ? " — Scheduled date passed"
+                : " — not seen yet"}
+            </span>
           )}
           {occurrence.source === "detected" && <> · last on {shortDate(occurrence.lastDate)}</>}
         </p>

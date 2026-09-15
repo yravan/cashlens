@@ -1,11 +1,16 @@
 import "server-only";
 
 import { and, eq, isNull, sql } from "drizzle-orm";
+import { bigint, char, date, pgTable, text, uuid } from "drizzle-orm/pg-core";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope, type ScopedTx } from "@/lib/db/client";
-import { accounts, scheduledObligations } from "@/lib/db/schema";
+import {
+  accounts,
+  scheduledObligationCadence,
+  scheduledObligations,
+} from "@/lib/db/schema";
 import type { ObligationInput } from "@/lib/ledger/obligations";
 import type { UpcomingObligationInput } from "@/lib/ledger/upcoming";
 
@@ -14,6 +19,17 @@ export type ObligationMutation =
   | { obligationId: string }
   | Record<string, never>
   | { error: ObligationMutationError };
+
+const scheduledObligationInsert = pgTable("scheduled_obligations", {
+  userId: uuid("user_id").notNull(),
+  accountId: uuid("account_id").notNull(),
+  name: text("name").notNull(),
+  amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+  currency: char("currency", { length: 3 }).notNull(),
+  cadence: scheduledObligationCadence("cadence").notNull(),
+  startsOn: date("starts_on").notNull(),
+  endsOn: date("ends_on"),
+});
 
 function isAccountReferenceError(error: unknown): boolean {
   const cause = (error as { cause?: { code?: string; constraint?: string } }).cause;
@@ -62,16 +78,20 @@ export async function createObligation(
         .where(and(eq(accounts.id, input.accountId), eq(accounts.userId, user.id)));
       if (!account) return { error: "account_not_found" as const };
 
-      const result = await tx.execute(sql`
-        insert into scheduled_obligations
-          (user_id, account_id, name, amount_minor, currency, cadence, starts_on, ends_on)
-        values
-          (${user.id}::uuid, ${account.id}::uuid, ${input.name}, ${input.amountMinor},
-           ${input.currency}, ${input.cadence}::scheduled_obligation_cadence,
-           ${input.startsOn}::date, ${input.endsOn}::date)
-        returning id::text as "obligationId"
-      `);
-      return result.rows[0] as { obligationId: string };
+      const [created] = await tx
+        .insert(scheduledObligationInsert)
+        .values({
+          userId: user.id,
+          accountId: account.id,
+          name: input.name,
+          amountMinor: input.amountMinor,
+          currency: input.currency,
+          cadence: input.cadence,
+          startsOn: input.startsOn,
+          endsOn: input.endsOn,
+        })
+        .returning({ obligationId: scheduledObligations.id });
+      return created;
     });
   } catch (error) {
     if (isAccountReferenceError(error)) return { error: "account_not_found" };
@@ -95,39 +115,40 @@ export async function editObligation(
         Record<string, never> | { error: "obligation_not_found" | "account_not_found" }
       > => {
         const obligationPredicate = and(
-        eq(scheduledObligations.id, obligationId),
-        eq(scheduledObligations.userId, user.id),
-        isNull(scheduledObligations.endedAt),
-      );
-      const [obligation] = await tx
-        .select({ id: scheduledObligations.id })
-        .from(scheduledObligations)
-        .where(obligationPredicate);
-      if (!obligation) return { error: "obligation_not_found" as const };
-      if (!UUID_PATTERN.test(input.accountId)) return { error: "account_not_found" as const };
+          eq(scheduledObligations.id, obligationId),
+          eq(scheduledObligations.userId, user.id),
+          isNull(scheduledObligations.endedAt),
+        );
+        const [obligation] = await tx
+          .select({ id: scheduledObligations.id })
+          .from(scheduledObligations)
+          .where(obligationPredicate);
+        if (!obligation) return { error: "obligation_not_found" as const };
+        if (!UUID_PATTERN.test(input.accountId)) return { error: "account_not_found" as const };
 
-      const [account] = await tx
-        .select({ id: accounts.id })
-        .from(accounts)
-        .where(and(eq(accounts.id, input.accountId), eq(accounts.userId, user.id)));
-      if (!account) return { error: "account_not_found" as const };
+        const [account] = await tx
+          .select({ id: accounts.id })
+          .from(accounts)
+          .where(and(eq(accounts.id, input.accountId), eq(accounts.userId, user.id)));
+        if (!account) return { error: "account_not_found" as const };
 
-      const [updated] = await tx
-        .update(scheduledObligations)
-        .set({
-          accountId: account.id,
-          name: input.name,
-          amountMinor: input.amountMinor,
-          currency: input.currency,
-          cadence: input.cadence,
-          startsOn: input.startsOn,
-          endsOn: input.endsOn,
-          updatedAt: sql`now()`,
-        })
-        .where(obligationPredicate)
-        .returning({ id: scheduledObligations.id });
-      return updated ? {} : { error: "obligation_not_found" as const };
-    });
+        const [updated] = await tx
+          .update(scheduledObligations)
+          .set({
+            accountId: account.id,
+            name: input.name,
+            amountMinor: input.amountMinor,
+            currency: input.currency,
+            cadence: input.cadence,
+            startsOn: input.startsOn,
+            endsOn: input.endsOn,
+            updatedAt: sql`now()`,
+          })
+          .where(obligationPredicate)
+          .returning({ id: scheduledObligations.id });
+        return updated ? {} : { error: "obligation_not_found" as const };
+      },
+    );
   } catch (error) {
     if (isAccountReferenceError(error)) return { error: "account_not_found" };
     throw error;
@@ -144,20 +165,21 @@ export async function endObligation(
     user.clerkUserId,
     async (tx): Promise<Record<string, never> | { error: "obligation_not_found" }> => {
       const ownObligation = and(
-      eq(scheduledObligations.id, obligationId),
-      eq(scheduledObligations.userId, user.id),
-    );
-    const [ended] = await tx
-      .update(scheduledObligations)
-      .set({ endedAt: sql`now()`, updatedAt: sql`now()` })
-      .where(and(ownObligation, isNull(scheduledObligations.endedAt)))
-      .returning({ id: scheduledObligations.id });
-    if (ended) return {};
+        eq(scheduledObligations.id, obligationId),
+        eq(scheduledObligations.userId, user.id),
+      );
+      const [ended] = await tx
+        .update(scheduledObligations)
+        .set({ endedAt: sql`now()`, updatedAt: sql`now()` })
+        .where(and(ownObligation, isNull(scheduledObligations.endedAt)))
+        .returning({ id: scheduledObligations.id });
+      if (ended) return {};
 
-    const [existing] = await tx
-      .select({ id: scheduledObligations.id })
-      .from(scheduledObligations)
-      .where(ownObligation);
-    return existing ? {} : { error: "obligation_not_found" as const };
-  });
+      const [existing] = await tx
+        .select({ id: scheduledObligations.id })
+        .from(scheduledObligations)
+        .where(ownObligation);
+      return existing ? {} : { error: "obligation_not_found" as const };
+    },
+  );
 }
