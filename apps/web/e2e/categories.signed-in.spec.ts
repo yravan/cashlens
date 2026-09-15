@@ -193,6 +193,72 @@ test.describe("taxonomy editing", () => {
     await seedLedgerFixture({ demo: userA, neighbor: userB });
   });
 
+  test("names each category action for the row or group it changes", async ({ page }) => {
+    await page.goto("/categories");
+
+    await expect(
+      page.getByRole("button", { name: "Rename Food & Drink", exact: true }),
+    ).toHaveText("Rename");
+    await expect(
+      page.getByRole("button", { name: "Rename Groceries", exact: true }),
+    ).toHaveText("Rename");
+    await expect(
+      page.getByRole("button", { name: "Move Groceries", exact: true }),
+    ).toHaveText("Move");
+    await expect(
+      page.getByRole("button", { name: "Add category to Food & Drink", exact: true }),
+    ).toHaveText("Add category");
+  });
+
+  test("drops a move form parent when another move makes that group invalid", async ({ page }) => {
+    await page.goto("/categories");
+    await page.getByRole("button", { name: "Add group", exact: true }).click();
+    const addGroup = page.getByRole("form", { name: "Add group" });
+    await addGroup.getByLabel("Name").fill("Temporary");
+    await waitForMutation(page, "/api/categories", 201, () =>
+      addGroup.getByRole("button", { name: "Add group" }).click(),
+    );
+
+    const food = groupSection(page, "Food & Drink");
+    const groceries = leafRow(food, "Groceries");
+    await groceries.getByRole("button", { name: "Move Groceries", exact: true }).click();
+    const groceriesMove = groceries.getByRole("form", { name: "Move category" });
+    await groceriesMove.getByLabel("Group").selectOption({ label: "Temporary" });
+
+    const temporary = groupSection(page, "Temporary");
+    const temporaryId = (await categoryOf(userA, "Temporary"))[0].id;
+    await temporary.getByRole("button", { name: "Move Temporary", exact: true }).click();
+    const temporaryMove = temporary.getByRole("form", { name: "Move category" });
+    await temporaryMove.getByLabel("Group").selectOption({ label: "Food & Drink" });
+    await waitForMutation(page, `/api/categories/${temporaryId}`, 200, () =>
+      temporaryMove.getByRole("button", { name: "Move category" }).click(),
+    );
+
+    await expect(groceriesMove.getByLabel("Group")).toHaveValue("");
+    const groceriesId = demoLeafId("Groceries");
+    await waitForMutation(page, `/api/categories/${groceriesId}`, 200, () =>
+      groceriesMove.getByRole("button", { name: "Move category" }).click(),
+    );
+    expect((await categoryOf(userA, "Groceries"))[0].parent_id).toBeNull();
+  });
+
+  test("discards an abandoned add-category draft when reopened", async ({ page }) => {
+    await page.goto("/categories");
+    const food = groupSection(page, "Food & Drink");
+    const open = food.getByRole("button", {
+      name: "Add category to Food & Drink",
+      exact: true,
+    });
+
+    await open.click();
+    const addCategory = food.getByRole("form", { name: "Add category" });
+    await addCategory.getByLabel("Name").fill("Abandoned draft");
+    await addCategory.getByRole("button", { name: "Cancel" }).click();
+    await open.click();
+
+    await expect(addCategory.getByLabel("Name")).toHaveValue("");
+  });
+
   test("adds, renames, and moves categories on /categories, reflected in Spending and the filter, scoped to the signed-in user", async ({
     page,
     browser,

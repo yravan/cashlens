@@ -59,7 +59,7 @@ export default async function CategoriesPage() {
                 ))}
               </ul>
             )}
-            <AddCategory parentId={group.id} />
+            <AddCategory parentId={group.id} groupName={group.name} />
           </section>
         ))}
       </div>

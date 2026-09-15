@@ -50,7 +50,13 @@ function NameField({
   );
 }
 
-export function AddCategory({ parentId }: { parentId: string | null }) {
+export function AddCategory({
+  parentId,
+  groupName,
+}: {
+  parentId: string | null;
+  groupName?: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -65,7 +71,9 @@ export function AddCategory({ parentId }: { parentId: string | null }) {
     return (
       <button
         type="button"
+        aria-label={groupName === undefined ? undefined : `Add category to ${groupName}`}
         onClick={() => {
+          setName("");
           setError(null);
           setOpen(true);
         }}
@@ -103,6 +111,10 @@ export function CategoryActions({ row, groups }: { row: CategoryRow; groups: Gro
   const [mode, setMode] = useState<"idle" | Action>("idle");
   const [name, setName] = useState(row.name);
   const [parentId, setParentId] = useState(row.parentId ?? "");
+  const selectedParentId =
+    parentId === "" || groups.some((group) => group.id === parentId && group.id !== row.id)
+      ? parentId
+      : "";
   const { error, setError, pending, run } = useMutation(responseError, () => {
     setMode("idle");
     router.refresh();
@@ -154,7 +166,7 @@ export function CategoryActions({ row, groups }: { row: CategoryRow; groups: Gro
         onCancel={close}
         onSubmit={() =>
           save(
-            { name: row.name, parentId: parentId || null },
+            { name: row.name, parentId: selectedParentId || null },
             "Couldn’t move the category. Try again.",
           )
         }
@@ -162,7 +174,7 @@ export function CategoryActions({ row, groups }: { row: CategoryRow; groups: Gro
         <label className="min-w-0 text-sm font-medium">
           Group
           <select
-            value={parentId}
+            value={selectedParentId}
             onChange={(event) => setParentId(event.target.value)}
             disabled={pending}
             className={inputClass}
@@ -183,11 +195,23 @@ export function CategoryActions({ row, groups }: { row: CategoryRow; groups: Gro
 
   return (
     <div ref={actions} className="mt-1 flex flex-wrap items-center gap-3 text-sm">
-      <button type="button" data-action="rename" onClick={() => open("rename")} className={actionClass}>
+      <button
+        type="button"
+        aria-label={`Rename ${row.name}`}
+        data-action="rename"
+        onClick={() => open("rename")}
+        className={actionClass}
+      >
         Rename
       </button>
       {row.movable && (
-        <button type="button" data-action="move" onClick={() => open("move")} className={actionClass}>
+        <button
+          type="button"
+          aria-label={`Move ${row.name}`}
+          data-action="move"
+          onClick={() => open("move")}
+          className={actionClass}
+        >
           Move
         </button>
       )}
