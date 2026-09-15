@@ -9,6 +9,7 @@ import { TransferMatch } from "../transactions/transfer-match";
 export const metadata: Metadata = { title: "Upcoming" };
 
 const CADENCE_LABEL = {
+  once: "One time",
   weekly: "Weekly",
   biweekly: "Every 2 weeks",
   monthly: "Monthly",
@@ -24,6 +25,10 @@ const shortDate = (iso: string) =>
   `${monthOf(iso).slice(0, 3)} ${Number(iso.slice(8, 10))}, ${iso.slice(0, 4)}`;
 const signed = (minor: number, currency: string) =>
   `${minor > 0 ? "+" : ""}${formatMinorUnits(minor, currency)}`;
+const occurrenceKey = (occurrence: UpcomingOccurrence) =>
+  occurrence.source === "obligation"
+    ? `${occurrence.obligationId}:${occurrence.date}`
+    : `${occurrence.accountId}:${occurrence.currency}:${occurrence.direction}:${occurrence.normalizedName}:${occurrence.date}`;
 
 function calendarWeeks(reference: string, monthEnd: string): (number | null)[][] {
   const [year, month] = reference.split("-").map(Number);
@@ -76,10 +81,16 @@ function MonthCalendar({ overview }: { overview: UpcomingOverview }) {
                       {day === referenceDay && <span className="sr-only"> — the day this view is projected from</span>}
                     </span>
                     {(byDay.get(day) ?? []).map((occurrence) => (
-                      <p key={`${occurrence.accountId}:${occurrence.currency}:${occurrence.direction}:${occurrence.normalizedName}`} className="mt-0.5 truncate">
+                      <p key={occurrenceKey(occurrence)} className="mt-0.5 truncate">
                         <span className="font-medium">{occurrence.overdue ? "! " : ""}{occurrence.name}</span>{" "}
                         <span className="text-zinc-500 tabular-nums dark:text-zinc-400">{signed(occurrence.amountMinor, occurrence.currency)}</span>
-                        {occurrence.overdue && <span className="sr-only"> — expected but not seen yet</span>}
+                        {occurrence.overdue && (
+                          <span className="sr-only">
+                            {occurrence.source === "obligation"
+                              ? " — Scheduled date passed"
+                              : " — expected but not seen yet"}
+                          </span>
+                        )}
                       </p>
                     ))}
                   </td>
@@ -98,15 +109,23 @@ function OccurrenceRow({ occurrence, kind }: { occurrence: UpcomingOccurrence; k
   return (
     <li data-testid={`upcoming-${kind}`} className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 py-3">
       <div className="min-w-0">
-        <Link href={`/transactions?${query.toString()}`} className="text-sm font-medium underline-offset-4 hover:underline">
-          {occurrence.name}
-        </Link>
+        {occurrence.source === "obligation" ? (
+          <span className="text-sm font-medium">{occurrence.name}</span>
+        ) : (
+          <Link href={`/transactions?${query.toString()}`} className="text-sm font-medium underline-offset-4 hover:underline">
+            {occurrence.name}
+          </Link>
+        )}
         <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
           {CADENCE_LABEL[occurrence.cadence]} · expected {shortDate(occurrence.date)}
           {occurrence.overdue && (
-            <span className="font-medium text-red-700 dark:text-red-400"> — not seen yet</span>
-          )}{" "}
-          · last on {shortDate(occurrence.lastDate)}
+            <span className="font-medium text-red-700 dark:text-red-400">
+              {occurrence.source === "obligation"
+                ? " — Scheduled date passed"
+                : " — not seen yet"}
+            </span>
+          )}
+          {occurrence.source === "detected" && <> · last on {shortDate(occurrence.lastDate)}</>}
         </p>
       </div>
       <p className="font-mono text-sm font-medium tabular-nums">
@@ -148,7 +167,7 @@ function CurrencySection({ section, monthLabel }: { section: UpcomingOverview["c
         {section.charges.length > 0 && (
           <ul className="divide-y divide-zinc-200 border-t border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
             {section.charges.map((charge) => (
-              <OccurrenceRow key={`${charge.accountId}:${charge.direction}:${charge.normalizedName}:${charge.date}`} occurrence={charge} kind="charge" />
+              <OccurrenceRow key={occurrenceKey(charge)} occurrence={charge} kind="charge" />
             ))}
           </ul>
         )}
@@ -157,7 +176,7 @@ function CurrencySection({ section, monthLabel }: { section: UpcomingOverview["c
             <h3 className="mt-4 text-sm font-medium">Expected to arrive</h3>
             <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {section.deposits.map((deposit) => (
-                <OccurrenceRow key={`${deposit.accountId}:${deposit.direction}:${deposit.normalizedName}:${deposit.date}`} occurrence={deposit} kind="deposit" />
+                <OccurrenceRow key={occurrenceKey(deposit)} occurrence={deposit} kind="deposit" />
               ))}
             </ul>
           </>
@@ -210,7 +229,7 @@ export default async function UpcomingPage({
           <Link href="/upcoming" className="underline underline-offset-4">Back to today</Link>
         </p>
       )}
-      {overview.trackedCount === 0 ? (
+      {overview.trackedCount === 0 && overview.currencies.length === 0 ? (
         <p data-testid="upcoming-empty" className="mt-8 max-w-xl border-y border-zinc-200 py-6 text-sm leading-6 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
           Nothing to project yet. Once a charge repeats three times on a steady rhythm it shows
           up under <Link href="/recurring" className="underline underline-offset-4">Recurring</Link>, and its next dates land here.

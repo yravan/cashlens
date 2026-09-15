@@ -581,6 +581,14 @@ export const recurringStreamStatus = pgEnum("recurring_stream_status", [
 
 export const flowDirection = pgEnum("flow_direction", ["inflow", "outflow"]);
 
+export const scheduledObligationCadence = pgEnum("scheduled_obligation_cadence", [
+  "once",
+  "weekly",
+  "biweekly",
+  "monthly",
+  "annual",
+]);
+
 // Recurring detection (6.4.1) is recomputed from the ledger on every read; a
 // row here exists only once the user acted on a proposed stream, keyed on the
 // stream identity so re-detection reattaches the decision. Absence = proposed.
@@ -618,6 +626,61 @@ export const recurringStreams = pgTable(
     ),
     ...ownRowPolicies("recurring_streams"),
     pgPolicy("recurring_streams_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
+  ],
+);
+
+export const scheduledObligations = pgTable(
+  "scheduled_obligations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id").notNull(),
+    name: text("name").notNull(),
+    amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+    currency: char("currency", { length: 3 }).notNull(),
+    cadence: scheduledObligationCadence("cadence").notNull(),
+    startsOn: date("starts_on").notNull(),
+    endsOn: date("ends_on"),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    unique("scheduled_obligations_id_user_id_unique").on(t.id, t.userId),
+    foreignKey({
+      name: "scheduled_obligations_account_user_fk",
+      columns: [t.accountId, t.userId],
+      foreignColumns: [accounts.id, accounts.userId],
+    }).onDelete("cascade"),
+    index("scheduled_obligations_account_user_idx").on(t.accountId, t.userId),
+    index("scheduled_obligations_active_user_start_idx")
+      .on(t.userId, t.startsOn)
+      .where(sql`ended_at is null`),
+    check(
+      "scheduled_obligations_amount_positive_safe",
+      sql`amount_minor > 0 and amount_minor <= 9007199254740991`,
+    ),
+    check("scheduled_obligations_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
+    check(
+      "scheduled_obligations_name_trimmed",
+      sql`name = btrim(name) and char_length(name) between 1 and 200`,
+    ),
+    check(
+      "scheduled_obligations_end_ordered",
+      sql`ends_on is null or ends_on >= starts_on`,
+    ),
+    check(
+      "scheduled_obligations_once_unbounded",
+      sql`cadence <> 'once' or ends_on is null`,
+    ),
+    ...ownRowPolicies("scheduled_obligations"),
+    pgPolicy("scheduled_obligations_update_own", {
       for: "update",
       to: appRole,
       using: ownRow,
