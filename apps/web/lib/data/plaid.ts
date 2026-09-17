@@ -3,6 +3,7 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
+import { captureBalanceSnapshot, type BalanceSnapshotCapture } from "@/lib/data/balance-history";
 import {
   claimPlaidCleanupAs,
   completeConnectionCleanupAs,
@@ -165,6 +166,30 @@ export function balanceRow(
   ];
 }
 
+export function providerBalanceCapture(
+  accountId: string,
+  userId: string,
+  balances: AccountBase["balances"],
+  observedAt: Date,
+  fallbackCurrency = "USD",
+): BalanceSnapshotCapture | null {
+  if (balances.current === null) return null;
+  const providerAsOf =
+    balances.last_updated_datetime == null ? null : new Date(balances.last_updated_datetime);
+  if (providerAsOf && Number.isNaN(providerAsOf.getTime())) throw new ProviderError(null);
+  const currency = currencyOf(balances, fallbackCurrency);
+  return {
+    accountId,
+    userId,
+    currentMinor: toMinorUnits(balances.current, currency),
+    currency,
+    source: "provider",
+    captureReason: "event",
+    observedAt,
+    providerAsOf,
+  };
+}
+
 function isDuplicateItem(error: unknown): boolean {
   const cause = (error as { cause?: { code?: string; constraint?: string } }).cause;
   return cause?.code === "23505" && cause?.constraint === "connections_user_provider_item_key";
@@ -271,6 +296,10 @@ export async function connectPlaidItem(publicToken: string) {
         balanceRow(inserted[index].id, user.id, account.balances, asOf),
       );
       if (balanceRows.length > 0) await tx.insert(accountBalances).values(balanceRows);
+      for (const [index, account] of item.accounts.entries()) {
+        const capture = providerBalanceCapture(inserted[index].id, user.id, account.balances, asOf);
+        if (capture) await captureBalanceSnapshot(tx, capture);
+      }
 
       const [activated] = await tx
         .update(connections)

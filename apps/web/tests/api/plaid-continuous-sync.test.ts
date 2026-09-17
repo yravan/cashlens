@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { beforeEach, expect, test } from "vitest";
 
 import { listResumableSyncs } from "@/lib/data/plaid-sync";
-import { accountBalances, connections, transactions } from "@/lib/db/schema";
+import { accountBalances, accountBalanceSnapshots, connections, transactions } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 import {
@@ -38,6 +38,12 @@ const age = (connectionId: string, ms: number) =>
 
 const balanceOf = (accountId: string) =>
   adminDb().select().from(accountBalances).where(eq(accountBalances.accountId, accountId));
+
+const snapshotsOf = (accountId: string) =>
+  adminDb()
+    .select()
+    .from(accountBalanceSnapshots)
+    .where(eq(accountBalanceSnapshots.accountId, accountId));
 
 const MINUTES = 60 * 1000;
 const HOURS = 60 * MINUTES;
@@ -259,6 +265,7 @@ test("provider currency gaps fall back to the account's registered currency, not
 
 test("balances refresh through the live-balance endpoint only when a run changes something, and a balance failure never fails the sync", async () => {
   const start = new Date();
+  const providerAsOf = "2026-09-16T08:30:00.000Z";
   const first = sandboxTransaction(CHECKING, 3, "SEED", "2026-08-20");
   const { accessToken, sync, accountId } = await backfilled(fakeClerkUserId(), first);
   expect(balanceRequests).toHaveLength(1);
@@ -270,14 +277,30 @@ test("balances refresh through the live-balance endpoint only when a run changes
 
   pushSyncUpdates(accessToken, {
     added: [sandboxTransaction(CHECKING, 8, "SPENT", "2026-08-24")],
-    balances: { [CHECKING]: { available: 892.5, current: 900.25 } },
+    balances: {
+      [CHECKING]: {
+        available: 892.5,
+        current: 900.25,
+        last_updated_datetime: providerAsOf,
+      },
+    },
   });
   const active = await sync();
   await expect(active.json()).resolves.toEqual(step("complete", 1));
   expect(balanceRequests).toHaveLength(2);
-  const [balance] = await balanceOf(accountId.get(CHECKING)!);
+  const checkingId = accountId.get(CHECKING)!;
+  const [balance] = await balanceOf(checkingId);
   expect(balance).toMatchObject({ availableMinor: 89250, currentMinor: 90025 });
   expect(+balance.asOf).toBeGreaterThanOrEqual(+start);
+  const [snapshot] = await snapshotsOf(checkingId);
+  expect(snapshot).toMatchObject({
+    currentMinor: 90025,
+    currency: "USD",
+    source: "provider",
+    captureReason: "event",
+    providerAsOf: new Date(providerAsOf),
+  });
+  expect(snapshot.observedAt).toEqual(balance.asOf);
 
   pushSyncUpdates(accessToken, {
     added: [sandboxTransaction(CHECKING, 1, "DURING OUTAGE", "2026-08-25")],
@@ -287,8 +310,9 @@ test("balances refresh through the live-balance endpoint only when a run changes
   const outage = await sync();
   await expect(outage.json()).resolves.toEqual(step("complete", 1));
   expect(balanceRequests).toHaveLength(3);
-  const [unchanged] = await balanceOf(accountId.get(CHECKING)!);
+  const [unchanged] = await balanceOf(checkingId);
   expect(unchanged).toMatchObject({ availableMinor: 89250, currentMinor: 90025 });
+  await expect(snapshotsOf(checkingId)).resolves.toEqual([snapshot]);
 });
 
 test("stalled and stale connections surface for resume; fresh, disconnected, and foreign ones never do", async () => {
