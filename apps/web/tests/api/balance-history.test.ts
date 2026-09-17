@@ -4,8 +4,10 @@ import { expect, test, vi } from "vitest";
 import { POST as updateManualBalance } from "@/app/api/accounts/[accountId]/manual/route";
 import { POST as createManualAccount } from "@/app/api/accounts/manual/route";
 import {
+  accountBalanceHistory,
   captureBalanceSnapshot,
   manualBalanceHistory,
+  parseBalanceHistoryRange,
   providerBalanceHistory,
 } from "@/lib/data/balance-history";
 import { withRequestScope } from "@/lib/db/client";
@@ -631,4 +633,202 @@ test("a candidate currency mismatch writes no snapshot or amount log", async () 
     .from(accountBalanceSnapshots)
     .where(eq(accountBalanceSnapshots.accountId, accountId));
   expect(snapshots).toEqual([]);
+});
+
+const unknownAccountId = "00000000-0000-4000-8000-000000000001";
+
+const parsedRange = (input: unknown) => {
+  const parsed = parseBalanceHistoryRange(input);
+  expect(parsed.ok).toBe(true);
+  if (!parsed.ok) throw new Error("expected valid balance history range");
+  return parsed.range;
+};
+
+test("balance history composes provider and manual account series without combining them", async () => {
+  const owner = await provisionedUser();
+  const neighbor = await provisionedUser();
+  const providerAccountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Euro checking",
+    type: "depository",
+    source: "plaid",
+    currency: "EUR",
+    currentMinor: 1000,
+    reportedOn: null,
+  });
+  const manualAccountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Card",
+    type: "credit",
+    source: "manual",
+    currency: "USD",
+    currentMinor: 7000,
+    reportedOn: "2026-04-02",
+  });
+  const neighborAccountId = await anchoredAccount({
+    userId: neighbor.id,
+    name: "Neighbor checking",
+    type: "depository",
+    source: "plaid",
+    currency: "USD",
+    currentMinor: 99999,
+    reportedOn: null,
+  });
+  const providerObservedAt = new Date("2026-04-02T10:00:00Z");
+  const providerAsOf = new Date("2026-04-02T09:45:00Z");
+  const anchorObservedAt = new Date("2026-04-02T12:00:00Z");
+
+  await withRequestScope(owner.clerkUserId, async (tx) => {
+    await captureBalanceSnapshot(tx, {
+      accountId: providerAccountId,
+      userId: owner.id,
+      currentMinor: 1000,
+      currency: "EUR",
+      source: "provider",
+      captureReason: "event",
+      observedAt: providerObservedAt,
+      providerAsOf,
+    });
+    await captureBalanceSnapshot(tx, {
+      accountId: manualAccountId,
+      userId: owner.id,
+      currentMinor: 7000,
+      currency: "USD",
+      source: "manual_anchor",
+      snapshotDay: "2026-04-02",
+      captureReason: "bootstrap",
+      observedAt: anchorObservedAt,
+      providerAsOf: null,
+    });
+  });
+  await adminDb().insert(transactions).values({
+    userId: owner.id,
+    accountId: manualAccountId,
+    amountMinor: -300,
+    currency: "USD",
+    date: "2026-04-03",
+    description: "Card charge",
+    status: "posted",
+    source: "manual",
+    createdAt: new Date("2026-04-03T08:00:00Z"),
+  });
+
+  const range = parsedRange({
+    from: "2026-04-01",
+    to: "2026-04-03",
+    accountIds: [providerAccountId, manualAccountId, neighborAccountId, unknownAccountId],
+  });
+  const history = await withAuth(owner.clerkUserId, () => accountBalanceHistory(range));
+
+  expect(history).toEqual([
+    {
+      accountId: providerAccountId,
+      accountType: "depository",
+      currency: "EUR",
+      points: [
+        { day: "2026-04-01", basis: "unavailable", currentMinor: null },
+        {
+          day: "2026-04-02",
+          basis: "observed",
+          currentMinor: 1000,
+          observedDay: "2026-04-02",
+          observedAt: providerObservedAt,
+          providerAsOf,
+          captureReason: "event",
+        },
+        {
+          day: "2026-04-03",
+          basis: "carried",
+          currentMinor: 1000,
+          observedDay: "2026-04-02",
+          observedAt: providerObservedAt,
+          providerAsOf,
+          captureReason: "event",
+        },
+      ],
+    },
+    {
+      accountId: manualAccountId,
+      accountType: "credit",
+      currency: "USD",
+      points: [
+        { day: "2026-04-01", basis: "unavailable", currentMinor: null },
+        {
+          day: "2026-04-02",
+          basis: "derived",
+          currentMinor: 7000,
+          anchorMinor: 7000,
+          anchorDay: "2026-04-02",
+          anchorObservedAt,
+          captureReason: "bootstrap",
+        },
+        {
+          day: "2026-04-03",
+          basis: "derived",
+          currentMinor: 7300,
+          anchorMinor: 7000,
+          anchorDay: "2026-04-02",
+          anchorObservedAt,
+          captureReason: "bootstrap",
+        },
+      ],
+    },
+  ]);
+});
+
+test("unknown and cross-user account filters return byte-identical history", async () => {
+  const owner = await provisionedUser();
+  const neighbor = await provisionedUser();
+  const neighborAccountId = await anchoredAccount({
+    userId: neighbor.id,
+    name: "Neighbor checking",
+    type: "depository",
+    source: "plaid",
+    currentMinor: 99999,
+    reportedOn: null,
+  });
+  const input = { from: "2026-04-01", to: "2026-04-02" };
+
+  const unknown = await withAuth(owner.clerkUserId, () =>
+    accountBalanceHistory(parsedRange({ ...input, accountIds: [unknownAccountId] })),
+  );
+  const crossUser = await withAuth(owner.clerkUserId, () =>
+    accountBalanceHistory(parsedRange({ ...input, accountIds: [neighborAccountId] })),
+  );
+
+  expect(JSON.stringify(crossUser)).toBe(JSON.stringify(unknown));
+  expect(unknown).toEqual([]);
+});
+
+test.each([
+  ["non-object", null],
+  ["missing end", { from: "2026-04-01" }],
+  ["unknown field", { from: "2026-04-01", to: "2026-04-02", currency: "USD" }],
+  ["invalid start", { from: "2026-02-30", to: "2026-04-02" }],
+  ["reversed", { from: "2026-04-03", to: "2026-04-02" }],
+  ["over 3,660 days", { from: "2026-01-01", to: "2036-01-09" }],
+  ["non-array accounts", { from: "2026-04-01", to: "2026-04-02", accountIds: null }],
+  [
+    "malformed account",
+    { from: "2026-04-01", to: "2026-04-02", accountIds: ["not-an-account"] },
+  ],
+])("balance history range rejects %s", (_case, input) => {
+  expect(parseBalanceHistoryRange(input)).toEqual({ ok: false });
+});
+
+test("balance history range accepts exactly 3,660 inclusive days", () => {
+  expect(
+    parseBalanceHistoryRange({
+      from: "2026-01-01",
+      to: "2036-01-08",
+      accountIds: [unknownAccountId],
+    }),
+  ).toEqual({
+    ok: true,
+    range: {
+      from: "2026-01-01",
+      to: "2036-01-08",
+      accountIds: [unknownAccountId],
+    },
+  });
 });

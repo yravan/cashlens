@@ -3,7 +3,9 @@ import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope, type ScopedTx } from "@/lib/db/client";
-import { accountBalanceSnapshots, accounts, transactions } from "@/lib/db/schema";
+import { accountBalanceSnapshots, accountType, accounts, transactions } from "@/lib/db/schema";
+import { isIsoDate } from "@/lib/ledger/history-query";
+import { isPlainObject } from "@/lib/ledger/manual-transactions";
 import { OWED_TYPES } from "@/lib/ledger/offline-accounts";
 import { logEvent } from "@/lib/log";
 
@@ -116,11 +118,48 @@ export type ProviderAccountBalanceHistory = {
   points: ProviderBalanceHistoryPoint[];
 };
 
-type ProviderHistoryRange = {
+export type BalanceHistoryRange = {
   from: string;
   to: string;
   accountIds?: readonly string[];
 };
+
+export type ParsedBalanceHistoryRange =
+  | { ok: true; range: BalanceHistoryRange }
+  | { ok: false };
+
+const RANGE_KEYS = new Set(["from", "to", "accountIds"]);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_BALANCE_HISTORY_DAYS = 3_660;
+const DAY_MS = 86_400_000;
+
+const isUuid = (value: unknown): value is string =>
+  typeof value === "string" && UUID.test(value);
+
+function inclusiveDayCount(from: string, to: string): number {
+  return (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS + 1;
+}
+
+export function parseBalanceHistoryRange(input: unknown): ParsedBalanceHistoryRange {
+  if (!isPlainObject(input) || Object.keys(input).some((key) => !RANGE_KEYS.has(key))) {
+    return { ok: false };
+  }
+
+  const { from, to, accountIds } = input;
+  if (
+    typeof from !== "string" ||
+    typeof to !== "string" ||
+    !isIsoDate(from) ||
+    !isIsoDate(to) ||
+    from > to ||
+    inclusiveDayCount(from, to) > MAX_BALANCE_HISTORY_DAYS
+  ) {
+    return { ok: false };
+  }
+  if (accountIds === undefined) return { ok: true, range: { from, to } };
+  if (!Array.isArray(accountIds) || !accountIds.every(isUuid)) return { ok: false };
+  return { ok: true, range: { from, to, accountIds } };
+}
 
 function inclusiveDays(from: string, to: string): string[] {
   const days: string[] = [];
@@ -134,7 +173,7 @@ function inclusiveDays(from: string, to: string): string[] {
 }
 
 export async function providerBalanceHistory(
-  range: ProviderHistoryRange,
+  range: BalanceHistoryRange,
 ): Promise<ProviderAccountBalanceHistory[]> {
   const user = await requireUser();
   return withRequestScope(user.clerkUserId, async (tx) => {
@@ -239,10 +278,8 @@ export type ManualAccountBalanceHistory = {
   points: ManualBalanceHistoryPoint[];
 };
 
-type ManualHistoryRange = ProviderHistoryRange;
-
 export async function manualBalanceHistory(
-  range: ManualHistoryRange,
+  range: BalanceHistoryRange,
 ): Promise<ManualAccountBalanceHistory[]> {
   const user = await requireUser();
   return withRequestScope(user.clerkUserId, async (tx) => {
@@ -382,4 +419,27 @@ export async function manualBalanceHistory(
       return { ...account, points };
     });
   });
+}
+
+export type BalanceHistoryPoint = ProviderBalanceHistoryPoint | ManualBalanceHistoryPoint;
+
+export type AccountBalanceHistory = {
+  accountId: string;
+  accountType: (typeof accounts.$inferSelect)["type"];
+  currency: string;
+  points: BalanceHistoryPoint[];
+};
+
+const TYPE_ORDER: readonly string[] = accountType.enumValues;
+
+export async function accountBalanceHistory(
+  range: BalanceHistoryRange,
+): Promise<AccountBalanceHistory[]> {
+  const provider = await providerBalanceHistory(range);
+  const manual = await manualBalanceHistory(range);
+  return [...provider, ...manual].sort(
+    (a, b) =>
+      TYPE_ORDER.indexOf(a.accountType) - TYPE_ORDER.indexOf(b.accountType) ||
+      a.accountId.localeCompare(b.accountId),
+  );
 }
