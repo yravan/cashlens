@@ -6,7 +6,7 @@ import { formatMinorUnits } from "../lib/ledger/minor-units";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
-import { signedInState } from "./session";
+import { refreshPageSession, signedInState } from "./session";
 
 const clerkIdOf = (key: "a" | "b"): string =>
   JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8"))[key].clerkUserId;
@@ -26,6 +26,12 @@ async function waitForMutation(page: Page, pathname: string, status: number, act
   );
   await action();
   expect((await response).status()).toBe(status);
+}
+
+async function restoreWallClockSession(page: Page) {
+  await page.clock.setSystemTime(new Date());
+  await refreshPageSession(page);
+  await page.goto("/accounts");
 }
 
 async function offlineAccount(userId: string, name: string) {
@@ -96,7 +102,7 @@ test.describe("offline accounts", () => {
     await waitForMutation(page, "/api/accounts/manual", 201, () =>
       add.getByRole("button", { name: "Add account" }).click(),
     );
-    await page.clock.setSystemTime(new Date());
+    await restoreWallClockSession(page);
 
     const created = await offlineAccount(userA, "Petty Cash");
     expect(created.rows).toEqual([
@@ -146,7 +152,7 @@ test.describe("offline accounts", () => {
     await waitForMutation(page, `/api/accounts/${accountId}/manual`, 200, () =>
       update.getByRole("button", { name: "Save balance" }).click(),
     );
-    await page.clock.setSystemTime(new Date());
+    await restoreWallClockSession(page);
     await expect(accountRow(page, "Petty Cash")).toContainText(usd(8000));
     await expect(accountRow(page, "Petty Cash").getByTestId("reported-balance")).toHaveText(
       `Reported ${usd(8000)} on 2026-09-11`,
@@ -248,7 +254,7 @@ test.describe("offline accounts", () => {
     await waitForMutation(page, "/api/accounts/manual", 201, () =>
       add.getByRole("button", { name: "Add account" }).click(),
     );
-    await page.clock.setSystemTime(new Date());
+    await restoreWallClockSession(page);
     await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED + 4000));
 
     await accountRow(page, "Store Card").getByRole("button", { name: "Update balance" }).click();
@@ -259,7 +265,7 @@ test.describe("offline accounts", () => {
     await waitForMutation(page, `/api/accounts/${id}/manual`, 200, () =>
       update.getByRole("button", { name: "Save balance" }).click(),
     );
-    await page.clock.setSystemTime(new Date());
+    await restoreWallClockSession(page);
     await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED - 500));
 
     const overflow = () =>
