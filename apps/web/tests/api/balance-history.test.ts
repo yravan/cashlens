@@ -3,9 +3,13 @@ import { expect, test, vi } from "vitest";
 
 import { POST as updateManualBalance } from "@/app/api/accounts/[accountId]/manual/route";
 import { POST as createManualAccount } from "@/app/api/accounts/manual/route";
-import { captureBalanceSnapshot, providerBalanceHistory } from "@/lib/data/balance-history";
+import {
+  captureBalanceSnapshot,
+  manualBalanceHistory,
+  providerBalanceHistory,
+} from "@/lib/data/balance-history";
 import { withRequestScope } from "@/lib/db/client";
-import { accountBalances, accountBalanceSnapshots } from "@/lib/db/schema";
+import { accountBalances, accountBalanceSnapshots, transactions } from "@/lib/db/schema";
 import { withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 import { anchoredAccount, provisionedUser, request } from "./offline-helpers";
@@ -297,6 +301,169 @@ test("provider history labels observed, carried, and unavailable days with prove
     .where(eq(accountBalanceSnapshots.accountId, accountId))
     .orderBy(accountBalanceSnapshots.snapshotDay);
   expect(stored).toEqual([{ snapshotDay: "2026-04-02" }, { snapshotDay: "2026-04-04" }]);
+});
+
+test("manual history keeps raw anchors while deriving posted owed balances", async () => {
+  const owner = await provisionedUser();
+  const neighbor = await provisionedUser();
+  const accountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Card",
+    type: "credit",
+    source: "manual",
+    currentMinor: 7000,
+    reportedOn: "2026-04-03",
+  });
+  const neighborAccountId = await anchoredAccount({
+    userId: neighbor.id,
+    name: "Neighbor wallet",
+    type: "depository",
+    source: "manual",
+    currentMinor: 99999,
+    reportedOn: "2026-04-01",
+  });
+  const firstObservedAt = new Date("2026-04-01T12:00:00Z");
+  const latestObservedAt = new Date("2026-04-03T12:00:00Z");
+
+  await withRequestScope(owner.clerkUserId, async (tx) => {
+    await captureBalanceSnapshot(tx, {
+      accountId,
+      userId: owner.id,
+      currentMinor: 5000,
+      currency: "USD",
+      source: "manual_anchor",
+      snapshotDay: "2026-04-01",
+      captureReason: "event",
+      observedAt: firstObservedAt,
+      providerAsOf: null,
+    });
+    await captureBalanceSnapshot(tx, {
+      accountId,
+      userId: owner.id,
+      currentMinor: 7000,
+      currency: "USD",
+      source: "manual_anchor",
+      snapshotDay: "2026-04-03",
+      captureReason: "event",
+      observedAt: latestObservedAt,
+      providerAsOf: null,
+    });
+  });
+  await withRequestScope(neighbor.clerkUserId, (tx) =>
+    captureBalanceSnapshot(tx, {
+      accountId: neighborAccountId,
+      userId: neighbor.id,
+      currentMinor: 99999,
+      currency: "USD",
+      source: "manual_anchor",
+      snapshotDay: "2026-04-01",
+      captureReason: "event",
+      observedAt: firstObservedAt,
+      providerAsOf: null,
+    }),
+  );
+  const rows = [
+    { date: "2026-04-01", amountMinor: -100, createdAt: "2026-04-01T11:00:00Z", status: "posted" },
+    { date: "2026-04-01", amountMinor: -200, createdAt: "2026-04-01T12:00:00Z", status: "posted" },
+    { date: "2026-04-01", amountMinor: -300, createdAt: "2026-04-01T13:00:00Z", status: "posted" },
+    { date: "2026-04-02", amountMinor: 500, createdAt: "2026-04-02T10:00:00Z", status: "posted" },
+    { date: "2026-04-02", amountMinor: -900, createdAt: "2026-04-02T11:00:00Z", status: "pending" },
+    { date: "2026-04-03", amountMinor: -700, createdAt: "2026-04-03T13:00:00Z", status: "posted" },
+    { date: "2026-04-04", amountMinor: 1000, createdAt: "2026-04-04T10:00:00Z", status: "posted" },
+  ] as const;
+  await adminDb()
+    .insert(transactions)
+    .values(
+      rows.map((row, index) => ({
+        userId: owner.id,
+        accountId,
+        amountMinor: row.amountMinor,
+        currency: "USD",
+        date: row.date,
+        description: `History row ${index}`,
+        status: row.status,
+        source: "manual" as const,
+        createdAt: new Date(row.createdAt),
+      })),
+    );
+  await adminDb().execute(sql`
+    insert into transactions (
+      user_id, account_id, amount_minor, currency, date,
+      description, status, source, created_at
+    ) values (
+      ${owner.id}, ${accountId}, -50, 'USD', '2026-04-01',
+      'After anchor by one microsecond', 'posted', 'manual',
+      '2026-04-01 12:00:00.000001+00'::timestamptz
+    )
+  `);
+
+  const history = await withAuth(owner.clerkUserId, () =>
+    manualBalanceHistory({
+      from: "2026-03-31",
+      to: "2026-04-04",
+      accountIds: [accountId, neighborAccountId],
+    }),
+  );
+
+  expect(history).toEqual([
+    {
+      accountId,
+      accountType: "credit",
+      currency: "USD",
+      points: [
+        { day: "2026-03-31", basis: "unavailable", currentMinor: null },
+        {
+          day: "2026-04-01",
+          basis: "derived",
+          currentMinor: 5350,
+          anchorMinor: 5000,
+          anchorDay: "2026-04-01",
+          anchorObservedAt: firstObservedAt,
+          captureReason: "event",
+        },
+        {
+          day: "2026-04-02",
+          basis: "derived",
+          currentMinor: 4850,
+          anchorMinor: 5000,
+          anchorDay: "2026-04-01",
+          anchorObservedAt: firstObservedAt,
+          captureReason: "event",
+        },
+        {
+          day: "2026-04-03",
+          basis: "derived",
+          currentMinor: 7700,
+          anchorMinor: 7000,
+          anchorDay: "2026-04-03",
+          anchorObservedAt: latestObservedAt,
+          captureReason: "event",
+        },
+        {
+          day: "2026-04-04",
+          basis: "derived",
+          currentMinor: 6700,
+          anchorMinor: 7000,
+          anchorDay: "2026-04-03",
+          anchorObservedAt: latestObservedAt,
+          captureReason: "event",
+        },
+      ],
+    },
+  ]);
+
+  const stored = await adminDb()
+    .select({
+      snapshotDay: accountBalanceSnapshots.snapshotDay,
+      currentMinor: accountBalanceSnapshots.currentMinor,
+    })
+    .from(accountBalanceSnapshots)
+    .where(eq(accountBalanceSnapshots.accountId, accountId))
+    .orderBy(accountBalanceSnapshots.snapshotDay);
+  expect(stored).toEqual([
+    { snapshotDay: "2026-04-01", currentMinor: 5000 },
+    { snapshotDay: "2026-04-03", currentMinor: 7000 },
+  ]);
 });
 
 test("an older genuine provider observation cannot replace a newer one", async () => {
