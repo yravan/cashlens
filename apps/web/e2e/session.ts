@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { clerk } from "@clerk/testing/playwright";
-import { devices, expect, type Browser } from "@playwright/test";
+import { devices, expect, type Browser, type Page } from "@playwright/test";
 
 import { BASE_URL, STORAGE_STATE_A, STORAGE_STATE_B } from "../playwright.config";
 
@@ -34,6 +34,20 @@ export function savedRemainingMs(user: "a" | "b" = "a"): number {
   return remainingMs(JSON.parse(fs.readFileSync(STATE_FILE[user], "utf8")).cookies);
 }
 
+export async function refreshPageSession(page: Page): Promise<void> {
+  // Public route on purpose: proxy.ts redirects a protected one before the
+  // app document loads, so clerk-js — the only thing that re-mints a
+  // session token — never boots there.
+  await page.goto(`${BASE_URL}/sign-in`, { waitUntil: "domcontentloaded" });
+  await clerk.loaded({ page });
+  await expect
+    .poll(async () => remainingMs(await page.context().cookies()), {
+      timeout: 15_000,
+      message: "clerk-js did not re-mint __session on the public sign-in page",
+    })
+    .toBeGreaterThan(MIN_REMAINING_MS);
+}
+
 export async function signedInState(
   browser: Browser,
   user: "a" | "b" = "a",
@@ -47,17 +61,7 @@ export async function signedInState(
   });
   try {
     const page = await context.newPage();
-    // Public route on purpose: proxy.ts redirects a protected one before the
-    // app document loads, so clerk-js — the only thing that re-mints a
-    // session token — never boots there.
-    await page.goto(`${BASE_URL}/sign-in`, { waitUntil: "domcontentloaded" });
-    await clerk.loaded({ page });
-    await expect
-      .poll(async () => remainingMs(await context.cookies()), {
-        timeout: 15_000,
-        message: "clerk-js did not re-mint __session on the public sign-in page",
-      })
-      .toBeGreaterThan(MIN_REMAINING_MS);
+    await refreshPageSession(page);
     await context.storageState({ path: file });
   } finally {
     await context.close();

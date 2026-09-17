@@ -5,6 +5,11 @@ import { upcomingOverview, type UpcomingOverview } from "@/lib/data/recurring";
 import { formatMinorUnits } from "@/lib/ledger/minor-units";
 import { parseUpcomingQuery, type UpcomingOccurrence } from "@/lib/ledger/upcoming";
 import { TransferMatch } from "../transactions/transfer-match";
+import {
+  AddObligation,
+  EditObligation,
+  EndObligation,
+} from "./obligation-controls";
 
 export const metadata: Metadata = { title: "Upcoming" };
 
@@ -25,10 +30,19 @@ const shortDate = (iso: string) =>
   `${monthOf(iso).slice(0, 3)} ${Number(iso.slice(8, 10))}, ${iso.slice(0, 4)}`;
 const signed = (minor: number, currency: string) =>
   `${minor > 0 ? "+" : ""}${formatMinorUnits(minor, currency)}`;
+const OVERLAP_WARNING = "Possible overlap — both are counted until matching is available.";
 const occurrenceKey = (occurrence: UpcomingOccurrence) =>
   occurrence.source === "obligation"
     ? `${occurrence.obligationId}:${occurrence.date}`
     : `${occurrence.accountId}:${occurrence.currency}:${occurrence.direction}:${occurrence.normalizedName}:${occurrence.date}`;
+
+function SourceBadge({ source }: { source: UpcomingOccurrence["source"] }) {
+  return (
+    <span className="inline-flex shrink-0 rounded-full border border-zinc-300 px-1.5 py-0.5 text-[0.68rem] font-semibold leading-none text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
+      {source === "obligation" ? "Known" : "Predicted"}
+    </span>
+  );
+}
 
 function calendarWeeks(reference: string, monthEnd: string): (number | null)[][] {
   const [year, month] = reference.split("-").map(Number);
@@ -81,9 +95,28 @@ function MonthCalendar({ overview }: { overview: UpcomingOverview }) {
                       {day === referenceDay && <span className="sr-only"> — the day this view is projected from</span>}
                     </span>
                     {(byDay.get(day) ?? []).map((occurrence) => (
-                      <p key={occurrenceKey(occurrence)} className="mt-0.5 truncate">
-                        <span className="font-medium">{occurrence.overdue ? "! " : ""}{occurrence.name}</span>{" "}
-                        <span className="text-zinc-500 tabular-nums dark:text-zinc-400">{signed(occurrence.amountMinor, occurrence.currency)}</span>
+                      <div
+                        key={occurrenceKey(occurrence)}
+                        data-testid="upcoming-calendar-occurrence"
+                        className="mt-1 border-l-2 border-zinc-300 pl-1 dark:border-zinc-700"
+                      >
+                        <p className="truncate">
+                          <span className="font-medium">
+                            {occurrence.overdue ? "! " : ""}
+                            {occurrence.name}
+                          </span>{" "}
+                          <span className="text-zinc-500 tabular-nums dark:text-zinc-400">
+                            {signed(occurrence.amountMinor, occurrence.currency)}
+                          </span>
+                        </p>
+                        <p className="mt-0.5">
+                          <SourceBadge source={occurrence.source} />
+                        </p>
+                        {occurrence.possibleOverlap && (
+                          <p className="mt-0.5 text-[0.65rem] leading-3 text-amber-700 dark:text-amber-300">
+                            {OVERLAP_WARNING}
+                          </p>
+                        )}
                         {occurrence.overdue && (
                           <span className="sr-only">
                             {occurrence.source === "obligation"
@@ -91,7 +124,7 @@ function MonthCalendar({ overview }: { overview: UpcomingOverview }) {
                               : " — expected but not seen yet"}
                           </span>
                         )}
-                      </p>
+                      </div>
                     ))}
                   </td>
                 ),
@@ -109,13 +142,16 @@ function OccurrenceRow({ occurrence, kind }: { occurrence: UpcomingOccurrence; k
   return (
     <li data-testid={`upcoming-${kind}`} className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 py-3">
       <div className="min-w-0">
-        {occurrence.source === "obligation" ? (
-          <span className="text-sm font-medium">{occurrence.name}</span>
-        ) : (
-          <Link href={`/transactions?${query.toString()}`} className="text-sm font-medium underline-offset-4 hover:underline">
-            {occurrence.name}
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          {occurrence.source === "obligation" ? (
+            <span className="text-sm font-medium">{occurrence.name}</span>
+          ) : (
+            <Link href={`/transactions?${query.toString()}`} className="text-sm font-medium underline-offset-4 hover:underline">
+              {occurrence.name}
+            </Link>
+          )}
+          <SourceBadge source={occurrence.source} />
+        </div>
         <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
           {CADENCE_LABEL[occurrence.cadence]} · expected {shortDate(occurrence.date)}
           {occurrence.overdue && (
@@ -127,6 +163,11 @@ function OccurrenceRow({ occurrence, kind }: { occurrence: UpcomingOccurrence; k
           )}
           {occurrence.source === "detected" && <> · last on {shortDate(occurrence.lastDate)}</>}
         </p>
+        {occurrence.possibleOverlap && (
+          <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+            {OVERLAP_WARNING}
+          </p>
+        )}
       </div>
       <p className="font-mono text-sm font-medium tabular-nums">
         {signed(occurrence.amountMinor, occurrence.currency)}
@@ -186,6 +227,70 @@ function CurrencySection({ section, monthLabel }: { section: UpcomingOverview["c
   );
 }
 
+function KnownObligations({ overview }: { overview: UpcomingOverview }) {
+  return (
+    <section
+      data-testid="known-obligations"
+      aria-labelledby="known-obligations-heading"
+      className="mt-12 border-t border-zinc-300 pt-6 dark:border-zinc-700"
+    >
+      <h2 id="known-obligations-heading" className="text-lg font-medium tracking-tight">
+        Known obligations
+      </h2>
+      <p className="mt-1 max-w-xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+        Bills and other outflows you have told Cash Lens to include in Upcoming.
+      </p>
+      {overview.accounts.length === 0 ? (
+        <p className="mt-4 max-w-xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+          An account is required to add a known obligation.{" "}
+          <Link href="/accounts" className="underline underline-offset-4">
+            Go to Accounts
+          </Link>
+          .
+        </p>
+      ) : (
+        <>
+          {overview.obligations.length === 0 && (
+            <p className="mt-4 max-w-xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
+              Add rent, insurance, tuition, or another known charge.
+            </p>
+          )}
+          <AddObligation accounts={overview.accounts} />
+        </>
+      )}
+      {overview.obligations.length > 0 && (
+        <ul className="mt-3 divide-y divide-zinc-200 border-y border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+          {overview.obligations.map((obligation) => (
+            <li key={obligation.id} data-testid="obligation-card" className="py-4">
+              <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{obligation.name}</p>
+                  <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                    {obligation.accountName} · {CADENCE_LABEL[obligation.cadence]} · starts {shortDate(obligation.startsOn)}
+                    {obligation.endsOn && <> · ends {shortDate(obligation.endsOn)}</>}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                    {obligation.nextOn
+                      ? `Next ${shortDate(obligation.nextOn)}`
+                      : "No future dates remain"}
+                  </p>
+                </div>
+                <p className="font-mono text-sm font-medium tabular-nums">
+                  {formatMinorUnits(obligation.amountMinor, obligation.currency)}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-start gap-3">
+                <EditObligation accounts={overview.accounts} obligation={obligation} />
+                <EndObligation obligation={obligation} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export default async function UpcomingPage({
   searchParams,
 }: {
@@ -197,8 +302,8 @@ export default async function UpcomingPage({
     <>
       <h1 className="text-2xl font-semibold tracking-tight">Upcoming</h1>
       <p className="mt-2 max-w-xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-        Predicted next charges from your recurring patterns — nothing here is posted yet, and
-        nothing here counts in your totals. <Link href="/recurring" className="underline underline-offset-4">Manage recurring</Link>.
+        Known charges and predicted recurring patterns appear here before they post. The amounts
+        count in this Upcoming forecast, not your ledger totals. <Link href="/recurring" className="underline underline-offset-4">Manage recurring</Link>.
       </p>
     </>
   );
@@ -274,6 +379,7 @@ export default async function UpcomingPage({
           )}
         </>
       )}
+      <KnownObligations overview={overview} />
     </>
   );
 }

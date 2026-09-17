@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
 
@@ -11,12 +12,87 @@ const CONFIGURED =
   !!process.env.PLAID_SECRET &&
   process.env.PLAID_ENV === "sandbox";
 
+function clerkIdA(): string {
+  return JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8")).a.clerkUserId;
+}
+
+test("a disconnected connection discloses and purges attached obligations", async ({ page }) => {
+  const connectionId = randomUUID();
+  const accountId = randomUUID();
+  const transactionId = randomUUID();
+  const obligationId = randomUUID();
+
+  await page.goto("/accounts");
+  const owner = await adminQuery("select id from users where clerk_user_id = $1", [clerkIdA()]);
+  expect(owner.rowCount).toBe(1);
+  const userId = owner.rows[0].id;
+
+  try {
+    await adminTransaction(async (client) => {
+      await client.query(
+        `insert into connections
+           (id, user_id, provider, provider_item_id, institution_id, institution_name,
+            status, backfill_status)
+         values ($1, $2, 'plaid', $3, $4, 'Synthetic fixture', 'disconnected', 'complete')`,
+        [connectionId, userId, `fixture-${randomUUID()}`, `ins-${randomUUID()}`],
+      );
+      await client.query(
+        `insert into accounts
+           (id, user_id, connection_id, name, type, currency, source, source_id)
+         values ($1, $2, $3, 'Synthetic checking', 'depository', 'USD', 'plaid', $4)`,
+        [accountId, userId, connectionId, randomUUID()],
+      );
+      await client.query(
+        `insert into transactions
+           (id, user_id, account_id, amount_minor, currency, date, description, status, source,
+            source_id)
+         values ($1, $2, $3, -1500, 'USD', '2026-09-15', 'Synthetic imported charge',
+                 'posted', 'plaid', $4)`,
+        [transactionId, userId, accountId, randomUUID()],
+      );
+      await client.query(
+        `insert into scheduled_obligations
+           (id, user_id, account_id, name, amount_minor, currency, cadence, starts_on)
+         values ($1, $2, $3, 'Synthetic insurance', 1200, 'USD', 'monthly', '2026-09-15')`,
+        [obligationId, userId, accountId],
+      );
+    });
+
+    await page.goto("/accounts");
+    const row = page.getByTestId(`connection-${connectionId}`);
+    await row.getByTestId("purge-connection").click();
+    const confirmation = row.getByTestId("disconnect-confirm");
+    await expect(confirmation).toContainText(
+      "Permanently delete Synthetic fixture's 1 account and 1 imported transaction and 1 known obligation? This cannot be undone.",
+    );
+    await confirmation.getByRole("button", { name: "Cancel" }).click();
+    await expect(row.getByTestId("disconnect-confirm")).toHaveCount(0);
+
+    await row.getByTestId("purge-connection").click();
+    const response = page.waitForResponse(
+      (candidate) =>
+        candidate.request().method() === "POST" &&
+        new URL(candidate.url()).pathname === `/api/connections/${connectionId}/disconnect`,
+    );
+    await row.getByTestId("confirm-disconnect").click();
+    expect((await response).status()).toBe(200);
+    await expect(row).toHaveCount(0);
+
+    const purged = await adminQuery(
+      `select (select count(*)::int from accounts where id = $1) as accounts,
+              (select count(*)::int from transactions where id = $2) as transactions,
+              (select count(*)::int from scheduled_obligations where id = $3) as obligations`,
+      [accountId, transactionId, obligationId],
+    );
+    expect(purged.rows[0]).toEqual({ accounts: 0, transactions: 0, obligations: 0 });
+  } finally {
+    await adminQuery("delete from accounts where id = $1", [accountId]);
+    await adminQuery("delete from connections where id = $1", [connectionId]);
+  }
+});
+
 test.describe("connection management (real sandbox)", () => {
   test.skip(!CONFIGURED, "PLAID_* sandbox keys not configured");
-
-  function clerkIdA(): string {
-    return JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8")).a.clerkUserId;
-  }
 
   async function cleanup() {
     await cleanupSandboxRows(clerkIdA());

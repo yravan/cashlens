@@ -108,6 +108,39 @@ const DAY_MS = 86_400_000;
 const dayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / DAY_MS;
 const dateFromDayNumber = (day: number) => new Date(day * DAY_MS).toISOString().slice(0, 10);
 
+export function nextObligationDate(
+  obligation: Pick<UpcomingObligationInput, "cadence" | "startsOn" | "endsOn">,
+  reference: string,
+): string | null {
+  if (reference <= obligation.startsOn) return obligation.startsOn;
+  if (obligation.cadence === "once") return null;
+
+  let next: string;
+  if (obligation.cadence === "weekly" || obligation.cadence === "biweekly") {
+    const interval = obligation.cadence === "weekly" ? 7 : 14;
+    const start = dayNumber(obligation.startsOn);
+    const step = Math.ceil((dayNumber(reference) - start) / interval);
+    next = dateFromDayNumber(start + step * interval);
+  } else if (obligation.cadence === "monthly") {
+    const year = Number(reference.slice(0, 4));
+    const month = Number(reference.slice(5, 7)) - 1;
+    next = monthlyDate(obligation.startsOn, year, month);
+    if (next < reference) {
+      next = monthlyDate(
+        obligation.startsOn,
+        month === 11 ? year + 1 : year,
+        month === 11 ? 0 : month + 1,
+      );
+    }
+  } else {
+    const year = Number(reference.slice(0, 4));
+    next = annualDate(obligation.startsOn, year);
+    if (next < reference) next = annualDate(obligation.startsOn, year + 1);
+  }
+
+  return obligation.endsOn === null || next <= obligation.endsOn ? next : null;
+}
+
 // A stream projects while at most one expected date has been missed — the
 // detector's own missed-occurrence tolerance. Two misses by the reference date
 // mean the pattern stopped: stale, out of the list and the totals.

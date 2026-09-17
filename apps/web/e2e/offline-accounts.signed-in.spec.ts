@@ -40,6 +40,7 @@ async function offlineAccount(userId: string, name: string) {
   );
 }
 
+const REPORTED_AT = new Date("2026-09-11T19:00:00.000Z");
 const SEED_CASH = EXPECTED.demo.overview.cashOnHand.USD;
 const SEED_OWED = EXPECTED.demo.overview.creditOwed.USD;
 const usd = (minor: number) => formatMinorUnits(minor, "USD");
@@ -83,7 +84,6 @@ test.describe("offline accounts", () => {
     browser,
     baseURL,
   }) => {
-    await page.clock.setFixedTime(new Date("2026-09-11T19:00:00.000Z"));
     await page.goto("/accounts");
     await expect(page.getByTestId("accounts-count")).toHaveText("5 accounts in the ledger");
     await page.getByTestId("add-offline-account").click();
@@ -92,9 +92,11 @@ test.describe("offline accounts", () => {
     await add.getByLabel("Type").selectOption({ label: "Cash" });
     await add.getByLabel("Currency").selectOption("USD");
     await add.getByLabel("Current balance").fill("100.00");
+    await page.clock.setFixedTime(REPORTED_AT);
     await waitForMutation(page, "/api/accounts/manual", 201, () =>
       add.getByRole("button", { name: "Add account" }).click(),
     );
+    await page.clock.setSystemTime(new Date());
 
     const created = await offlineAccount(userA, "Petty Cash");
     expect(created.rows).toEqual([
@@ -140,9 +142,11 @@ test.describe("offline accounts", () => {
     const update = page.getByRole("form", { name: "Update balance" });
     await expect(update.getByLabel("Current balance")).toHaveValue("100");
     await update.getByLabel("Current balance").fill("80.00");
+    await page.clock.setFixedTime(REPORTED_AT);
     await waitForMutation(page, `/api/accounts/${accountId}/manual`, 200, () =>
       update.getByRole("button", { name: "Save balance" }).click(),
     );
+    await page.clock.setSystemTime(new Date());
     await expect(accountRow(page, "Petty Cash")).toContainText(usd(8000));
     await expect(accountRow(page, "Petty Cash").getByTestId("reported-balance")).toHaveText(
       `Reported ${usd(8000)} on 2026-09-11`,
@@ -159,6 +163,20 @@ test.describe("offline accounts", () => {
     await expect(accountRow(page, "Coffee Tin")).toContainText(usd(8000));
     await expect(page.getByTestId("account-group-depository")).not.toContainText("Petty Cash");
     expect((await offlineAccount(userA, "Coffee Tin")).rows[0].id).toBe(accountId);
+
+    const createdObligation = await page.context().request.post("/api/obligations", {
+      data: {
+        accountId,
+        name: "E2E BIN INSURANCE",
+        amount: "12.00",
+        currency: "USD",
+        cadence: "monthly",
+        startsOn: "2026-09-15",
+        endsOn: null,
+      },
+    });
+    expect(createdObligation.status()).toBe(201);
+    await page.reload();
 
     const contextB = await browser.newContext({
       baseURL,
@@ -179,7 +197,7 @@ test.describe("offline accounts", () => {
     await accountRow(page, "Coffee Tin").getByRole("button", { name: "Delete", exact: true }).click();
     const confirm = page.getByTestId("delete-account-confirm");
     await expect(confirm).toContainText(
-      "Delete Coffee Tin and its 1 transaction? This cannot be undone.",
+      "Delete Coffee Tin and its 1 transaction and 1 known obligation? This cannot be undone.",
     );
     await confirm.getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByTestId("delete-account-confirm")).toHaveCount(0);
@@ -202,6 +220,14 @@ test.describe("offline accounts", () => {
         )
       ).rows[0].n,
     ).toBe(0);
+    expect(
+      (
+        await adminQuery(
+          "select count(*)::int as n from scheduled_obligations where user_id = $1 and name = 'E2E BIN INSURANCE'",
+          [userA],
+        )
+      ).rows[0].n,
+    ).toBe(0);
     await expect(page.getByTestId("account-group-other")).toContainText("Cash Wallet");
     for (const name of ["Update balance", "Rename"]) {
       await expect(accountRow(page, "Cash Rewards Card").getByRole("button", { name })).toHaveCount(0);
@@ -212,25 +238,28 @@ test.describe("offline accounts", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 320, height: 800 });
-    await page.clock.setFixedTime(new Date("2026-09-11T19:00:00.000Z"));
     await page.goto("/accounts");
     await page.getByTestId("add-offline-account").click();
     const add = page.getByRole("form", { name: "Add offline account" });
     await add.getByLabel("Name").fill("Store Card");
     await add.getByLabel("Type").selectOption({ label: "Credit card" });
     await add.getByLabel("Amount owed").fill("40");
+    await page.clock.setFixedTime(REPORTED_AT);
     await waitForMutation(page, "/api/accounts/manual", 201, () =>
       add.getByRole("button", { name: "Add account" }).click(),
     );
+    await page.clock.setSystemTime(new Date());
     await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED + 4000));
 
     await accountRow(page, "Store Card").getByRole("button", { name: "Update balance" }).click();
     const update = page.getByRole("form", { name: "Update balance" });
     await update.getByLabel("Amount owed").fill("-5");
     const id = (await offlineAccount(userA, "Store Card")).rows[0].id;
+    await page.clock.setFixedTime(REPORTED_AT);
     await waitForMutation(page, `/api/accounts/${id}/manual`, 200, () =>
       update.getByRole("button", { name: "Save balance" }).click(),
     );
+    await page.clock.setSystemTime(new Date());
     await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED - 500));
 
     const overflow = () =>

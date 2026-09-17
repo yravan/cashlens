@@ -84,6 +84,7 @@ test("an offline balance is the anchor plus the posted rows after it, signed by 
     reportedOn: "2026-04-01",
     sinceCount: SINCE_COUNT,
     transactionCount: AROUND_THE_ANCHOR.length,
+    obligationCount: 0,
   });
   expect(overviewRow(overview, owed)).toMatchObject({
     currentMinor: 5000 - SINCE_MINOR,

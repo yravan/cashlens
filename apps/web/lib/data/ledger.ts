@@ -5,7 +5,14 @@ import { alias } from "drizzle-orm/pg-core";
 import { categoryGroupsFor } from "@/lib/data/categories";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope, type ScopedTx } from "@/lib/db/client";
-import { accountBalances, accounts, categories, transactions, transferPairs } from "@/lib/db/schema";
+import {
+  accountBalances,
+  accounts,
+  categories,
+  scheduledObligations,
+  transactions,
+  transferPairs,
+} from "@/lib/db/schema";
 import {
   HISTORY_PAGE_SIZE,
   searchPattern,
@@ -361,6 +368,10 @@ export async function accountOverview() {
       eq(transactions.accountId, accounts.id),
       eq(transactions.userId, accounts.userId),
     )!;
+    const ownObligations = and(
+      eq(scheduledObligations.accountId, accounts.id),
+      eq(scheduledObligations.userId, accounts.userId),
+    )!;
     const sinceAnchor = and(
       ownRows,
       eq(accounts.source, "manual"),
@@ -387,6 +398,7 @@ export async function accountOverview() {
         sinceMinor: sql`coalesce((select sum(${transactions.amountMinor}) from ${transactions} where ${sinceAnchor}), 0)`.mapWith(Number),
         sinceCount: sql`(select count(*) from ${transactions} where ${sinceAnchor})`.mapWith(Number),
         transactionCount: sql`(select count(*) from ${transactions} where ${ownRows})`.mapWith(Number),
+        obligationCount: sql`(select count(*) from ${scheduledObligations} where ${ownObligations})`.mapWith(Number),
       })
       .from(accounts)
       .leftJoin(accountBalances, eq(accountBalances.accountId, accounts.id))

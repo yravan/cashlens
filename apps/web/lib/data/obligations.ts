@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { bigint, char, date, pgTable, text, uuid } from "drizzle-orm/pg-core";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
@@ -39,14 +39,17 @@ function isAccountReferenceError(error: unknown): boolean {
   );
 }
 
+export type ActiveObligation = UpcomingObligationInput & { accountName: string };
+
 export function activeObligationsFor(
   tx: ScopedTx,
   userId: string,
-): Promise<UpcomingObligationInput[]> {
+): Promise<ActiveObligation[]> {
   return tx
     .select({
       obligationId: scheduledObligations.id,
       accountId: scheduledObligations.accountId,
+      accountName: accounts.name,
       name: scheduledObligations.name,
       amountMinor: scheduledObligations.amountMinor,
       currency: scheduledObligations.currency,
@@ -56,12 +59,20 @@ export function activeObligationsFor(
       endedAt: scheduledObligations.endedAt,
     })
     .from(scheduledObligations)
+    .innerJoin(
+      accounts,
+      and(
+        eq(accounts.id, scheduledObligations.accountId),
+        eq(accounts.userId, scheduledObligations.userId),
+      ),
+    )
     .where(
       and(
         eq(scheduledObligations.userId, userId),
         isNull(scheduledObligations.endedAt),
       ),
-    );
+    )
+    .orderBy(asc(scheduledObligations.name), asc(scheduledObligations.id));
 }
 
 export async function createObligation(

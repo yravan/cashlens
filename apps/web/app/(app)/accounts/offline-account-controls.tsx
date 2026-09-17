@@ -204,6 +204,7 @@ export function OfflineAccountActions({
     reportedMinor: number | null;
     reportedOn: string | null;
     transactionCount: number;
+    obligationCount: number;
   };
 }) {
   const router = useRouter();
@@ -221,7 +222,7 @@ export function OfflineAccountActions({
   const close = () => open("idle");
   const consequence = `${account.transactionCount} transaction${
     account.transactionCount === 1 ? "" : "s"
-  }`;
+  } and ${account.obligationCount} known obligation${account.obligationCount === 1 ? "" : "s"}`;
 
   if (mode === "balance") {
     return (

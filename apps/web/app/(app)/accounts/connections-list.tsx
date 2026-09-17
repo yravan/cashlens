@@ -88,6 +88,7 @@ export function ConnectionsList({ connections: all }: { connections: ConnectionW
                   repairable: shown.repairable,
                   accounts: connection.accounts,
                   transactions: connection.transactions,
+                  obligations: connection.obligations,
                 }}
               />
             </li>

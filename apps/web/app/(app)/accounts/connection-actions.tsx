@@ -13,6 +13,7 @@ export type ActionableConnection = {
   repairable: boolean;
   accounts: number;
   transactions: number;
+  obligations: number;
 };
 
 const dangerButton =
@@ -100,7 +101,7 @@ export function ConnectionActions({ connection }: { connection: ActionableConnec
   };
 
   const alreadyGone = connection.status === "disconnected";
-  const consequence = `${connection.accounts} account${connection.accounts === 1 ? "" : "s"} and ${connection.transactions} imported transaction${connection.transactions === 1 ? "" : "s"}`;
+  const consequence = `${connection.accounts} account${connection.accounts === 1 ? "" : "s"} and ${connection.transactions} imported transaction${connection.transactions === 1 ? "" : "s"} and ${connection.obligations} known obligation${connection.obligations === 1 ? "" : "s"}`;
 
   return (
     <div className="mt-3">

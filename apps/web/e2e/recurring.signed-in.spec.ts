@@ -5,7 +5,7 @@ import { SEED_CLERK_IDS } from "../db/seed/dataset";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
-import { signedInState } from "./session";
+import { refreshPageSession, signedInState } from "./session";
 
 const clerkIdOf = (key: "a" | "b"): string =>
   JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8"))[key].clerkUserId;
@@ -111,14 +111,26 @@ test.describe("recurring charge detection", () => {
     await expect(page.getByTestId("annual-in")).toHaveText("+$30,000.00");
 
     await page.goto("/upcoming?on=2026-04-01");
-    await expect(page.getByTestId("upcoming-to-leave")).toHaveText("$0.00");
+    await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$2,473.00");
     await expect(page.getByTestId("upcoming-to-arrive")).toHaveText("+$2,500.00");
-    await expect(page.getByTestId("upcoming-charge")).toHaveCount(0);
+    await expect(page.getByTestId("upcoming-charge")).toHaveCount(3);
     await expect(page.getByTestId("upcoming-deposit")).toHaveCount(1);
+    const canceledStreamflix = page.getByTestId("upcoming-charge").filter({ hasText: "Streamflix" });
+    await expect(canceledStreamflix).toHaveCount(1);
+    await expect(canceledStreamflix).toContainText("Known");
+    await expect(canceledStreamflix).not.toContainText("Predicted");
+
     await page.goto("/upcoming?on=2026-09-01");
+    await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$4,296.00");
+    await expect(page.getByTestId("upcoming-charge")).toHaveCount(5);
     await expect(page.getByTestId("upcoming-stale-stream")).toHaveCount(1);
     await expect(page.getByTestId("upcoming-stale")).toContainText("mark it canceled under Recurring");
-    await expect(page.locator("main")).not.toContainText("Streamflix");
+    const continuingStreamflix = page
+      .getByTestId("upcoming-charge")
+      .filter({ hasText: "Streamflix" });
+    await expect(continuingStreamflix).toHaveCount(2);
+    await expect(continuingStreamflix.filter({ hasText: "Known" })).toHaveCount(2);
+    await expect(continuingStreamflix.filter({ hasText: "Predicted" })).toHaveCount(0);
 
     await page.goto("/recurring");
     await section(page, "canceled").getByRole("button", { name: "It's back: Streamflix" }).click();
@@ -126,8 +138,12 @@ test.describe("recurring charge detection", () => {
     await expect(section(page, "canceled")).toHaveCount(0);
     await expect(page.getByTestId("annual-out")).toHaveText("-$276.00");
     await page.goto("/upcoming?on=2026-04-01");
-    await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$23.00");
-    await expect(page.getByTestId("upcoming-charge")).toContainText("Streamflix");
+    await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$2,496.00");
+    await expect(page.getByTestId("upcoming-charge")).toHaveCount(4);
+    const restoredStreamflix = page.getByTestId("upcoming-charge").filter({ hasText: "Streamflix" });
+    await expect(restoredStreamflix).toHaveCount(2);
+    await expect(restoredStreamflix.filter({ hasText: "Known" })).toHaveCount(1);
+    await expect(restoredStreamflix.filter({ hasText: "Predicted" })).toHaveCount(1);
   });
 
   test("a last charge above the usual amount is flagged as a price increase with both figures", async ({
@@ -166,7 +182,8 @@ test.describe("recurring charge detection", () => {
     await adminQuery("update recurring_streams set updated_at = '2026-03-01T12:00:00Z' where user_id = $1", [
       await userIdOf("a"),
     ]);
-    await page.reload();
+    await refreshPageSession(page);
+    await page.goto("/recurring");
     const streamflix = section(page, "canceled").getByTestId("recurring-stream");
     await expect(streamflix.getByTestId("charged-after-cancel")).toHaveText(
       "Charged Mar 29, 2026, after you marked it canceled on Mar 1, 2026",
@@ -177,7 +194,8 @@ test.describe("recurring charge detection", () => {
     await expect(streamflix.getByTestId("charged-after-cancel")).toHaveCount(0);
     await expect(streamflix.getByRole("button", { name: "Still canceled: Streamflix" })).toHaveCount(0);
     await expect(section(page, "canceled")).toContainText("Streamflix");
-    await page.reload();
+    await refreshPageSession(page);
+    await page.goto("/recurring");
     await expect(section(page, "canceled")).toContainText("Streamflix");
     await expect(page.getByTestId("charged-after-cancel")).toHaveCount(0);
   });

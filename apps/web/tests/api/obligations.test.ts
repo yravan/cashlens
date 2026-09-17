@@ -929,6 +929,7 @@ test("active obligation reads return only the owner's non-ended declarations", a
     {
       obligationId: activeId,
       accountId: ownerAccountId,
+      accountName: "Owner checking",
       name: "Rent",
       amountMinor: 180000,
       currency: "USD",

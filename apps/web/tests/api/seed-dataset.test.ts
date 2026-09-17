@@ -1,12 +1,12 @@
 import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { expect, test } from "vitest";
 
-import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_CATEGORIES, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_TRANSFER_PAIRS, SEED_UPCOMING_REFERENCE, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
+import { EXPECTED, SEED_ACCOUNTS, SEED_BALANCES, SEED_CATEGORIES, SEED_OBLIGATIONS, SEED_PERSONAS, SEED_TRANSACTIONS, SEED_TRANSFER_PAIRS, SEED_UPCOMING_REFERENCE, SEED_USERS, type ExpectedPersona, type SeedPersona } from "@/db/seed/dataset";
 import { assertLocalDatabaseUrl } from "@/db/seed/local-only";
 import { seedDataset } from "@/db/seed/seed";
 import { ledgerCounts } from "@/lib/data/ledger";
 import { requireUser } from "@/lib/data/users";
-import { accountBalances, accounts, categories, transactions, users } from "@/lib/db/schema";
+import { accountBalances, accounts, categories, scheduledObligations, transactions, users } from "@/lib/db/schema";
 import { DEFAULT_CATEGORIES } from "@/lib/ledger/default-categories";
 import { detectRecurringStreams } from "@/lib/ledger/recurring-detection";
 import { annualTotals } from "@/lib/ledger/subscriptions";
@@ -22,11 +22,18 @@ const seedCategory = (persona: "demo" | "neighbor", name: string, kind: "group" 
 const seedAccount = (persona: "demo" | "neighbor", name: string) =>
   SEED_ACCOUNTS.find((a) => a.persona === persona && a.name === name)!.id;
 
+const OBLIGATION_COUNTS: Record<SeedPersona, number> = {
+  demo: 3,
+  neighbor: 1,
+  empty: 0,
+};
+
 test("the dataset's exported totals match the hand-verified anchors", () => {
   expect(EXPECTED.demo).toEqual({
     accounts: 5,
     transactions: 19,
     balances: 5,
+    obligations: 3,
     pendingCount: 1,
     categories: 80,
     uncategorized: 9,
@@ -116,11 +123,11 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     ],
     overview: {
       accounts: [
-        { name: "Berlin Checking", type: "depository", subtype: "checking", mask: "0300", currency: "EUR", source: "import", currentMinor: 120450, reportedMinor: 120450, reportedOn: null, sinceCount: 0, transactionCount: 2 },
-        { name: "Everyday Checking", type: "depository", subtype: "checking", mask: "0100", currency: "USD", source: "plaid", currentMinor: 235370, reportedMinor: 235370, reportedOn: null, sinceCount: 0, transactionCount: 7 },
-        { name: "Rainy Day Savings", type: "depository", subtype: "savings", mask: "0200", currency: "USD", source: "plaid", currentMinor: 1500000, reportedMinor: 1500000, reportedOn: null, sinceCount: 0, transactionCount: 2 },
-        { name: "Cash Rewards Card", type: "credit", subtype: "credit card", mask: "4321", currency: "USD", source: "plaid", currentMinor: 51245, reportedMinor: 51245, reportedOn: null, sinceCount: 0, transactionCount: 7 },
-        { name: "Cash Wallet", type: "other", subtype: null, mask: null, currency: "USD", source: "manual", currentMinor: 6800, reportedMinor: 8600, reportedOn: "2026-03-14", sinceCount: 1, transactionCount: 1 },
+        { name: "Berlin Checking", type: "depository", subtype: "checking", mask: "0300", currency: "EUR", source: "import", currentMinor: 120450, reportedMinor: 120450, reportedOn: null, sinceCount: 0, transactionCount: 2, obligationCount: 0 },
+        { name: "Everyday Checking", type: "depository", subtype: "checking", mask: "0100", currency: "USD", source: "plaid", currentMinor: 235370, reportedMinor: 235370, reportedOn: null, sinceCount: 0, transactionCount: 7, obligationCount: 2 },
+        { name: "Rainy Day Savings", type: "depository", subtype: "savings", mask: "0200", currency: "USD", source: "plaid", currentMinor: 1500000, reportedMinor: 1500000, reportedOn: null, sinceCount: 0, transactionCount: 2, obligationCount: 0 },
+        { name: "Cash Rewards Card", type: "credit", subtype: "credit card", mask: "4321", currency: "USD", source: "plaid", currentMinor: 51245, reportedMinor: 51245, reportedOn: null, sinceCount: 0, transactionCount: 7, obligationCount: 1 },
+        { name: "Cash Wallet", type: "other", subtype: null, mask: null, currency: "USD", source: "manual", currentMinor: 6800, reportedMinor: 8600, reportedOn: "2026-03-14", sinceCount: 1, transactionCount: 1, obligationCount: 0 },
       ],
       cashOnHand: { EUR: 120450, USD: 1735370 },
       creditOwed: { USD: 51245 },
@@ -136,10 +143,13 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
       currencies: [
         {
           currency: "USD",
-          toLeaveMinor: -2300,
+          toLeaveMinor: -249600,
           toArriveMinor: 250000,
           charges: [
-            { source: "detected", accountId: seedAccount("demo", "Cash Rewards Card"), currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -2300, lastDate: "2026-03-29", date: "2026-04-29", overdue: false, possibleOverlap: false },
+            { source: "obligation", obligationId: "00000000-0000-4000-8000-000000000301", accountId: seedAccount("demo", "Everyday Checking"), currency: "USD", direction: "outflow", name: "Rent", cadence: "monthly", amountMinor: -180000, date: "2026-04-05", overdue: false, possibleOverlap: false },
+            { source: "obligation", obligationId: "00000000-0000-4000-8000-000000000302", accountId: seedAccount("demo", "Everyday Checking"), currency: "USD", direction: "outflow", name: "Tuition", cadence: "once", amountMinor: -65000, date: "2026-04-18", overdue: false, possibleOverlap: false },
+            { source: "detected", accountId: seedAccount("demo", "Cash Rewards Card"), currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -2300, lastDate: "2026-03-29", date: "2026-04-29", overdue: false, possibleOverlap: true },
+            { source: "obligation", obligationId: "00000000-0000-4000-8000-000000000303", accountId: seedAccount("demo", "Cash Rewards Card"), currency: "USD", direction: "outflow", name: "Streamflix", cadence: "monthly", amountMinor: -2300, date: "2026-04-29", overdue: false, possibleOverlap: true },
           ],
           deposits: [
             { source: "detected", accountId: seedAccount("demo", "Everyday Checking"), currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: 250000, lastDate: "2026-03-27", date: "2026-04-27", overdue: false, possibleOverlap: false },
@@ -154,6 +164,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     accounts: 1,
     transactions: 2,
     balances: 1,
+    obligations: 1,
     pendingCount: 0,
     categories: 80,
     uncategorized: 1,
@@ -187,7 +198,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     ],
     overview: {
       accounts: [
-        { name: "Neighbor Checking", type: "depository", subtype: "checking", mask: "0900", currency: "USD", source: "plaid", currentMinor: 50000, reportedMinor: 50000, reportedOn: null, sinceCount: 0, transactionCount: 2 },
+        { name: "Neighbor Checking", type: "depository", subtype: "checking", mask: "0900", currency: "USD", source: "plaid", currentMinor: 50000, reportedMinor: 50000, reportedOn: null, sinceCount: 0, transactionCount: 2, obligationCount: 1 },
       ],
       cashOnHand: { USD: 50000 },
       creditOwed: {},
@@ -195,13 +206,28 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     history: { order: expect.any(Array), currencies: ["USD"] },
     transfers: { pairs: [], pairedRows: 0, autoQueue: 1 },
     recurring: [],
-    upcoming: { monthEnd: "2026-04-30", currencies: [], stale: [] },
+    upcoming: {
+      monthEnd: "2026-04-30",
+      currencies: [
+        {
+          currency: "USD",
+          toLeaveMinor: -120000,
+          toArriveMinor: 0,
+          charges: [
+            { source: "obligation", obligationId: "00000000-0000-4000-8000-000000000304", accountId: seedAccount("neighbor", "Neighbor Checking"), currency: "USD", direction: "outflow", name: "Insurance", cadence: "annual", amountMinor: -120000, date: "2026-04-12", overdue: false, possibleOverlap: false },
+          ],
+          deposits: [],
+        },
+      ],
+      stale: [],
+    },
     annual: [],
   });
   expect(EXPECTED.empty).toEqual({
     accounts: 0,
     transactions: 0,
     balances: 0,
+    obligations: 0,
     pendingCount: 0,
     categories: 0,
     uncategorized: 0,
@@ -217,6 +243,55 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     upcoming: { monthEnd: "2026-04-30", currencies: [], stale: [] },
     annual: [],
   });
+});
+
+test("the scheduled-obligation fixtures pin the approved declarations", () => {
+  expect(SEED_OBLIGATIONS).toEqual([
+    {
+      persona: "demo",
+      id: "00000000-0000-4000-8000-000000000301",
+      accountId: seedAccount("demo", "Everyday Checking"),
+      name: "Rent",
+      amountMinor: 180000,
+      currency: "USD",
+      cadence: "monthly",
+      startsOn: "2026-04-05",
+      endsOn: null,
+    },
+    {
+      persona: "demo",
+      id: "00000000-0000-4000-8000-000000000302",
+      accountId: seedAccount("demo", "Everyday Checking"),
+      name: "Tuition",
+      amountMinor: 65000,
+      currency: "USD",
+      cadence: "once",
+      startsOn: "2026-04-18",
+      endsOn: null,
+    },
+    {
+      persona: "demo",
+      id: "00000000-0000-4000-8000-000000000303",
+      accountId: seedAccount("demo", "Cash Rewards Card"),
+      name: "Streamflix",
+      amountMinor: 2300,
+      currency: "USD",
+      cadence: "monthly",
+      startsOn: "2026-04-29",
+      endsOn: null,
+    },
+    {
+      persona: "neighbor",
+      id: "00000000-0000-4000-8000-000000000304",
+      accountId: seedAccount("neighbor", "Neighbor Checking"),
+      name: "Insurance",
+      amountMinor: 120000,
+      currency: "USD",
+      cadence: "annual",
+      startsOn: "2026-04-12",
+      endsOn: null,
+    },
+  ]);
 });
 
 test("the history chronology matches the hand-verified order, ties resolved newest-id-first", () => {
@@ -266,6 +341,17 @@ test("the dataset spans every ledger shape the schema supports today", () => {
 
   expect(SEED_ACCOUNTS.some((a) => a.persona === "neighbor")).toBe(true);
   expect(SEED_ACCOUNTS.some((a) => a.persona === "empty")).toBe(false);
+
+  for (const obligation of SEED_OBLIGATIONS) {
+    expect(obligation.amountMinor).toBeGreaterThan(0);
+    expect(
+      SEED_ACCOUNTS.some(
+        (account) =>
+          account.id === obligation.accountId && account.persona === obligation.persona,
+      ),
+    ).toBe(true);
+  }
+  expect(SEED_OBLIGATIONS.some((row) => row.persona === "empty")).toBe(false);
 
   expect(SEED_TRANSACTIONS.some((t) => t.categoryId)).toBe(true);
   expect(SEED_TRANSACTIONS.some((t) => !t.categoryId)).toBe(true);
@@ -405,10 +491,23 @@ test("the dataset's recurring streams are exactly what 6.4.1's detector finds in
   }
 });
 
-test("the dataset's upcoming month is exactly what 6.4.2's projector finds in the streams", () => {
+test("the dataset's upcoming month is exactly what 6.4.2's projector finds in the streams and declarations", () => {
   for (const persona of SEED_PERSONAS) {
     const streams = EXPECTED[persona].recurring.map((s) => ({ ...s, status: "proposed" as const }));
-    expect(projectUpcoming(streams, SEED_UPCOMING_REFERENCE)).toEqual(EXPECTED[persona].upcoming);
+    const obligations = SEED_OBLIGATIONS.filter((row) => row.persona === persona).map((row) => ({
+      obligationId: row.id,
+      accountId: row.accountId,
+      name: row.name,
+      amountMinor: row.amountMinor,
+      currency: row.currency,
+      cadence: row.cadence,
+      startsOn: row.startsOn,
+      endsOn: row.endsOn ?? null,
+      endedAt: null,
+    }));
+    expect(projectUpcoming(streams, SEED_UPCOMING_REFERENCE, obligations)).toEqual(
+      EXPECTED[persona].upcoming,
+    );
   }
 });
 
@@ -444,7 +543,12 @@ test("the dataset's transfer pairs are the two hand-verified zero-sum moves, mat
   }
 });
 
-async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending" | "recurring" | "upcoming" | "annual">> {
+type PersistedPersona = Omit<
+  ExpectedPersona,
+  "overview" | "history" | "transfers" | "flow" | "spending" | "recurring" | "upcoming" | "annual"
+> & { obligations: number };
+
+async function personaInDb(userId: string): Promise<PersistedPersona> {
   const db = adminDb();
   const mine = eq(transactions.userId, userId);
   const posted = await db
@@ -470,6 +574,7 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
     accounts: await db.$count(accounts, eq(accounts.userId, userId)),
     transactions: await db.$count(transactions, mine),
     balances: await db.$count(accountBalances, eq(accountBalances.userId, userId)),
+    obligations: await db.$count(scheduledObligations, eq(scheduledObligations.userId, userId)),
     pendingCount: await db.$count(transactions, and(mine, eq(transactions.status, "pending"))),
     categories: await db.$count(categories, eq(categories.userId, userId)),
     uncategorized: await db.$count(transactions, and(mine, isNull(transactions.categoryId))),
@@ -486,10 +591,21 @@ async function personaInDb(userId: string): Promise<Omit<ExpectedPersona, "overv
   };
 }
 
-function ledgerExpected(persona: (typeof SEED_PERSONAS)[number]): Omit<ExpectedPersona, "overview" | "history" | "transfers" | "flow" | "spending" | "recurring" | "upcoming" | "annual"> {
+function ledgerExpected(persona: SeedPersona): PersistedPersona {
   const { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted } =
     EXPECTED[persona];
-  return { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted };
+  return {
+    accounts,
+    transactions,
+    balances,
+    obligations: OBLIGATION_COUNTS[persona],
+    pendingCount,
+    categories,
+    uncategorized,
+    review,
+    assigned,
+    posted,
+  };
 }
 
 test("seeding lands every persona's ledger in the database exactly, and reseeding is idempotent", async () => {
@@ -499,6 +615,28 @@ test("seeding lands every persona's ledger in the database exactly, and reseedin
   for (const persona of SEED_PERSONAS) {
     expect(await personaInDb(ids[persona])).toEqual(ledgerExpected(persona));
   }
+
+  const obligations = await adminDb()
+    .select({
+      id: scheduledObligations.id,
+      userId: scheduledObligations.userId,
+      accountId: scheduledObligations.accountId,
+      name: scheduledObligations.name,
+      amountMinor: scheduledObligations.amountMinor,
+      currency: scheduledObligations.currency,
+      cadence: scheduledObligations.cadence,
+      startsOn: scheduledObligations.startsOn,
+      endsOn: scheduledObligations.endsOn,
+      endedAt: scheduledObligations.endedAt,
+    })
+    .from(scheduledObligations);
+  expect(obligations.sort((a, b) => a.id.localeCompare(b.id))).toEqual(
+    SEED_OBLIGATIONS.map(({ persona, ...row }) => ({
+      ...row,
+      userId: ids[persona],
+      endedAt: null,
+    })).sort((a, b) => a.id.localeCompare(b.id)),
+  );
 
   expect(await adminDb().$count(users, eq(users.clerkUserId, SEED_USERS.demo.clerkUserId))).toBe(1);
 });
@@ -513,6 +651,7 @@ test("re-seeding with personas remapped to different users never collides", asyn
   expect(await personaInDb(x.id)).toEqual(ledgerExpected("demo"));
   expect(await personaInDb(ids.neighbor)).toEqual(ledgerExpected("neighbor"));
   expect(await adminDb().$count(categories, eq(categories.userId, y.id))).toBe(0);
+  expect(await adminDb().$count(scheduledObligations, eq(scheduledObligations.userId, y.id))).toBe(0);
 });
 
 test("seedDataset attaches persona ledgers to caller-provided users", async () => {
