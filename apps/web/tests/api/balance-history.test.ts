@@ -3,7 +3,7 @@ import { expect, test, vi } from "vitest";
 
 import { POST as updateManualBalance } from "@/app/api/accounts/[accountId]/manual/route";
 import { POST as createManualAccount } from "@/app/api/accounts/manual/route";
-import { captureBalanceSnapshot } from "@/lib/data/balance-history";
+import { captureBalanceSnapshot, providerBalanceHistory } from "@/lib/data/balance-history";
 import { withRequestScope } from "@/lib/db/client";
 import { accountBalances, accountBalanceSnapshots } from "@/lib/db/schema";
 import { withAuth } from "../harness/clerk";
@@ -175,6 +175,128 @@ test("provider snapshot days use UTC regardless of the database timezone", async
     .from(accountBalanceSnapshots)
     .where(eq(accountBalanceSnapshots.accountId, accountId));
   expect(snapshot.snapshotDay).toBe("2026-04-02");
+});
+
+test("provider history labels observed, carried, and unavailable days with provenance", async () => {
+  const owner = await provisionedUser();
+  const neighbor = await provisionedUser();
+  const accountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Card",
+    type: "credit",
+    source: "plaid",
+    currency: "EUR",
+    currentMinor: 0,
+    reportedOn: null,
+  });
+  const neighborAccountId = await anchoredAccount({
+    userId: neighbor.id,
+    name: "Neighbor checking",
+    type: "depository",
+    source: "plaid",
+    currentMinor: 99999,
+    reportedOn: null,
+  });
+  const firstObservedAt = new Date("2026-04-02T10:00:00Z");
+  const firstProviderAsOf = new Date("2026-04-02T09:45:00Z");
+  const latestObservedAt = new Date("2026-04-04T11:00:00Z");
+
+  await withRequestScope(owner.clerkUserId, async (tx) => {
+    await captureBalanceSnapshot(tx, {
+      accountId,
+      userId: owner.id,
+      currentMinor: 12500,
+      currency: "EUR",
+      source: "provider",
+      captureReason: "event",
+      observedAt: firstObservedAt,
+      providerAsOf: firstProviderAsOf,
+    });
+    await captureBalanceSnapshot(tx, {
+      accountId,
+      userId: owner.id,
+      currentMinor: 0,
+      currency: "EUR",
+      source: "provider",
+      captureReason: "reconciliation",
+      observedAt: latestObservedAt,
+      providerAsOf: null,
+    });
+  });
+  await withRequestScope(neighbor.clerkUserId, (tx) =>
+    captureBalanceSnapshot(tx, {
+      accountId: neighborAccountId,
+      userId: neighbor.id,
+      currentMinor: 99999,
+      currency: "USD",
+      source: "provider",
+      captureReason: "event",
+      observedAt: firstObservedAt,
+      providerAsOf: null,
+    }),
+  );
+  await adminDb()
+    .update(accountBalances)
+    .set({ currentMinor: 0, asOf: latestObservedAt })
+    .where(eq(accountBalances.accountId, accountId));
+
+  const history = await withAuth(owner.clerkUserId, () =>
+    providerBalanceHistory({ from: "2026-04-01", to: "2026-04-05" }),
+  );
+
+  expect(history).toEqual([
+    {
+      accountId,
+      accountType: "credit",
+      currency: "EUR",
+      points: [
+        { day: "2026-04-01", basis: "unavailable", currentMinor: null },
+        {
+          day: "2026-04-02",
+          basis: "observed",
+          currentMinor: 12500,
+          observedDay: "2026-04-02",
+          observedAt: firstObservedAt,
+          providerAsOf: firstProviderAsOf,
+          captureReason: "event",
+        },
+        {
+          day: "2026-04-03",
+          basis: "carried",
+          currentMinor: 12500,
+          observedDay: "2026-04-02",
+          observedAt: firstObservedAt,
+          providerAsOf: firstProviderAsOf,
+          captureReason: "event",
+        },
+        {
+          day: "2026-04-04",
+          basis: "observed",
+          currentMinor: 0,
+          observedDay: "2026-04-04",
+          observedAt: latestObservedAt,
+          providerAsOf: null,
+          captureReason: "reconciliation",
+        },
+        {
+          day: "2026-04-05",
+          basis: "carried",
+          currentMinor: 0,
+          observedDay: "2026-04-04",
+          observedAt: latestObservedAt,
+          providerAsOf: null,
+          captureReason: "reconciliation",
+        },
+      ],
+    },
+  ]);
+
+  const stored = await adminDb()
+    .select({ snapshotDay: accountBalanceSnapshots.snapshotDay })
+    .from(accountBalanceSnapshots)
+    .where(eq(accountBalanceSnapshots.accountId, accountId))
+    .orderBy(accountBalanceSnapshots.snapshotDay);
+  expect(stored).toEqual([{ snapshotDay: "2026-04-02" }, { snapshotDay: "2026-04-04" }]);
 });
 
 test("an older genuine provider observation cannot replace a newer one", async () => {

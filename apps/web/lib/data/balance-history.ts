@@ -1,8 +1,9 @@
 import "server-only";
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 
-import type { ScopedTx } from "@/lib/db/client";
-import { accountBalanceSnapshots } from "@/lib/db/schema";
+import { requireUser } from "@/lib/data/users";
+import { withRequestScope, type ScopedTx } from "@/lib/db/client";
+import { accountBalanceSnapshots, accounts } from "@/lib/db/schema";
 import { logEvent } from "@/lib/log";
 
 type BalanceSnapshotBase = {
@@ -93,4 +94,127 @@ export async function captureBalanceSnapshot(
   ) {
     invariantConflict(capture, snapshotDay);
   }
+}
+
+type ProviderBalanceHistoryPoint =
+  | {
+      day: string;
+      basis: "observed" | "carried";
+      currentMinor: number;
+      observedDay: string;
+      observedAt: Date;
+      providerAsOf: Date | null;
+      captureReason: "event" | "bootstrap" | "reconciliation";
+    }
+  | { day: string; basis: "unavailable"; currentMinor: null };
+
+export type ProviderAccountBalanceHistory = {
+  accountId: string;
+  accountType: (typeof accounts.$inferSelect)["type"];
+  currency: string;
+  points: ProviderBalanceHistoryPoint[];
+};
+
+type ProviderHistoryRange = {
+  from: string;
+  to: string;
+  accountIds?: readonly string[];
+};
+
+function inclusiveDays(from: string, to: string): string[] {
+  const days: string[] = [];
+  const cursor = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(`${to}T00:00:00.000Z`);
+  while (cursor <= end) {
+    days.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return days;
+}
+
+export async function providerBalanceHistory(
+  range: ProviderHistoryRange,
+): Promise<ProviderAccountBalanceHistory[]> {
+  const user = await requireUser();
+  return withRequestScope(user.clerkUserId, async (tx) => {
+    if (range.accountIds?.length === 0) return [];
+
+    const accountScope = [eq(accounts.userId, user.id), eq(accounts.source, "plaid")];
+    if (range.accountIds) accountScope.push(inArray(accounts.id, range.accountIds));
+    const selectedAccounts = await tx
+      .select({
+        accountId: accounts.id,
+        accountType: accounts.type,
+        currency: accounts.currency,
+      })
+      .from(accounts)
+      .where(and(...accountScope))
+      .orderBy(asc(accounts.type), asc(accounts.id));
+    if (selectedAccounts.length === 0) return [];
+
+    const accountIds = selectedAccounts.map((account) => account.accountId);
+    const snapshotFields = {
+      accountId: accountBalanceSnapshots.accountId,
+      snapshotDay: accountBalanceSnapshots.snapshotDay,
+      currentMinor: accountBalanceSnapshots.currentMinor,
+      captureReason: accountBalanceSnapshots.captureReason,
+      observedAt: accountBalanceSnapshots.observedAt,
+      providerAsOf: accountBalanceSnapshots.providerAsOf,
+    };
+    const snapshotScope = and(
+      eq(accountBalanceSnapshots.userId, user.id),
+      eq(accountBalanceSnapshots.source, "provider"),
+      inArray(accountBalanceSnapshots.accountId, accountIds),
+    )!;
+    const priorSnapshots = await tx
+      .selectDistinctOn([accountBalanceSnapshots.accountId], snapshotFields)
+      .from(accountBalanceSnapshots)
+      .where(and(snapshotScope, lt(accountBalanceSnapshots.snapshotDay, range.from)))
+      .orderBy(accountBalanceSnapshots.accountId, desc(accountBalanceSnapshots.snapshotDay));
+    const rangeSnapshots = await tx
+      .select(snapshotFields)
+      .from(accountBalanceSnapshots)
+      .where(
+        and(
+          snapshotScope,
+          gte(accountBalanceSnapshots.snapshotDay, range.from),
+          lte(accountBalanceSnapshots.snapshotDay, range.to),
+        ),
+      )
+      .orderBy(accountBalanceSnapshots.accountId, accountBalanceSnapshots.snapshotDay);
+
+    type Snapshot = (typeof rangeSnapshots)[number];
+    const snapshotsByAccount = new Map<string, Snapshot[]>();
+    for (const snapshot of [...priorSnapshots, ...rangeSnapshots]) {
+      const snapshots = snapshotsByAccount.get(snapshot.accountId) ?? [];
+      snapshots.push(snapshot);
+      snapshotsByAccount.set(snapshot.accountId, snapshots);
+    }
+    const days = inclusiveDays(range.from, range.to);
+
+    return selectedAccounts.map((account) => {
+      const snapshots = (snapshotsByAccount.get(account.accountId) ?? []).sort((a, b) =>
+        a.snapshotDay.localeCompare(b.snapshotDay),
+      );
+      let observed: Snapshot | undefined;
+      let index = 0;
+      const points = days.map((day): ProviderBalanceHistoryPoint => {
+        while (index < snapshots.length && snapshots[index].snapshotDay <= day) {
+          observed = snapshots[index];
+          index += 1;
+        }
+        if (!observed) return { day, basis: "unavailable", currentMinor: null };
+        return {
+          day,
+          basis: observed.snapshotDay === day ? "observed" : "carried",
+          currentMinor: observed.currentMinor,
+          observedDay: observed.snapshotDay,
+          observedAt: observed.observedAt,
+          providerAsOf: observed.providerAsOf,
+          captureReason: observed.captureReason,
+        };
+      });
+      return { ...account, points };
+    });
+  });
 }
