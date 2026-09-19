@@ -77,6 +77,7 @@ export function normalizeAmount(value: string, decimalMark: DecimalMark): string
   text = text.split(decimalMark === "." ? "," : ".").join("");
   if (decimalMark === ",") text = text.replace(",", ".");
   if (!PLAIN_DECIMAL.test(text)) return null;
+  text = text.replace(/^0+(?=\d)/, "");
   return negative ? `-${text}` : text;
 }
 
