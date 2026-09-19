@@ -6,7 +6,7 @@ import path from "node:path";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { escapeIdentifier } from "pg";
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test } from "vitest";
 
 import { assertLocalDatabaseUrl } from "@/db/seed/local-only";
 import {
@@ -73,7 +73,6 @@ test("the journal upgrade preserves legacy category provenance and defaults", as
   const databaseName = `cashlens_upgrade_${randomUUID().replaceAll("-", "").slice(0, 16)}`;
   if (!DATABASE_NAME.test(databaseName)) throw new Error("generated upgrade database name is invalid");
   const staging = await mkdtemp(path.join(os.tmpdir(), "cashlens-migrations-"));
-  let created = false;
   let beforeUpgrade: { description: string; snapshot: Record<string, unknown> }[] = [];
 
   try {
@@ -83,7 +82,14 @@ test("the journal upgrade preserves legacy category provenance and defaults", as
         `create database ${escapeIdentifier(databaseName)} owner ${escapeIdentifier(ownerRole)}`,
       );
     });
-    created = true;
+    onTestFinished(
+      async () => {
+        await withClient(superuserUrl, (client) =>
+          client.query(`drop database if exists ${escapeIdentifier(databaseName)} with (force)`),
+        );
+      },
+      30_000,
+    );
 
     const baselineUrl = urlForDb("DATABASE_URL_OWNER", databaseName);
     await withClient(baselineUrl, (client) =>
@@ -170,14 +176,6 @@ test("the journal upgrade preserves legacy category provenance and defaults", as
       ]);
     });
   } finally {
-    try {
-      if (created) {
-        await withClient(superuserUrl, (client) =>
-          client.query(`drop database if exists ${escapeIdentifier(databaseName)} with (force)`),
-        );
-      }
-    } finally {
-      await rm(staging, { recursive: true, force: true });
-    }
+    await rm(staging, { recursive: true, force: true });
   }
 });

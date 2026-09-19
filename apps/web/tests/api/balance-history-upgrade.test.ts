@@ -6,7 +6,7 @@ import path from "node:path";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { escapeIdentifier } from "pg";
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test } from "vitest";
 
 import { assertLocalDatabaseUrl } from "@/db/seed/local-only";
 import { APP_DIR, requireEnv, urlForDb, withClient } from "../harness/db";
@@ -34,7 +34,6 @@ test("the real owner upgrade bootstraps only usable original balances without la
   expect(ownerRole).toBe("cashlens_owner");
   const databaseName = `cashlens_upgrade_${randomUUID().replaceAll("-", "").slice(0, 16)}`;
   const staging = await mkdtemp(path.join(os.tmpdir(), "cashlens-balance-upgrade-"));
-  let created = false;
   try {
     const journal = JSON.parse(await readFile(path.join(migrations, "meta/_journal.json"), "utf8")) as {
       entries: { tag: string }[];
@@ -50,7 +49,14 @@ test("the real owner upgrade bootstraps only usable original balances without la
     await withClient(requireEnv("DATABASE_URL_SUPERUSER"), (client) => client.query(
       `create database ${escapeIdentifier(databaseName)} owner ${escapeIdentifier(ownerRole)}`,
     ));
-    created = true;
+    onTestFinished(
+      async () => {
+        await withClient(requireEnv("DATABASE_URL_SUPERUSER"), (client) => client.query(
+          `drop database if exists ${escapeIdentifier(databaseName)} with (force)`,
+        ));
+      },
+      30_000,
+    );
     const ownerUrl = urlForDb("DATABASE_URL_OWNER", databaseName);
     const adminUrl = urlForDb("DATABASE_URL_SUPERUSER", databaseName);
     const appUrl = urlForDb("DATABASE_URL", databaseName);
@@ -190,12 +196,6 @@ test("the real owner upgrade bootstraps only usable original balances without la
       });
     });
   } finally {
-    try {
-      if (created) await withClient(requireEnv("DATABASE_URL_SUPERUSER"), (client) => client.query(
-        `drop database if exists ${escapeIdentifier(databaseName)} with (force)`,
-      ));
-    } finally {
-      await rm(staging, { recursive: true, force: true });
-    }
+    await rm(staging, { recursive: true, force: true });
   }
 });
