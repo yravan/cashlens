@@ -25,7 +25,7 @@ async function userIdOf(key: "a" | "b"): Promise<string> {
 const currencySection = (page: Page, currency: string) =>
   page.getByTestId(`spend-currency-${currency}`);
 
-const signed = (minor: number, currency: string) =>
+const signed = (minor: number | bigint, currency: string) =>
   `${minor > 0 ? "+" : ""}${formatMinorUnits(minor, currency)}`;
 
 const spendingOf = (persona: "demo" | "neighbor", currency: string) =>
@@ -35,13 +35,13 @@ const demoLeafId = (name: string) =>
   SEED_CATEGORIES.find((c) => c.persona === "demo" && c.name === name && c.parentId !== null)!.id;
 
 const directionNote = (
-  totals: { spentMinor: number; receivedMinor: number },
+  totals: { spentMinor: bigint; receivedMinor: bigint },
   currency: string,
 ) => `${formatMinorUnits(totals.spentMinor, currency)} out · ${signed(totals.receivedMinor, currency)} in`;
 
 async function expectTotals(
   section: Locator,
-  totals: { spentMinor: number; receivedMinor: number; netMinor: number },
+  totals: { spentMinor: bigint; receivedMinor: bigint; netMinor: bigint },
   currency: string,
 ) {
   await expect(section.getByTestId("spend-in")).toHaveText(
@@ -140,7 +140,7 @@ test.describe("spending by category", () => {
     const usd = currencySection(page, "USD");
     await expectTotals(
       usd,
-      { spentMinor: -15279, receivedMinor: 272112, netMinor: 256833 },
+      { spentMinor: BigInt(-15279), receivedMinor: BigInt(272112), netMinor: BigInt(256833) },
       "USD",
     );
     await expect(page.getByTestId("spend-currency-EUR")).toHaveCount(0);

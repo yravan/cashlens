@@ -39,9 +39,9 @@ test("exclusion is pair membership, not description: unmatched transfer legs cou
   expect(before.transferRows).toBe(0);
   expect(monthsOf(before, "USD")[0]).toEqual({
     month: "2026-03",
-    inflowMinor: 477112,
-    outflowMinor: -220279,
-    netMinor: 256833,
+    inflowMinor: BigInt(477112),
+    outflowMinor: BigInt(-220279),
+    netMinor: BigInt(256833),
   });
 
   await withAuth(clerkUserId, () => matchTransfers());
@@ -69,9 +69,9 @@ test("a dismissed pair's legs count again, and net is invariant to pairing eithe
   expect(summary.transferRows).toBe(2);
   expect(monthsOf(summary, "USD")[0]).toEqual({
     month: "2026-03",
-    inflowMinor: 392112,
-    outflowMinor: -135279,
-    netMinor: 256833,
+    inflowMinor: BigInt(392112),
+    outflowMinor: BigInt(-135279),
+    netMinor: BigInt(256833),
   });
   expect(monthsOf(summary, "EUR")).toEqual(EXPECTED.demo.flow[0].months);
 });
@@ -93,9 +93,9 @@ test("a pending row is disclosed, not counted, and joins the flow only when it p
   expect(summary.pendingCount).toBe(0);
   expect(monthsOf(summary, "USD")[0]).toEqual({
     month: "2026-03",
-    inflowMinor: 272112,
-    outflowMinor: -16529,
-    netMinor: 255583,
+    inflowMinor: BigInt(272112),
+    outflowMinor: BigInt(-16529),
+    netMinor: BigInt(255583),
   });
 });
 

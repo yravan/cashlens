@@ -33,7 +33,10 @@ test("the account and balance tables enforce the signed-in scope even without a 
       .leftJoin(accountBalances, eq(accountBalances.accountId, accounts.id)),
   );
   expect(rows).toEqual(
-    EXPECTED.neighbor.overview.accounts.map(({ name, currentMinor }) => ({ name, currentMinor })),
+    EXPECTED.neighbor.overview.accounts.map(({ name, currentMinor }) => ({
+      name,
+      currentMinor: currentMinor === null ? null : Number(currentMinor),
+    })),
   );
 });
 
