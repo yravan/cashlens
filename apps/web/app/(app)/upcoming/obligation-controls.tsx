@@ -197,11 +197,10 @@ function ObligationForm({
   );
 }
 
-export function AddObligation({ accounts }: { accounts: ObligationAccount[] }) {
+function useDisclosure() {
   const button = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef(false);
   const [open, setOpen] = useState(false);
-  const firstAccount = accounts[0];
   const close = () => {
     returnFocus.current = true;
     setOpen(false);
@@ -212,6 +211,13 @@ export function AddObligation({ accounts }: { accounts: ObligationAccount[] }) {
     button.current?.focus();
     returnFocus.current = false;
   }, [open]);
+
+  return { open, setOpen, button, close };
+}
+
+export function AddObligation({ accounts }: { accounts: ObligationAccount[] }) {
+  const { open, setOpen, button, close } = useDisclosure();
+  const firstAccount = accounts[0];
 
   if (!open) {
     return (
@@ -255,19 +261,7 @@ export function EditObligation({
   accounts: ObligationAccount[];
   obligation: EditableObligation;
 }) {
-  const button = useRef<HTMLButtonElement>(null);
-  const returnFocus = useRef(false);
-  const [open, setOpen] = useState(false);
-  const close = () => {
-    returnFocus.current = true;
-    setOpen(false);
-  };
-
-  useEffect(() => {
-    if (open || !returnFocus.current) return;
-    button.current?.focus();
-    returnFocus.current = false;
-  }, [open]);
+  const { open, setOpen, button, close } = useDisclosure();
 
   if (!open) {
     return (
@@ -310,13 +304,7 @@ export function EndObligation({
   obligation: Pick<EditableObligation, "id" | "name">;
 }) {
   const router = useRouter();
-  const button = useRef<HTMLButtonElement>(null);
-  const returnFocus = useRef(false);
-  const [open, setOpen] = useState(false);
-  const close = () => {
-    returnFocus.current = true;
-    setOpen(false);
-  };
+  const { open, setOpen, button, close } = useDisclosure();
   const { error, pending, run } = useMutation(responseError, () => {
     (
       document.getElementById("add-obligation") ??
@@ -324,12 +312,6 @@ export function EndObligation({
     )?.focus();
     router.refresh();
   });
-
-  useEffect(() => {
-    if (open || !returnFocus.current) return;
-    button.current?.focus();
-    returnFocus.current = false;
-  }, [open]);
 
   if (!open) {
     return (
