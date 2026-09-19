@@ -5,7 +5,7 @@ import type { Page } from "@playwright/test";
 import { EXPECTED, SEED_CLERK_IDS } from "../db/seed/dataset";
 import { formatMinorUnits } from "../lib/ledger/minor-units";
 import { E2E_USERS_FILE } from "../playwright.config";
-import { adminQuery, seedLedgerFixture } from "./db";
+import { adminQuery, appQueryScopedAs, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
 import { refreshPageSession, signedInState } from "./session";
 
@@ -49,6 +49,17 @@ async function offlineAccount(userId: string, name: string) {
 }
 
 const REPORTED_AT = new Date("2026-09-11T19:00:00.000Z");
+
+async function storedSnapshots(key: "a" | "b", accountId: string) {
+  return (await appQueryScopedAs(clerkIdOf(key),
+    `select s.snapshot_day::text, s.current_minor, s.currency, s.source, s.capture_reason,
+            s.observed_at::text, s.provider_as_of, s.created_at::text, s.updated_at::text,
+            s.observed_at = b.as_of as same_observation
+       from account_balance_snapshots s
+       join account_balances b on b.account_id = s.account_id
+      where s.account_id = $1 order by s.snapshot_day`, [accountId])).rows;
+}
+
 const SEED_CASH = EXPECTED.demo.overview.cashOnHand.USD;
 const SEED_OWED = EXPECTED.demo.overview.creditOwed.USD;
 const usd = (minor: number) => formatMinorUnits(minor, "USD");
@@ -120,6 +131,13 @@ test.describe("offline accounts", () => {
       },
     ]);
     const accountId = created.rows[0].id;
+    const anchor = await storedSnapshots("a", accountId);
+    expect(anchor).toEqual([{
+      snapshot_day: "2026-09-11", current_minor: "10000", currency: "USD",
+      source: "manual_anchor", capture_reason: "event", provider_as_of: null,
+      observed_at: expect.any(String), created_at: expect.any(String), updated_at: expect.any(String),
+      same_observation: true,
+    }]);
     await expect(page.getByTestId("accounts-count")).toHaveText("6 accounts in the ledger");
     await expect(page.getByTestId("account-group-depository")).toContainText("Petty Cash");
     await expect(accountRow(page, "Petty Cash")).toContainText(usd(10000));
@@ -148,6 +166,7 @@ test.describe("offline accounts", () => {
       `Reported ${usd(10000)} on 2026-09-11 · 1 transaction since`,
     );
     await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH + 7500));
+    expect(await storedSnapshots("a", accountId)).toEqual(anchor);
 
     await accountRow(page, "Petty Cash").getByRole("button", { name: "Update balance" }).click();
     const update = page.getByRole("form", { name: "Update balance" });
@@ -163,6 +182,11 @@ test.describe("offline accounts", () => {
       `Reported ${usd(8000)} on 2026-09-11`,
     );
     await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH + 8000));
+    const corrected = await storedSnapshots("a", accountId);
+    expect(corrected).toEqual([{
+      ...anchor[0], current_minor: "8000", observed_at: expect.any(String), updated_at: expect.any(String),
+    }]);
+    expect(corrected[0].observed_at).not.toBe(anchor[0].observed_at);
 
     await accountRow(page, "Petty Cash").getByRole("button", { name: "Rename" }).click();
     const rename = page.getByRole("form", { name: "Rename account" });
@@ -174,6 +198,8 @@ test.describe("offline accounts", () => {
     await expect(accountRow(page, "Coffee Tin")).toContainText(usd(8000));
     await expect(page.getByTestId("account-group-depository")).not.toContainText("Petty Cash");
     expect((await offlineAccount(userA, "Coffee Tin")).rows[0].id).toBe(accountId);
+    expect(await storedSnapshots("a", accountId)).toEqual(corrected);
+    expect(await storedSnapshots("b", accountId)).toEqual([]);
 
     const createdObligation = await page.context().request.post("/api/obligations", {
       data: {
@@ -223,6 +249,7 @@ test.describe("offline accounts", () => {
     await expect(page.getByTestId("accounts-count")).toHaveText("5 accounts in the ledger");
     await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH));
     expect((await offlineAccount(userA, "Coffee Tin")).rowCount).toBe(0);
+    expect((await adminQuery("select account_id from account_balance_snapshots where account_id = $1", [accountId])).rows).toEqual([]);
     expect(
       (
         await adminQuery(
