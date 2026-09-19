@@ -329,7 +329,7 @@ test("Plaid's 500-unit Unicode identities stay distinct through decisions and pr
   );
   expect(overview.streams.every((stream) => stream.normalizedName.length <= 1500)).toBe(true);
   expect(new Set(overview.streams.map((stream) => stream.normalizedName)).size).toBe(2);
-  expect(overview.annual).toEqual([{ currency: "USD", outMinor: -28800, inMinor: 0 }]);
+  expect(overview.annual).toEqual([{ currency: "USD", outMinor: BigInt(-28800), inMinor: BigInt(0) }]);
 
   const checking = overview.streams.find((stream) => stream.normalizedName === checkingNormalized)!;
   const second = overview.streams.find((stream) => stream.normalizedName === cardNormalized)!;
@@ -351,12 +351,12 @@ test("Plaid's 500-unit Unicode identities stay distinct through decisions and pr
   expect((await post(checkingIdentity, "confirmed")).status).toBe(200);
   expect((await post(secondIdentity, "confirmed")).status).toBe(200);
   expect(await withAuth(clerkUserId, () => recurringOverview())).toMatchObject({
-    annual: [{ currency: "USD", outMinor: -28800, inMinor: 0 }],
+    annual: [{ currency: "USD", outMinor: BigInt(-28800), inMinor: BigInt(0) }],
   });
   const beforeCancel = await withAuth(clerkUserId, () => upcomingOverview("2026-04-01"));
   expect(beforeCancel).toMatchObject({
     trackedCount: 2,
-    currencies: [{ currency: "USD", toLeaveMinor: -2400 }],
+    currencies: [{ currency: "USD", toLeaveMinor: BigInt(-2400) }],
   });
   expect((await post(checkingIdentity, "canceled")).status).toBe(200);
   expect(await decisionRows((await withAuth(clerkUserId, () => requireUser())).id)).toEqual([
@@ -366,11 +366,11 @@ test("Plaid's 500-unit Unicode identities stay distinct through decisions and pr
   expect(checkingNormalized).toHaveLength(1500);
 
   expect(await withAuth(clerkUserId, () => recurringOverview())).toMatchObject({
-    annual: [{ currency: "USD", outMinor: -14400, inMinor: 0 }],
+    annual: [{ currency: "USD", outMinor: BigInt(-14400), inMinor: BigInt(0) }],
   });
   expect(await withAuth(clerkUserId, () => upcomingOverview("2026-04-01"))).toMatchObject({
     trackedCount: 1,
-    currencies: [{ currency: "USD", toLeaveMinor: -1200 }],
+    currencies: [{ currency: "USD", toLeaveMinor: BigInt(-1200) }],
   });
 
   const tooLong = await withAuth(clerkUserId, () =>
