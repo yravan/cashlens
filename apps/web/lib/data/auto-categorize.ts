@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { categoryGroupsFor } from "@/lib/data/categories";
 import {
@@ -133,6 +133,17 @@ export async function autoCategorizeBatch(): Promise<AutoCategorizeStep> {
     }
     await tx.execute(sql`select public.app_lock_category_taxonomy()`);
     const currentLeaves = await taxonomyFor(tx, user.id);
+    if (admitted.batch.length > 0) {
+      await tx
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(and(
+          eq(transactions.userId, user.id),
+          inArray(transactions.id, admitted.batch.map((row) => row.id)),
+        ))
+        .orderBy(asc(transactions.id))
+        .for("update");
+    }
     if (
       sha256(JSON.stringify(currentLeaves)) !== sha256(JSON.stringify(admitted.leaves))
       || !(await lockLiveInferenceRun(tx, user.id, runId))

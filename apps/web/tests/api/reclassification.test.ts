@@ -1031,6 +1031,83 @@ test("initial finalization rechecks its lease after waiting for the taxonomy loc
   expect(run).toMatchObject({ status: "inferring", applied: 0, resultSetHash: null });
 });
 
+test("initial finalization rechecks its lease after waiting for candidate rows", async () => {
+  const owner = await fixture();
+  const transactionId = await addTransaction(owner, { description: "INITIAL ROW LEASE CROSSING" });
+  const before = await categoryState(transactionId);
+  let monitor: Promise<void> | undefined;
+  primeClassification([
+    { item: 0, category: labelIndex("Groceries"), confidence: "high", reason: "Expired choice" },
+  ]);
+  onceBeforeClassificationResponse(async () => {
+    const [run] = await adminDb().select({ id: classificationRuns.id }).from(classificationRuns)
+      .where(eq(classificationRuns.ownerUserId, owner.user.id));
+    await adminDb().update(classificationRuns)
+      .set({ inferenceLeaseUntil: sql`clock_timestamp() + interval '1 second'` })
+      .where(eq(classificationRuns.id, run.id));
+    const held = await holdDbLock((tx) => tx.select({ id: transactions.id })
+      .from(transactions).where(eq(transactions.id, transactionId)).for("update"));
+    monitor = (async () => {
+      try {
+        await waitForBlocking(held.pid, "initial finalizer never waited for its candidate row");
+        await waitUntil(async () => {
+          const result = await adminDb().execute(sql`
+            select inference_lease_until <= clock_timestamp() as expired
+            from classification_runs where id = ${run.id}
+          `);
+          return Boolean((result.rows[0] as { expired: boolean }).expired);
+        }, "initial lease did not expire while waiting for its candidate row");
+      } finally {
+        await held.release();
+      }
+    })();
+    void monitor.catch(() => undefined);
+  });
+
+  const result = await withAuth(owner.clerkUserId, () => autoCategorizeBatch());
+  await monitor;
+  expect(result).toEqual({ attempted: 1, categorized: 0, remaining: 1 });
+  expect(await categoryState(transactionId)).toEqual(before);
+  const [run] = await adminDb().select().from(classificationRuns)
+    .where(eq(classificationRuns.ownerUserId, owner.user.id));
+  expect(run).toMatchObject({ status: "inferring", applied: 0, resultSetHash: null });
+});
+
+test("initial finalization rereads taxonomy after acquiring its lock", async () => {
+  const owner = await fixture();
+  const transactionId = await addTransaction(owner, { description: "INITIAL TAXONOMY ORDERING" });
+  const before = await categoryState(transactionId);
+  let monitor: Promise<void> | undefined;
+  primeClassification([
+    { item: 0, category: labelIndex("Groceries"), confidence: "high", reason: "Stale taxonomy" },
+  ]);
+  onceBeforeClassificationResponse(async () => {
+    const held = await holdDbLock(async (tx) => {
+      await tx.execute(sql`select set_config('app.clerk_user_id', ${owner.clerkUserId}, true)`);
+      await tx.execute(sql`select public.app_lock_category_taxonomy()`);
+      await tx.update(categories)
+        .set({ name: "Renamed before taxonomy lock release" })
+        .where(eq(categories.id, owner.leaf("Groceries")));
+    });
+    monitor = (async () => {
+      try {
+        await waitForBlocking(held.pid, "initial finalizer never waited for the taxonomy lock mutation");
+      } finally {
+        await held.release();
+      }
+    })();
+    void monitor.catch(() => undefined);
+  });
+
+  const result = await withAuth(owner.clerkUserId, () => autoCategorizeBatch());
+  await monitor;
+  expect(result).toEqual({ attempted: 1, categorized: 0, remaining: 1 });
+  expect(await categoryState(transactionId)).toEqual(before);
+  const [run] = await adminDb().select().from(classificationRuns)
+    .where(eq(classificationRuns.ownerUserId, owner.user.id));
+  expect(run).toMatchObject({ status: "failed", applied: 0, resultSetHash: null });
+});
+
 test("initial and reclassification requests share owner admission", async () => {
   const owner = await fixture();
   await addAuto(owner);
