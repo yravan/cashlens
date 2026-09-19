@@ -1,0 +1,2 @@
+ALTER TABLE "recurring_streams" DROP CONSTRAINT "recurring_streams_name_bounded";--> statement-breakpoint
+ALTER TABLE "recurring_streams" ADD CONSTRAINT "recurring_streams_name_bounded" CHECK (normalized_name = btrim(normalized_name) and char_length(normalized_name) between 1 and 1500);
