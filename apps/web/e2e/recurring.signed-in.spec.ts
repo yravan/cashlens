@@ -48,6 +48,42 @@ test.describe("recurring charge detection", () => {
     await adminQuery("delete from users where clerk_user_id = any($1)", [SEED_CLERK_IDS]);
   });
 
+  test("beyond-safe recurring amounts render exactly and remain actionable", async ({ page }) => {
+    const userId = await userIdOf("a");
+    const { rows: [account] } = await adminQuery(
+      `insert into accounts (user_id, name, type, currency, source)
+       values ($1, 'Exact recurring wallet', 'depository', 'KWD', 'manual') returning id`,
+      [userId],
+    );
+    await adminQuery(
+      `insert into transactions
+       (user_id, account_id, amount_minor, currency, date, description, status, source)
+       select $1, $2, amount, 'KWD', date, 'Exact recurring', 'posted', 'manual'
+       from unnest(array['2026-01-05','2026-02-05','2026-03-05']::date[]) as date
+       cross join unnest(array[$3::bigint, -2::bigint]) as amount`,
+      [userId, account.id, -Number.MAX_SAFE_INTEGER],
+    );
+    await page.goto("/recurring");
+    const stream = streams(page).filter({ hasText: "EXACT RECURRING" });
+    await expect(stream.getByTestId("stream-amount")).toHaveText("-KWD\u00a09,007,199,254,740.993");
+    await expect(stream.getByTestId("stream-annual")).toHaveText("-KWD\u00a0108,086,391,056,891.916/yr");
+    await expect(page.getByTestId("annual-KWD").getByTestId("annual-out"))
+      .toHaveText("-KWD\u00a0108,086,391,056,891.916");
+    await stream.getByRole("button", { name: "Confirm: EXACT RECURRING" }).click();
+    await expect(section(page, "confirmed")).toContainText("EXACT RECURRING");
+    await page.goto("/upcoming?on=2026-04-01");
+    const kwd = page.getByTestId("upcoming-currency-KWD");
+    await expect(kwd.getByTestId("upcoming-to-leave")).toHaveText("-KWD\u00a09,007,199,254,740.993");
+    await expect(kwd.getByTestId("upcoming-to-arrive")).toHaveCount(0);
+    await expect(kwd.getByTestId("upcoming-charge")).toHaveCount(1);
+    await page.goto("/recurring");
+    await section(page, "confirmed").getByRole("button", { name: "Mark canceled: EXACT RECURRING" }).click();
+    await expect(section(page, "canceled")).toContainText("EXACT RECURRING");
+    await expect(page.getByTestId("annual-KWD")).toHaveCount(0);
+    await page.goto("/upcoming?on=2026-04-01");
+    await expect(page.getByTestId("upcoming-currency-KWD")).toHaveCount(0);
+  });
+
   test("the seeded detections list exactly, and confirm/dismiss survive a reload", async ({
     page,
   }) => {

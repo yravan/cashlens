@@ -26,7 +26,7 @@ const row = (date: string, amountMinor: number): RecurringRow => ({
   status: "posted",
 });
 
-const recurring = (typicalAmountMinor: number): UpcomingInput => ({
+const recurring = (typicalAmountMinor: bigint): UpcomingInput => ({
   accountId: "acct-exact",
   currency: "USD",
   direction: "outflow",
@@ -59,12 +59,12 @@ test("same-day recurring sums retain MAX_SAFE + 2", () => {
   const streams = detectRecurringStreams(
     dates.flatMap((date) => [row(date, MAX_SAFE), row(date, 2)]),
   );
-  expect(BigInt(streams[0].typicalAmountMinor)).toBe(BigInt(MAX_SAFE) + 2n);
+  expect(BigInt(streams[0].typicalAmountMinor)).toBe(BigInt(MAX_SAFE) + BigInt(2));
 });
 
 test.each([
-  [1, BigInt(MAX_SAFE) - 2n],
-  [-1, -BigInt(MAX_SAFE) + 2n],
+  [1, BigInt(MAX_SAFE) - BigInt(2)],
+  [-1, -BigInt(MAX_SAFE) + BigInt(2)],
 ] as const)("recurring even median preserves truncation (%s)", (sign, expected) => {
   const streams = detectRecurringStreams([
     row("2026-01-05", sign * MAX_SAFE),
@@ -76,19 +76,19 @@ test.each([
 });
 
 test("recurring rational band keeps the exact boundary decision", () => {
-  expect(withinBand(8331659310634512, 9007199254740013, { num: 3, den: 40 })).toBe(false);
+  expect(withinBand(BigInt(8331659310634512), BigInt(9007199254740013), { num: 3, den: 40 })).toBe(false);
 });
 
 test("annual multiplication retains every digit beyond Number range", () => {
-  const actual = annualAmountMinor({ cadence: "weekly", typicalAmountMinor: MAX_SAFE });
-  expect(BigInt(actual)).toBe(468374361246531532n);
+  const actual = annualAmountMinor({ cadence: "weekly", typicalAmountMinor: BigInt(MAX_SAFE) });
+  expect(actual).toBe(BigInt("468374361246531532"));
 });
 
 test("upcoming mixed charge and obligation totals retain every digit", () => {
   const actual = projectUpcoming(
-    [recurring(-MAX_SAFE)],
+    [recurring(-BigInt(MAX_SAFE))],
     "2026-02-01",
     [obligation(2)],
   ).currencies[0].toLeaveMinor;
-  expect(BigInt(actual)).toBe(-(BigInt(MAX_SAFE) + 2n));
+  expect(actual).toBe(-(BigInt(MAX_SAFE) + BigInt(2)));
 });

@@ -30,8 +30,8 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const shortDate = (iso: string) =>
   `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${Number(iso.slice(8, 10))}, ${iso.slice(0, 4)}`;
 
-const signed = (minor: number, currency: string) =>
-  `${minor > 0 ? "+" : ""}${formatMinorUnits(minor, currency)}`;
+const signed = (minor: bigint, currency: string) =>
+  `${minor > BigInt(0) ? "+" : ""}${formatMinorUnits(minor, currency)}`;
 
 function StreamRow({ stream }: { stream: RecurringOverviewStream }) {
   const canceledOn = chargedAfterCancel(stream) ? stream.decidedOn : null;

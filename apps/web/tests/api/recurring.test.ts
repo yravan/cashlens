@@ -141,13 +141,13 @@ test("canceling or dismissing a stream drops its yearly cost from the totals; it
   const [usd] = EXPECTED.demo.annual;
 
   await withAuth(clerkUserId, () => setRecurringStatus(demoStream("STREAMFLIX"), "canceled"));
-  expect(await annual()).toEqual([{ ...usd, outMinor: 0 }]);
+  expect(await annual()).toEqual([{ ...usd, outMinor: BigInt(0) }]);
 
   await withAuth(clerkUserId, () => setRecurringStatus(demoStream("STREAMFLIX"), "confirmed"));
   expect(await annual()).toEqual(EXPECTED.demo.annual);
 
   await withAuth(clerkUserId, () => setRecurringStatus(demoStream("ACME CORP"), "dismissed"));
-  expect(await annual()).toEqual([{ ...usd, inMinor: 0 }]);
+  expect(await annual()).toEqual([{ ...usd, inMinor: BigInt(0) }]);
 });
 
 test("a price increase reads the detector's last kept charge against the typical amount", async () => {
@@ -166,8 +166,8 @@ test("a price increase reads the detector's last kept charge against the typical
   ]);
   const [stream] = (await withAuth(hiked, () => recurringOverview())).streams;
   expect(stream).toMatchObject({
-    typicalAmountMinor: -1549,
-    lastAmountMinor: -1799,
+    typicalAmountMinor: -BigInt(1549),
+    lastAmountMinor: -BigInt(1799),
     confidence: "medium",
   });
   expect(priceIncreased(stream)).toBe(true);
@@ -182,7 +182,7 @@ test("a price increase reads the detector's last kept charge against the typical
     music(-1799, "2026-06-10"),
   ]);
   const [caughtUp] = (await withAuth(settled, () => recurringOverview())).streams;
-  expect(caughtUp).toMatchObject({ typicalAmountMinor: -1674, lastAmountMinor: -1799 });
+  expect(caughtUp).toMatchObject({ typicalAmountMinor: -BigInt(1674), lastAmountMinor: -BigInt(1799) });
   expect(priceIncreased(caughtUp)).toBe(false);
 });
 
@@ -248,7 +248,7 @@ test("a decision reattaches when new occurrences extend the stream", async () =>
     status: "confirmed",
     occurrences: 4,
     lastDate: "2026-04-29",
-    typicalAmountMinor: -2300,
+    typicalAmountMinor: -BigInt(2300),
   });
 });
 
@@ -262,8 +262,8 @@ test("true-spend law: matched transfer legs stop counting as recurring evidence"
 
   const before = await withAuth(clerkUserId, () => recurringOverview());
   expect(before.streams.map((s) => [s.direction, s.cadence, s.typicalAmountMinor])).toEqual([
-    ["inflow", "monthly", 50000],
-    ["outflow", "monthly", -50000],
+    ["inflow", "monthly", BigInt(50000)],
+    ["outflow", "monthly", -BigInt(50000)],
   ]);
 
   await withAuth(clerkUserId, () => matchTransfers());

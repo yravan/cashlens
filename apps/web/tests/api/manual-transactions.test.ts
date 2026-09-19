@@ -1330,8 +1330,8 @@ test("flows through every canonical ledger consumer", async () => {
     normalizedName: "ORBIT GYM",
     name: "Orbit Gym",
     cadence: "monthly",
-    typicalAmountMinor: -1299,
-    lastAmountMinor: -1299,
+    typicalAmountMinor: -BigInt(1299),
+    lastAmountMinor: -BigInt(1299),
     firstDate: "2026-01-03",
     lastDate: "2026-03-03",
     occurrences: 3,
@@ -1342,7 +1342,7 @@ test("flows through every canonical ledger consumer", async () => {
   const expectRecurring = async (present: boolean) =>
     expect(await recurring()).toEqual({
       streams: present ? [stream] : [],
-      annual: present ? [{ currency: "USD", outMinor: -15588, inMinor: 0 }] : [],
+      annual: present ? [{ currency: "USD", outMinor: -BigInt(15588), inMinor: BigInt(0) }] : [],
     });
   const expectFlow = async (
     months: Awaited<ReturnType<typeof cashFlowSummary>>["currencies"][number]["months"],

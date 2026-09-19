@@ -128,27 +128,27 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     history: { order: expect.any(Array), currencies: ["EUR", "USD"] },
     transfers: { pairs: expect.any(Array), pairedRows: 4, autoQueue: 5 },
     recurring: [
-      { accountId: seedAccount("demo", "Cash Rewards Card"), currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", typicalAmountMinor: -2300, lastAmountMinor: -2300, firstDate: "2026-01-29", lastDate: "2026-03-29", occurrences: 3, confidence: "high" },
-      { accountId: seedAccount("demo", "Everyday Checking"), currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", typicalAmountMinor: 250000, lastAmountMinor: 250000, firstDate: "2026-01-27", lastDate: "2026-03-27", occurrences: 3, confidence: "high" },
+      { accountId: seedAccount("demo", "Cash Rewards Card"), currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", typicalAmountMinor: -BigInt(2300), lastAmountMinor: -BigInt(2300), firstDate: "2026-01-29", lastDate: "2026-03-29", occurrences: 3, confidence: "high" },
+      { accountId: seedAccount("demo", "Everyday Checking"), currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", typicalAmountMinor: BigInt(250000), lastAmountMinor: BigInt(250000), firstDate: "2026-01-27", lastDate: "2026-03-27", occurrences: 3, confidence: "high" },
     ],
     upcoming: {
       monthEnd: "2026-04-30",
       currencies: [
         {
           currency: "USD",
-          toLeaveMinor: -2300,
-          toArriveMinor: 250000,
+          toLeaveMinor: -BigInt(2300),
+          toArriveMinor: BigInt(250000),
           charges: [
-            { source: "detected", accountId: seedAccount("demo", "Cash Rewards Card"), currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -2300, lastDate: "2026-03-29", date: "2026-04-29", overdue: false, possibleOverlap: false },
+            { source: "detected", accountId: seedAccount("demo", "Cash Rewards Card"), currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -BigInt(2300), lastDate: "2026-03-29", date: "2026-04-29", overdue: false, possibleOverlap: false },
           ],
           deposits: [
-            { source: "detected", accountId: seedAccount("demo", "Everyday Checking"), currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: 250000, lastDate: "2026-03-27", date: "2026-04-27", overdue: false, possibleOverlap: false },
+            { source: "detected", accountId: seedAccount("demo", "Everyday Checking"), currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: BigInt(250000), lastDate: "2026-03-27", date: "2026-04-27", overdue: false, possibleOverlap: false },
           ],
         },
       ],
       stale: [],
     },
-    annual: [{ currency: "USD", outMinor: -27600, inMinor: 3000000 }],
+    annual: [{ currency: "USD", outMinor: -BigInt(27600), inMinor: BigInt(3000000) }],
   });
   expect(EXPECTED.neighbor).toEqual({
     accounts: 1,

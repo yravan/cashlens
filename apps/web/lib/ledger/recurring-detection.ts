@@ -22,8 +22,8 @@ export type RecurringStream = {
   normalizedName: string;
   name: string;
   cadence: RecurringCadence;
-  typicalAmountMinor: number;
-  lastAmountMinor: number;
+  typicalAmountMinor: bigint;
+  lastAmountMinor: bigint;
   firstDate: string;
   lastDate: string;
   occurrences: number;
@@ -47,14 +47,16 @@ const CADENCE_WINDOWS: { cadence: RecurringCadence; lo: number; hi: number }[] =
 const ACCEPT = { num: 1, den: 4 };
 export const STABLE = { num: 3, den: 40 };
 
-export const withinBand = (amount: number, typical: number, band: { num: number; den: number }) =>
-  band.den * Math.abs(amount - typical) <= band.num * Math.abs(typical);
+const magnitude = (value: bigint) => value < BigInt(0) ? -value : value;
 
-const median = (sorted: readonly number[]): number => {
+export const withinBand = (amount: bigint, typical: bigint, band: { num: number; den: number }) =>
+  BigInt(band.den) * magnitude(amount - typical) <= BigInt(band.num) * magnitude(typical);
+
+const median = (sorted: readonly bigint[]): bigint => {
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1
     ? sorted[mid]
-    : Math.trunc((sorted[mid - 1] + sorted[mid]) / 2);
+    : (sorted[mid - 1] + sorted[mid]) / BigInt(2);
 };
 
 const dayNumber = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86_400_000;
@@ -91,7 +93,7 @@ export function nextExpectedDate(
   return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(clamped).padStart(2, "0")}`;
 }
 
-type Occurrence = { date: string; amountMinor: number };
+type Occurrence = { date: string; amountMinor: bigint };
 
 function classifyCadence(
   dates: readonly string[],
@@ -118,9 +120,9 @@ type GroupIdentity = {
 };
 
 function toStream(group: GroupIdentity, members: readonly RecurringRow[]): RecurringStream | null {
-  const byDate = new Map<string, number>();
+  const byDate = new Map<string, bigint>();
   for (const row of members) {
-    byDate.set(row.date, (byDate.get(row.date) ?? 0) + row.amountMinor);
+    byDate.set(row.date, (byDate.get(row.date) ?? BigInt(0)) + BigInt(row.amountMinor));
   }
   let occurrences: Occurrence[] = [...byDate]
     .map(([date, amountMinor]) => ({ date, amountMinor }))
@@ -128,7 +130,7 @@ function toStream(group: GroupIdentity, members: readonly RecurringRow[]): Recur
   if (occurrences.length < MIN_OCCURRENCES) return null;
 
   const amountsOf = (list: Occurrence[]) =>
-    list.map((occurrence) => occurrence.amountMinor).sort((a, b) => a - b);
+    list.map((occurrence) => occurrence.amountMinor).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
   let typical = median(amountsOf(occurrences));
   const kept = occurrences.filter((occurrence) =>
     withinBand(occurrence.amountMinor, typical, ACCEPT),
