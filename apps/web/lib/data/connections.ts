@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, lte, sql } from "drizzle-orm";
 
 import { decryptCredential, encryptCredential, SecretString, UUID_PATTERN } from "@/lib/crypto/credentials";
 import {
@@ -126,32 +126,20 @@ export async function listConnectionsWithStats() {
       return tx
         .select({
           connectionId: accounts.connectionId,
-          transactions: sql`(
+          accounts: count(),
+          transactions: sql`sum((
             select count(*) from ${transactions} where ${ownTransactions}
-          )`.mapWith(Number),
-          obligations: sql`(
+          ))`.mapWith(Number),
+          obligations: sql`sum((
             select count(*) from ${scheduledObligations} where ${ownObligations}
-          )`.mapWith(Number),
+          ))`.mapWith(Number),
         })
         .from(accounts)
-        .where(eq(accounts.userId, user.id));
+        .where(eq(accounts.userId, user.id))
+        .groupBy(accounts.connectionId);
     }),
   ]);
-  const byConnection = new Map<
-    string | null,
-    { accounts: number; transactions: number; obligations: number }
-  >();
-  for (const row of stats) {
-    const total = byConnection.get(row.connectionId) ?? {
-      accounts: 0,
-      transactions: 0,
-      obligations: 0,
-    };
-    total.accounts += 1;
-    total.transactions += row.transactions;
-    total.obligations += row.obligations;
-    byConnection.set(row.connectionId, total);
-  }
+  const byConnection = new Map(stats.map((row) => [row.connectionId, row]));
   return listed.map((connection) => ({
     ...connection,
     accounts: byConnection.get(connection.id)?.accounts ?? 0,
