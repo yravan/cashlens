@@ -40,7 +40,7 @@ export function parseStreamIdentity(body: unknown): StreamIdentity | null {
   if (
     typeof normalizedName !== "string" ||
     normalizedName.length === 0 ||
-    normalizedName.length > 200 ||
+    normalizedName.length > 1500 ||
     normalizedName !== normalizedName.trim()
   ) {
     return null;
