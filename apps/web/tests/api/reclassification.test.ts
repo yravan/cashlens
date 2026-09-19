@@ -946,6 +946,91 @@ test("provider failure writes no proposals or ledger rows and releases admission
   expect(classificationRequests).toHaveLength(2);
 });
 
+test("initial finalization holds its taxonomy lock through the assignment commit", async () => {
+  const owner = await fixture();
+  const transactionId = await addTransaction(owner, { description: "INITIAL COFFEE PURCHASE" });
+  let monitor: Promise<void> | undefined;
+  primeClassification([
+    { item: 0, category: labelIndex("Groceries"), confidence: "high", reason: "Initial choice" },
+  ]);
+  onceBeforeClassificationResponse(async () => {
+    const held = await holdDbLock((tx) => tx.select({ id: transactions.id })
+      .from(transactions).where(eq(transactions.id, transactionId)).for("update"));
+    monitor = (async () => {
+      let pending: Awaited<ReturnType<typeof startDbOperation>> | undefined;
+      try {
+        await waitForBlocking(held.pid, "initial finalizer never reached its target lock");
+        pending = await startDbOperation((tx) => tx.update(categories)
+          .set({ name: "Renamed after initial taxonomy read" })
+          .where(eq(categories.id, owner.leaf("Groceries"))));
+        await waitUntilBlocked(
+          pending.pid,
+          "taxonomy rename did not wait for initial finalization's advisory lock",
+          owner.clerkUserId,
+        );
+      } finally {
+        await held.release();
+        await pending?.completion;
+      }
+    })();
+    void monitor.catch(() => undefined);
+  });
+
+  const result = await withAuth(owner.clerkUserId, () => autoCategorizeBatch());
+  await monitor;
+  expect(result).toEqual({ attempted: 1, categorized: 1, remaining: 0 });
+  expect(await categoryState(transactionId)).toMatchObject({
+    categoryId: owner.leaf("Groceries"), source: "auto",
+  });
+  const [renamed] = await adminDb().select({ name: categories.name }).from(categories)
+    .where(eq(categories.id, owner.leaf("Groceries")));
+  expect(renamed.name).toBe("Renamed after initial taxonomy read");
+}, 15_000);
+
+test("initial finalization rechecks its lease after waiting for the taxonomy lock", async () => {
+  const owner = await fixture();
+  const transactionId = await addTransaction(owner, { description: "INITIAL LEASE CROSSING" });
+  const before = await categoryState(transactionId);
+  let monitor: Promise<void> | undefined;
+  primeClassification([
+    { item: 0, category: labelIndex("Groceries"), confidence: "high", reason: "Expired choice" },
+  ]);
+  onceBeforeClassificationResponse(async () => {
+    const [run] = await adminDb().select({ id: classificationRuns.id }).from(classificationRuns)
+      .where(eq(classificationRuns.ownerUserId, owner.user.id));
+    await adminDb().update(classificationRuns)
+      .set({ inferenceLeaseUntil: sql`clock_timestamp() + interval '1 second'` })
+      .where(eq(classificationRuns.id, run.id));
+    const held = await holdDbLock(async (tx) => {
+      await tx.execute(sql`select set_config('app.clerk_user_id', ${owner.clerkUserId}, true)`);
+      await tx.execute(sql`select public.app_lock_category_taxonomy()`);
+    });
+    monitor = (async () => {
+      try {
+        await waitForBlocking(held.pid, "initial finalizer never waited for the taxonomy lock");
+        await waitUntil(async () => {
+          const result = await adminDb().execute(sql`
+            select inference_lease_until <= clock_timestamp() as expired
+            from classification_runs where id = ${run.id}
+          `);
+          return Boolean((result.rows[0] as { expired: boolean }).expired);
+        }, "initial lease did not expire while waiting for the taxonomy lock");
+      } finally {
+        await held.release();
+      }
+    })();
+    void monitor.catch(() => undefined);
+  });
+
+  const result = await withAuth(owner.clerkUserId, () => autoCategorizeBatch());
+  await monitor;
+  expect(result).toEqual({ attempted: 1, categorized: 0, remaining: 1 });
+  expect(await categoryState(transactionId)).toEqual(before);
+  const [run] = await adminDb().select().from(classificationRuns)
+    .where(eq(classificationRuns.ownerUserId, owner.user.id));
+  expect(run).toMatchObject({ status: "inferring", applied: 0, resultSetHash: null });
+});
+
 test("initial and reclassification requests share owner admission", async () => {
   const owner = await fixture();
   await addAuto(owner);

@@ -52,6 +52,13 @@ async function remainingCount(tx: ScopedTx, userId: string): Promise<number> {
   return row.n;
 }
 
+async function taxonomyFor(tx: ScopedTx, userId: string) {
+  const groups = await categoryGroupsFor(tx, userId);
+  return groups.flatMap((group) =>
+    group.categories.map((leaf) => ({ id: leaf.id, label: `${group.name} > ${leaf.name}` })),
+  );
+}
+
 export async function uncategorizedCount(): Promise<number> {
   const user = await requireUser();
   return withRequestScope(user.clerkUserId, (tx) => remainingCount(tx, user.id));
@@ -70,10 +77,7 @@ export async function autoCategorizeBatch(): Promise<AutoCategorizeStep> {
 
   const request = captureClassificationRequest();
   const admitted = await withRequestScope(user.clerkUserId, async (tx) => {
-    const groups = await categoryGroupsFor(tx, user.id);
-    const leaves = groups.flatMap((group) =>
-      group.categories.map((leaf) => ({ id: leaf.id, label: `${group.name} > ${leaf.name}` })),
-    );
+    const leaves = await taxonomyFor(tx, user.id);
     if (leaves.length === 0) {
       return { runId: null, leaves, batch: [], remaining: await remainingCount(tx, user.id) };
     }
@@ -121,6 +125,19 @@ export async function autoCategorizeBatch(): Promise<AutoCategorizeStep> {
     metadata: ClassificationMetadata,
   ): Promise<AutoCategorizeStep> => withRequestScope(user.clerkUserId, async (tx) => {
     if (!(await lockLiveInferenceRun(tx, user.id, runId))) {
+      return {
+        attempted: admitted.batch.length,
+        categorized: 0,
+        remaining: await remainingCount(tx, user.id),
+      };
+    }
+    await tx.execute(sql`select public.app_lock_category_taxonomy()`);
+    const currentLeaves = await taxonomyFor(tx, user.id);
+    if (
+      sha256(JSON.stringify(currentLeaves)) !== sha256(JSON.stringify(admitted.leaves))
+      || !(await lockLiveInferenceRun(tx, user.id, runId))
+    ) {
+      await failLiveInferenceRun(tx, user.id, runId);
       return {
         attempted: admitted.batch.length,
         categorized: 0,
