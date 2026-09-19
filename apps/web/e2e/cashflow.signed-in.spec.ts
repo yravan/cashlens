@@ -106,6 +106,7 @@ const EXACT_KWD = "KWD\u00a09,223,372,036,854,774.786";
 const EXACT_NEGATIVE_KWD = "-KWD\u00a09,223,372,036,854,774.786";
 
 async function expectAmountContained(amount: Locator, page: Page) {
+  await expect(amount).toBeVisible();
   const element = await amount.evaluate(({ scrollWidth, clientWidth }) => ({ scrollWidth, clientWidth }));
   expect.soft(element.scrollWidth).toBeLessThanOrEqual(element.clientWidth);
   const main = await page.locator("main").evaluate(({ scrollWidth, clientWidth }) => ({
