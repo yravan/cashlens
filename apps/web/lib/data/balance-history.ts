@@ -205,6 +205,22 @@ function inclusiveDays(from: string, to: string): string[] {
   return days;
 }
 
+function pointsPerDay<Row extends { snapshotDay: string }, Point>(
+  days: string[],
+  rows: Row[],
+  point: (day: string, row: Row) => Point,
+) {
+  let active: Row | undefined;
+  let index = 0;
+  return days.map((day): Point | { day: string; basis: "unavailable"; currentMinor: null } => {
+    while (index < rows.length && rows[index].snapshotDay <= day) {
+      active = rows[index];
+      index += 1;
+    }
+    return active ? point(day, active) : { day, basis: "unavailable", currentMinor: null };
+  });
+}
+
 export async function providerBalanceHistory(
   range: BalanceHistoryRange,
 ): Promise<ProviderAccountBalanceHistory[]> {
@@ -269,24 +285,15 @@ export async function providerBalanceHistory(
       const snapshots = (snapshotsByAccount.get(account.accountId) ?? []).sort((a, b) =>
         a.snapshotDay.localeCompare(b.snapshotDay),
       );
-      let observed: Snapshot | undefined;
-      let index = 0;
-      const points = days.map((day): ProviderBalanceHistoryPoint => {
-        while (index < snapshots.length && snapshots[index].snapshotDay <= day) {
-          observed = snapshots[index];
-          index += 1;
-        }
-        if (!observed) return { day, basis: "unavailable", currentMinor: null };
-        return {
-          day,
-          basis: observed.snapshotDay === day ? "observed" : "carried",
-          currentMinor: observed.currentMinor,
-          observedDay: observed.snapshotDay,
-          observedAt: observed.observedAt,
-          providerAsOf: observed.providerAsOf,
-          captureReason: observed.captureReason,
-        };
-      });
+      const points = pointsPerDay(days, snapshots, (day, observed): ProviderBalanceHistoryPoint => ({
+        day,
+        basis: observed.snapshotDay === day ? "observed" : "carried",
+        currentMinor: observed.currentMinor,
+        observedDay: observed.snapshotDay,
+        observedAt: observed.observedAt,
+        providerAsOf: observed.providerAsOf,
+        captureReason: observed.captureReason,
+      }));
       return { ...account, points };
     });
   });
@@ -418,16 +425,7 @@ export async function manualBalanceHistory(
         a.snapshotDay.localeCompare(b.snapshotDay),
       );
       const accountTransactions = transactionsByAccount.get(account.accountId) ?? [];
-      let anchor: Anchor | undefined;
-      let index = 0;
-      const points = days.map((day): ManualBalanceHistoryPoint => {
-        while (index < accountAnchors.length && accountAnchors[index].snapshotDay <= day) {
-          anchor = accountAnchors[index];
-          index += 1;
-        }
-        const activeAnchor = anchor;
-        if (!activeAnchor) return { day, basis: "unavailable", currentMinor: null };
-
+      const points = pointsPerDay(days, accountAnchors, (day, activeAnchor): ManualBalanceHistoryPoint => {
         const sinceMinor = accountTransactions.reduce((total, transaction) => {
           const afterAnchor =
             transaction.date > activeAnchor.snapshotDay ||
@@ -521,28 +519,22 @@ async function reconcileCurrentBalanceHistory(range: BalanceHistoryRange): Promi
 
       for (const candidate of candidates) {
         if (candidate.currentMinor === null) continue;
+        const base = {
+          accountId: candidate.accountId,
+          userId: user.id,
+          currentMinor: candidate.currentMinor,
+          currency: candidate.currency,
+          captureReason: "reconciliation" as const,
+          observedAt: candidate.observedAt,
+          providerAsOf: null,
+        };
         if (candidate.source === "plaid") {
-          await captureBalanceSnapshot(tx, {
-            accountId: candidate.accountId,
-            userId: user.id,
-            currentMinor: candidate.currentMinor,
-            currency: candidate.currency,
-            source: "provider",
-            captureReason: "reconciliation",
-            observedAt: candidate.observedAt,
-            providerAsOf: null,
-          });
+          await captureBalanceSnapshot(tx, { ...base, source: "provider" });
         } else if (candidate.reportedOn !== null) {
           await captureBalanceSnapshot(tx, {
-            accountId: candidate.accountId,
-            userId: user.id,
-            currentMinor: candidate.currentMinor,
-            currency: candidate.currency,
+            ...base,
             source: "manual_anchor",
             snapshotDay: candidate.reportedOn,
-            captureReason: "reconciliation",
-            observedAt: candidate.observedAt,
-            providerAsOf: null,
           });
         }
       }

@@ -21,6 +21,25 @@ import { withAuth } from "../harness/clerk";
 import { adminDb, appQuery, appQueryScopedAs } from "../harness/db";
 import { anchoredAccount, provisionedUser, request } from "./offline-helpers";
 
+function providerAccount(
+  userId: string,
+  currentMinor: number,
+  currency = "USD",
+  type: (typeof accounts.$inferSelect)["type"] = "depository",
+) {
+  return anchoredAccount({ userId, name: "Provider account", type, source: "plaid", currency, currentMinor, reportedOn: null });
+}
+
+function manualAccount(
+  userId: string,
+  currentMinor: number,
+  reportedOn: string | null,
+  type: (typeof accounts.$inferSelect)["type"] = "credit",
+  currency = "USD",
+) {
+  return anchoredAccount({ userId, name: "Manual account", type, source: "manual", currency, currentMinor, reportedOn });
+}
+
 test("snapshot storage forces owner-scoped RLS", async () => {
   const catalog = await adminDb().execute(sql`
     select relrowsecurity as "rlsEnabled", relforcerowsecurity as "rlsForced"
@@ -31,14 +50,7 @@ test("snapshot storage forces owner-scoped RLS", async () => {
 
   const owner = await provisionedUser();
   const neighbor = await provisionedUser();
-  const accountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 12345,
-    reportedOn: null,
-  });
+  const accountId = await providerAccount(owner.id, 12345);
   const observedAt = new Date("2026-04-01T12:00:00Z");
 
   await withRequestScope(owner.clerkUserId, (tx) =>
@@ -158,14 +170,7 @@ test("a later manual anchor corrects the same reported day", async () => {
 
 test("provider snapshot days use UTC regardless of the database timezone", async () => {
   const owner = await provisionedUser();
-  const accountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 10000,
-    reportedOn: null,
-  });
+  const accountId = await providerAccount(owner.id, 10000);
 
   await withRequestScope(owner.clerkUserId, async (tx) => {
     await tx.execute(sql`set local time zone 'Pacific/Honolulu'`);
@@ -191,23 +196,8 @@ test("provider snapshot days use UTC regardless of the database timezone", async
 test("provider history labels observed, carried, and unavailable days with provenance", async () => {
   const owner = await provisionedUser();
   const neighbor = await provisionedUser();
-  const accountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Card",
-    type: "credit",
-    source: "plaid",
-    currency: "EUR",
-    currentMinor: 0,
-    reportedOn: null,
-  });
-  const neighborAccountId = await anchoredAccount({
-    userId: neighbor.id,
-    name: "Neighbor checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 99999,
-    reportedOn: null,
-  });
+  const accountId = await providerAccount(owner.id, 0, "EUR", "credit");
+  const neighborAccountId = await providerAccount(neighbor.id, 99999);
   const firstObservedAt = new Date("2026-04-02T10:00:00Z");
   const firstProviderAsOf = new Date("2026-04-02T09:45:00Z");
   const latestObservedAt = new Date("2026-04-04T11:00:00Z");
@@ -313,22 +303,8 @@ test("provider history labels observed, carried, and unavailable days with prove
 test("manual history keeps raw anchors while deriving posted owed balances", async () => {
   const owner = await provisionedUser();
   const neighbor = await provisionedUser();
-  const accountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Card",
-    type: "credit",
-    source: "manual",
-    currentMinor: 7000,
-    reportedOn: "2026-04-03",
-  });
-  const neighborAccountId = await anchoredAccount({
-    userId: neighbor.id,
-    name: "Neighbor wallet",
-    type: "depository",
-    source: "manual",
-    currentMinor: 99999,
-    reportedOn: "2026-04-01",
-  });
+  const accountId = await manualAccount(owner.id, 7000, "2026-04-03");
+  const neighborAccountId = await manualAccount(neighbor.id, 99999, "2026-04-01", "depository");
   const firstObservedAt = new Date("2026-04-01T12:00:00Z");
   const latestObservedAt = new Date("2026-04-03T12:00:00Z");
 
@@ -475,14 +451,7 @@ test("manual history keeps raw anchors while deriving posted owed balances", asy
 
 test("an older genuine provider observation cannot replace a newer one", async () => {
   const owner = await provisionedUser();
-  const accountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 10000,
-    reportedOn: null,
-  });
+  const accountId = await providerAccount(owner.id, 10000);
   const newerProviderTime = new Date("2026-04-01T09:00:00Z");
 
   await withRequestScope(owner.clerkUserId, (tx) =>
@@ -524,14 +493,7 @@ test("an older genuine provider observation cannot replace a newer one", async (
 
 test("an equal-time contradiction fails closed with a sanitized event", async () => {
   const owner = await provisionedUser();
-  const accountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 10000,
-    reportedOn: null,
-  });
+  const accountId = await providerAccount(owner.id, 10000);
   const observedAt = new Date("2026-04-01T10:00:00Z");
   const providerAsOf = new Date("2026-04-01T09:00:00Z");
 
@@ -593,14 +555,7 @@ test("an equal-time contradiction fails closed with a sanitized event", async ()
 
 test("a candidate currency mismatch writes no snapshot or amount log", async () => {
   const owner = await provisionedUser();
-  const accountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 10000,
-    reportedOn: null,
-  });
+  const accountId = await providerAccount(owner.id, 10000);
 
   const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
   try {
@@ -1074,14 +1029,7 @@ const parsedRange = (input: unknown) => {
 
 test("signed-in history reconciles a provider projection at its original observation instant", async () => {
   const owner = await provisionedUser();
-  const accountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 12345,
-    reportedOn: null,
-  });
+  const accountId = await providerAccount(owner.id, 12345);
   const observedAt = new Date("2026-04-02T23:30:00Z");
   await adminDb()
     .update(accountBalances)
@@ -1140,14 +1088,7 @@ test("signed-in history reconciles a provider projection at its original observa
 
 test("an existing original observation is not reconciled again", async () => {
   const owner = await provisionedUser();
-  const accountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 12345,
-    reportedOn: null,
-  });
+  const accountId = await providerAccount(owner.id, 12345);
   const observedAt = new Date("2026-04-02T10:00:00Z");
   const providerAsOf = new Date("2026-04-02T09:45:00Z");
   await adminDb()
@@ -1193,30 +1134,9 @@ test("an existing original observation is not reconciled again", async () => {
 test("reconciliation is bounded to selected owned accounts", async () => {
   const owner = await provisionedUser();
   const neighbor = await provisionedUser();
-  const selectedAccountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Selected checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 12000,
-    reportedOn: null,
-  });
-  await anchoredAccount({
-    userId: owner.id,
-    name: "Omitted checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 34000,
-    reportedOn: null,
-  });
-  const neighborAccountId = await anchoredAccount({
-    userId: neighbor.id,
-    name: "Neighbor checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 56000,
-    reportedOn: null,
-  });
+  const selectedAccountId = await providerAccount(owner.id, 12000);
+  await providerAccount(owner.id, 34000);
+  const neighborAccountId = await providerAccount(neighbor.id, 56000);
 
   const history = await withAuth(owner.clerkUserId, () =>
     accountBalanceHistory({
@@ -1240,14 +1160,7 @@ test("reconciliation is bounded to selected owned accounts", async () => {
 
 test("repeated reconciliation leaves the canonical snapshot unchanged", async () => {
   const owner = await provisionedUser();
-  const accountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 12345,
-    reportedOn: null,
-  });
+  const accountId = await providerAccount(owner.id, 12345);
   const range = { from: "2026-04-01", to: "2026-04-01", accountIds: [accountId] };
   await withAuth(owner.clerkUserId, () => accountBalanceHistory(range));
   const pinnedUpdatedAt = new Date("2026-04-02T00:00:00Z");
@@ -1274,22 +1187,8 @@ test("repeated reconciliation leaves the canonical snapshot unchanged", async ()
 
 test("null provider current and missing manual reported day stay unavailable", async () => {
   const owner = await provisionedUser();
-  const providerAccountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 10000,
-    reportedOn: null,
-  });
-  const manualAccountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Card",
-    type: "credit",
-    source: "manual",
-    currentMinor: 7000,
-    reportedOn: null,
-  });
+  const providerAccountId = await providerAccount(owner.id, 10000);
+  const manualAccountId = await manualAccount(owner.id, 7000, null);
   await adminDb()
     .update(accountBalances)
     .set({ currentMinor: null, availableMinor: 10000 })
@@ -1313,14 +1212,7 @@ test("null provider current and missing manual reported day stay unavailable", a
 
 test("signed-in history reconciles a manual projection on its reported day", async () => {
   const owner = await provisionedUser();
-  const accountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Card",
-    type: "credit",
-    source: "manual",
-    currentMinor: 7000,
-    reportedOn: "2026-04-02",
-  });
+  const accountId = await manualAccount(owner.id, 7000, "2026-04-02");
   const observedAt = new Date("2026-04-05T09:15:00Z");
   await adminDb()
     .update(accountBalances)
@@ -1366,14 +1258,7 @@ test("signed-in history reconciles a manual projection on its reported day", asy
 
 test("history falls back to existing snapshots when reconciliation fails", async () => {
   const owner = await provisionedUser();
-  const accountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 12345,
-    reportedOn: null,
-  });
+  const accountId = await providerAccount(owner.id, 12345);
   const priorObservedAt = new Date("2026-04-01T10:00:00Z");
   const missingObservedAt = new Date("2026-04-02T10:00:00Z");
   await withRequestScope(owner.clerkUserId, (tx) =>
@@ -1460,33 +1345,9 @@ test("history falls back to existing snapshots when reconciliation fails", async
 test("balance history composes provider and manual account series without combining them", async () => {
   const owner = await provisionedUser();
   const neighbor = await provisionedUser();
-  const providerAccountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Euro checking",
-    type: "depository",
-    source: "plaid",
-    currency: "EUR",
-    currentMinor: 1000,
-    reportedOn: null,
-  });
-  const manualAccountId = await anchoredAccount({
-    userId: owner.id,
-    name: "Card",
-    type: "credit",
-    source: "manual",
-    currency: "USD",
-    currentMinor: 7000,
-    reportedOn: "2026-04-02",
-  });
-  const neighborAccountId = await anchoredAccount({
-    userId: neighbor.id,
-    name: "Neighbor checking",
-    type: "depository",
-    source: "plaid",
-    currency: "USD",
-    currentMinor: 99999,
-    reportedOn: null,
-  });
+  const providerAccountId = await providerAccount(owner.id, 1000, "EUR");
+  const manualAccountId = await manualAccount(owner.id, 7000, "2026-04-02");
+  const neighborAccountId = await providerAccount(neighbor.id, 99999);
   const providerObservedAt = new Date("2026-04-02T10:00:00Z");
   const providerAsOf = new Date("2026-04-02T09:45:00Z");
   const anchorObservedAt = new Date("2026-04-02T12:00:00Z");
@@ -1600,14 +1461,7 @@ test("balance history composes provider and manual account series without combin
 test("unknown and cross-user account filters return byte-identical history", async () => {
   const owner = await provisionedUser();
   const neighbor = await provisionedUser();
-  const neighborAccountId = await anchoredAccount({
-    userId: neighbor.id,
-    name: "Neighbor checking",
-    type: "depository",
-    source: "plaid",
-    currentMinor: 99999,
-    reportedOn: null,
-  });
+  const neighborAccountId = await providerAccount(neighbor.id, 99999);
   const input = { from: "2026-04-01", to: "2026-04-02" };
 
   const unknown = await withAuth(owner.clerkUserId, () =>
