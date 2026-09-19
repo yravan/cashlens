@@ -62,7 +62,7 @@ export async function createOfflineAccount(
         asOf: sql`now()`,
         reportedOn: input.reportedOn,
       })
-      .returning({ observedAt: accountBalances.asOf });
+      .returning({ observedAt: sql<string>`${accountBalances.asOf}::text` });
     if (!balance) throw new Error("offline balance insert returned no row");
     await captureBalanceSnapshot(tx, {
       accountId: created.id,
@@ -107,7 +107,7 @@ export async function updateOfflineBalance(
       .insert(accountBalances)
       .values({ accountId: account.id, userId: user.id, ...anchor })
       .onConflictDoUpdate({ target: accountBalances.accountId, set: anchor })
-      .returning({ observedAt: accountBalances.asOf });
+      .returning({ observedAt: sql<string>`${accountBalances.asOf}::text` });
     if (!balance) throw new Error("offline balance upsert returned no row");
     await captureBalanceSnapshot(tx, {
       accountId: account.id,

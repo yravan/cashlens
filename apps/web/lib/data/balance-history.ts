@@ -34,7 +34,7 @@ type BalanceSnapshotBase = {
   currentMinor: number;
   currency: string;
   captureReason: "event" | "bootstrap" | "reconciliation";
-  observedAt: Date;
+  observedAt: Date | string;
 };
 
 export type BalanceSnapshotCapture = BalanceSnapshotBase &
@@ -58,7 +58,7 @@ export async function captureBalanceSnapshot(
 ): Promise<void> {
   const snapshotDay =
     capture.source === "provider"
-      ? capture.observedAt.toISOString().slice(0, 10)
+      ? new Date(capture.observedAt).toISOString().slice(0, 10)
       : capture.snapshotDay;
   const written = await tx.execute(sql`
     insert into account_balance_snapshots (
@@ -72,6 +72,7 @@ export async function captureBalanceSnapshot(
     where account.id = ${capture.accountId}
       and account.user_id = ${capture.userId}
       and account.currency = ${capture.currency}
+      and account.source = ${capture.source === "provider" ? "plaid" : "manual"}
     on conflict (account_id, snapshot_day) do update set
       current_minor = excluded.current_minor,
       capture_reason = excluded.capture_reason,
@@ -96,10 +97,17 @@ export async function captureBalanceSnapshot(
     .select({
       currentMinor: accountBalanceSnapshots.currentMinor,
       source: accountBalanceSnapshots.source,
-      observedAt: accountBalanceSnapshots.observedAt,
-      providerAsOf: accountBalanceSnapshots.providerAsOf,
+      currency: accountBalanceSnapshots.currency,
+      sameObservation: sql<boolean>`${accountBalanceSnapshots.observedAt} = ${capture.observedAt}::timestamptz`,
+      sameProviderAsOf: sql<boolean>`${accountBalanceSnapshots.providerAsOf} is not distinct from ${capture.providerAsOf}::timestamptz`,
     })
     .from(accountBalanceSnapshots)
+    .innerJoin(accounts, and(
+      eq(accounts.id, accountBalanceSnapshots.accountId),
+      eq(accounts.userId, capture.userId),
+      eq(accounts.currency, capture.currency),
+      eq(accounts.source, capture.source === "provider" ? "plaid" : "manual"),
+    ))
     .where(
       and(
         eq(accountBalanceSnapshots.accountId, capture.accountId),
@@ -107,12 +115,12 @@ export async function captureBalanceSnapshot(
         eq(accountBalanceSnapshots.snapshotDay, snapshotDay),
       ),
     );
-  if (!existing) invariantConflict(capture, snapshotDay);
+  if (!existing || existing.currency !== capture.currency || existing.source !== capture.source) {
+    invariantConflict(capture, snapshotDay);
+  }
   if (
-    existing.observedAt.getTime() === capture.observedAt.getTime() &&
-    (existing.currentMinor !== capture.currentMinor ||
-      existing.source !== capture.source ||
-      existing.providerAsOf?.getTime() !== capture.providerAsOf?.getTime())
+    existing.sameObservation &&
+    (existing.currentMinor !== capture.currentMinor || !existing.sameProviderAsOf)
   ) {
     invariantConflict(capture, snapshotDay);
   }
@@ -495,7 +503,7 @@ async function reconcileCurrentBalanceHistory(range: BalanceHistoryRange): Promi
           currency: accounts.currency,
           source: accounts.source,
           currentMinor: accountBalances.currentMinor,
-          observedAt: accountBalances.asOf,
+          observedAt: sql<string>`${accountBalances.asOf}::text`,
           reportedOn: accountBalances.reportedOn,
         })
         .from(accounts)
