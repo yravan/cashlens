@@ -26,11 +26,6 @@ export type EditableObligation = {
   endsOn: string | null;
 };
 
-type ObligationDraft = Omit<EditableObligation, "id" | "amountMinor" | "endsOn"> & {
-  amount: string;
-  endsOn: string;
-};
-
 const ERROR_COPY: Record<ObligationMutationError | "invalid_request", string> = {
   invalid_request: "Check the obligation details and try again.",
   account_not_found: "That account is no longer available.",
@@ -47,22 +42,46 @@ const CADENCES: { value: ObligationCadence; label: string }[] = [
 
 function ObligationForm({
   accounts,
-  initial,
-  label,
-  submitLabel,
-  endpoint,
-  failure,
+  obligation,
   onClose,
 }: {
   accounts: ObligationAccount[];
-  initial: ObligationDraft;
-  label: string;
-  submitLabel: string;
-  endpoint: string;
-  failure: string;
+  obligation?: EditableObligation;
   onClose: () => void;
 }) {
   const router = useRouter();
+  const mode = obligation
+    ? {
+        label: `Edit ${obligation.name}`,
+        submitLabel: "Save changes",
+        endpoint: `/api/obligations/${obligation.id}`,
+        failure: "Couldn’t update the obligation. Try again.",
+        initial: {
+          accountId: obligation.accountId,
+          name: obligation.name,
+          amount: formatMajorUnits(obligation.amountMinor, obligation.currency),
+          currency: obligation.currency,
+          cadence: obligation.cadence,
+          startsOn: obligation.startsOn,
+          endsOn: obligation.endsOn ?? "",
+        },
+      }
+    : {
+        label: "Add obligation",
+        submitLabel: "Add obligation",
+        endpoint: "/api/obligations",
+        failure: "Couldn’t add the obligation. Try again.",
+        initial: {
+          accountId: accounts[0].id,
+          name: "",
+          amount: "",
+          currency: accounts[0].currency,
+          cadence: "once" as const,
+          startsOn: "",
+          endsOn: "",
+        },
+      };
+  const { initial } = mode;
   const [accountId, setAccountId] = useState(initial.accountId);
   const [name, setName] = useState(initial.name);
   const [amount, setAmount] = useState(initial.amount);
@@ -77,14 +96,14 @@ function ObligationForm({
 
   return (
     <RowForm
-      label={label}
-      submitLabel={submitLabel}
+      label={mode.label}
+      submitLabel={mode.submitLabel}
       pending={pending}
       error={error}
       onCancel={onClose}
       onSubmit={() =>
         run(
-          endpoint,
+          mode.endpoint,
           {
             accountId,
             name,
@@ -94,7 +113,7 @@ function ObligationForm({
             startsOn,
             endsOn: cadence === "once" ? null : endsOn || null,
           },
-          failure,
+          mode.failure,
         )
       }
     >
@@ -215,87 +234,34 @@ function useDisclosure() {
   return { open, setOpen, button, close };
 }
 
-export function AddObligation({ accounts }: { accounts: ObligationAccount[] }) {
-  const { open, setOpen, button, close } = useDisclosure();
-  const firstAccount = accounts[0];
-
-  if (!open) {
-    return (
-      <button
-        id="add-obligation"
-        ref={button}
-        type="button"
-        onClick={() => setOpen(true)}
-        className={`mt-4 ${quietButton}`}
-      >
-        Add obligation
-      </button>
-    );
-  }
-
-  return (
-    <ObligationForm
-      accounts={accounts}
-      initial={{
-        accountId: firstAccount.id,
-        name: "",
-        amount: "",
-        currency: firstAccount.currency,
-        cadence: "once",
-        startsOn: "",
-        endsOn: "",
-      }}
-      label="Add obligation"
-      submitLabel="Add obligation"
-      endpoint="/api/obligations"
-      failure="Couldn’t add the obligation. Try again."
-      onClose={close}
-    />
-  );
-}
-
-export function EditObligation({
+export function ObligationControl({
   accounts,
   obligation,
 }: {
   accounts: ObligationAccount[];
-  obligation: EditableObligation;
+  obligation?: EditableObligation;
 }) {
   const { open, setOpen, button, close } = useDisclosure();
+  const trigger = obligation
+    ? { id: undefined, label: `Edit ${obligation.name}`, spacing: "mt-3", text: "Edit" }
+    : { id: "add-obligation", label: undefined, spacing: "mt-4", text: "Add obligation" };
 
   if (!open) {
     return (
       <button
+        id={trigger.id}
         ref={button}
         type="button"
-        aria-label={`Edit ${obligation.name}`}
+        aria-label={trigger.label}
         onClick={() => setOpen(true)}
-        className={`mt-3 ${quietButton}`}
+        className={`${trigger.spacing} ${quietButton}`}
       >
-        Edit
+        {trigger.text}
       </button>
     );
   }
 
-  return (
-    <ObligationForm
-      accounts={accounts}
-      initial={{
-        accountId: obligation.accountId,
-        name: obligation.name,
-        amount: formatMajorUnits(obligation.amountMinor, obligation.currency),
-        currency: obligation.currency,
-        cadence: obligation.cadence,
-        startsOn: obligation.startsOn,
-        endsOn: obligation.endsOn ?? "",
-      }}
-      label={`Edit ${obligation.name}`}
-      submitLabel="Save changes"
-      endpoint={`/api/obligations/${obligation.id}`}
-      failure="Couldn’t update the obligation. Try again."
-      onClose={close}
-    />
-  );
+  return <ObligationForm accounts={accounts} obligation={obligation} onClose={close} />;
 }
 
 export function EndObligation({

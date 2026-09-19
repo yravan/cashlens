@@ -5,11 +5,7 @@ import { upcomingOverview, type UpcomingOverview } from "@/lib/data/recurring";
 import { formatMinorUnits } from "@/lib/ledger/minor-units";
 import { parseUpcomingQuery, type UpcomingOccurrence } from "@/lib/ledger/upcoming";
 import { TransferMatch } from "../transactions/transfer-match";
-import {
-  AddObligation,
-  EditObligation,
-  EndObligation,
-} from "./obligation-controls";
+import { EndObligation, ObligationControl } from "./obligation-controls";
 
 export const metadata: Metadata = { title: "Upcoming" };
 
@@ -258,7 +254,7 @@ function KnownObligations({ overview }: { overview: UpcomingOverview }) {
               Add rent, insurance, tuition, or another known charge.
             </p>
           )}
-          <AddObligation accounts={overview.accounts} />
+          <ObligationControl accounts={overview.accounts} />
         </>
       )}
       {overview.obligations.length > 0 && (
@@ -283,7 +279,7 @@ function KnownObligations({ overview }: { overview: UpcomingOverview }) {
                 </p>
               </div>
               <div className="flex flex-wrap items-start gap-3">
-                <EditObligation accounts={overview.accounts} obligation={obligation} />
+                <ObligationControl accounts={overview.accounts} obligation={obligation} />
                 <EndObligation obligation={obligation} />
               </div>
             </li>
