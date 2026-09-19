@@ -26,8 +26,12 @@ async function transactionCount(userId: string): Promise<number> {
 const obligationCard = (management: Locator, name: string) =>
   management.getByTestId("obligation-card").filter({ hasText: name });
 
-const bodyOverflow = (page: Page) =>
-  page.evaluate(() => document.body.scrollWidth - document.documentElement.clientWidth);
+const documentOverflow = (page: Page) =>
+  page.evaluate(
+    () =>
+      Math.max(document.body.scrollWidth, document.documentElement.scrollWidth) -
+      document.documentElement.clientWidth,
+  );
 
 test.describe("upcoming expenses view", () => {
   test.beforeEach(async ({ request, playwright, browser, baseURL }) => {
@@ -498,7 +502,7 @@ test.describe("upcoming expenses view", () => {
   test.describe("phone viewport", () => {
     test.use({ viewport: { width: 320, height: 800 }, hasTouch: true });
 
-    test("creates, edits, and ends a known obligation without body overflow", async ({ page }) => {
+    test("creates, edits, and ends a known obligation without document overflow", async ({ page }) => {
       await page.goto("/upcoming?on=2026-04-01");
 
       await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$2,496.00", {
@@ -519,7 +523,7 @@ test.describe("upcoming expenses view", () => {
           return scroller !== null && scroller.scrollWidth > scroller.clientWidth;
         }),
       ).toBe(true);
-      expect(await bodyOverflow(page)).toBeLessThanOrEqual(0);
+      expect(await documentOverflow(page)).toBeLessThanOrEqual(0);
 
       const management = page.getByTestId("known-obligations");
       await management.getByRole("button", { name: "Add obligation" }).click();
@@ -528,13 +532,13 @@ test.describe("upcoming expenses view", () => {
       await addForm.getByLabel("Account").selectOption({ label: "Everyday Checking" });
       await addForm.getByLabel("Amount").fill("45.50");
       await addForm.getByLabel("First due date").fill("2026-04-22");
-      expect(await bodyOverflow(page)).toBeLessThanOrEqual(0);
+      expect(await documentOverflow(page)).toBeLessThanOrEqual(0);
       await addForm.getByRole("button", { name: "Add obligation" }).click();
 
       const card = obligationCard(management, "Phone bill");
       await expect(card).toContainText("Next Apr 22, 2026", { timeout: 30_000 });
       await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$2,541.50");
-      expect(await bodyOverflow(page)).toBeLessThanOrEqual(0);
+      expect(await documentOverflow(page)).toBeLessThanOrEqual(0);
 
       await card.getByRole("button", { name: "Edit Phone bill" }).click();
       const editForm = card.getByRole("form", { name: "Edit Phone bill" });
@@ -542,20 +546,20 @@ test.describe("upcoming expenses view", () => {
       await editForm.getByLabel("First due date").fill("2026-04-23");
       await editForm.getByLabel("Repeat").selectOption("monthly");
       await editForm.getByLabel("Final date").fill("2026-06-30");
-      expect(await bodyOverflow(page)).toBeLessThanOrEqual(0);
+      expect(await documentOverflow(page)).toBeLessThanOrEqual(0);
       await editForm.getByRole("button", { name: "Save changes" }).click();
 
       await expect(card).toContainText("Monthly · starts Apr 23, 2026 · ends Jun 30, 2026", {
         timeout: 30_000,
       });
       await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$2,546.00");
-      expect(await bodyOverflow(page)).toBeLessThanOrEqual(0);
+      expect(await documentOverflow(page)).toBeLessThanOrEqual(0);
 
       await card.getByRole("button", { name: "End Phone bill" }).click();
       await expect(card.getByRole("form", { name: "End Phone bill" })).toContainText(
         "End Phone bill?",
       );
-      expect(await bodyOverflow(page)).toBeLessThanOrEqual(0);
+      expect(await documentOverflow(page)).toBeLessThanOrEqual(0);
       await card
         .getByRole("form", { name: "End Phone bill" })
         .getByRole("button", { name: "End obligation" })
@@ -563,7 +567,7 @@ test.describe("upcoming expenses view", () => {
 
       await expect(card).toHaveCount(0, { timeout: 30_000 });
       await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$2,496.00");
-      expect(await bodyOverflow(page)).toBeLessThanOrEqual(0);
+      expect(await documentOverflow(page)).toBeLessThanOrEqual(0);
     });
   });
 });
