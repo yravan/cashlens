@@ -288,6 +288,20 @@
       "when": 1789461910186,
       "tag": "0040_scheduled_obligation_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789577461616,
+      "tag": "0041_certain_lyja",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1789577507321,
+      "tag": "0042_balance_snapshot_grants",
+      "breakpoints": true
     }
   ]
 }

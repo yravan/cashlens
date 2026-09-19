@@ -5,7 +5,7 @@ import { SEED_ACCOUNTS, SEED_CATEGORIES, SEED_CLERK_IDS } from "../db/seed/datas
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
-import { signedInState } from "./session";
+import { signedInContext, signedInState } from "./session";
 
 const clerkIdOf = (key: "a" | "b"): string =>
   JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8"))[key].clerkUserId;
@@ -247,10 +247,7 @@ test.describe("manual transactions", () => {
     await expect(transactionRow(page, "E2E DOUBLE SUBMIT")).toHaveCount(0);
     expect((await manualRows(userA, { id: duplicateId })).rowCount).toBe(0);
 
-    const contextB = await browser.newContext({
-      baseURL,
-      storageState: await signedInState(browser, "b"),
-    });
+    const contextB = await signedInContext(browser, "b", baseURL);
     try {
       const pageB = await contextB.newPage();
       await pageB.goto("/transactions");

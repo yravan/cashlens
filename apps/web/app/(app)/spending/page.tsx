@@ -27,9 +27,9 @@ function drillHref(categoryId: string, query: SpendingQuery, currency: string): 
 
 function Amount({ label, value, testId }: { label: string; value: string; testId: string }) {
   return (
-    <div className="min-w-0">
+    <div className="w-max max-w-full min-w-0">
       <p className="text-xs font-medium tracking-wide text-zinc-500 dark:text-zinc-400">{label}</p>
-      <p data-testid={testId} className="mt-0.5 font-mono text-sm font-medium tabular-nums">
+      <p data-testid={testId} className="mt-0.5 break-all font-mono text-sm font-medium tabular-nums">
         {value}
       </p>
     </div>
@@ -62,8 +62,8 @@ function CategoryRow({
   currency: string;
 }) {
   return (
-    <li data-testid="spend-category" className="flex items-baseline justify-between gap-3 py-2">
-      <div className="min-w-0">
+    <li data-testid="spend-category" className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-2">
+      <div className="max-w-full min-w-0 break-all">
         <Link
           href={drillHref(category.id, query, currency)}
           className="text-sm underline-offset-4 hover:underline"
@@ -72,7 +72,7 @@ function CategoryRow({
         </Link>
         <DirectionNote totals={category} currency={currency} />
       </div>
-      <p data-testid="category-net" className="font-mono text-sm tabular-nums">
+      <p data-testid="category-net" className="max-w-full min-w-0 break-all font-mono text-sm tabular-nums">
         {signed(category.netMinor, currency)}
       </p>
     </li>
@@ -94,7 +94,7 @@ function CurrencySection({ section, query }: { section: SpendingSection; query: 
         {currency}
       </h2>
       <div>
-        <div className="grid grid-cols-3 gap-3 border-t border-zinc-300 py-4 sm:justify-items-end sm:text-right dark:border-zinc-700">
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3 border-t border-zinc-300 py-4 dark:border-zinc-700">
           <Amount
             label="Money in"
             testId="spend-in"
@@ -114,9 +114,9 @@ function CurrencySection({ section, query }: { section: SpendingSection; query: 
         <ul className="divide-y divide-zinc-200 border-t border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
           {section.groups.map((group) => (
             <li key={group.id} data-testid="spend-group" className="py-3">
-              <div className="flex items-baseline justify-between gap-3">
-                <p className="text-sm font-medium">{group.name}</p>
-                <p data-testid="group-net" className="font-mono text-sm font-medium tabular-nums">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <p className="max-w-full min-w-0 break-all text-sm font-medium">{group.name}</p>
+                <p data-testid="group-net" className="max-w-full min-w-0 break-all font-mono text-sm font-medium tabular-nums">
                   {signed(group.netMinor, currency)}
                 </p>
               </div>
@@ -137,14 +137,14 @@ function CurrencySection({ section, query }: { section: SpendingSection; query: 
           ))}
           {section.uncategorized && (
             <li data-testid="spend-uncategorized" className="py-3">
-              <div className="flex items-baseline justify-between gap-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <Link
                   href={drillHref(UNCATEGORIZED, query, currency)}
                   className="text-sm font-medium underline-offset-4 hover:underline"
                 >
                   Uncategorized
                 </Link>
-                <p data-testid="group-net" className="font-mono text-sm font-medium tabular-nums">
+                <p data-testid="group-net" className="max-w-full min-w-0 break-all font-mono text-sm font-medium tabular-nums">
                   {signed(section.uncategorized.netMinor, currency)}
                 </p>
               </div>

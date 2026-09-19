@@ -11,6 +11,7 @@ type SandboxBalances = {
   limit: number | null;
   iso_currency_code: string | null;
   unofficial_currency_code: string | null;
+  last_updated_datetime?: string | null;
 };
 
 export type SandboxAccount = {

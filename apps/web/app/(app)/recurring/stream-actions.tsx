@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type {
@@ -38,9 +38,16 @@ export function StreamActions({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastDecision, setLastDecision] = useState<RecurringDecision | null>(null);
+  const submittingRef = useRef(false);
 
   const decide = async (status: RecurringDecision) => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setBusy(true);
+    setError(null);
+    setLastDecision(status);
     try {
       const { accountId, currency, direction, normalizedName } = stream;
       const response = await fetch("/api/recurring/streams", {
@@ -48,8 +55,15 @@ export function StreamActions({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ accountId, currency, direction, normalizedName, status }),
       });
-      if (response.ok || response.status === 404) router.refresh();
+      if (response.ok || response.status === 404) {
+        router.refresh();
+      } else {
+        setError("Couldn’t save that change. Try again.");
+      }
+    } catch {
+      setError("The change may have succeeded. Try again.");
     } finally {
+      submittingRef.current = false;
       setBusy(false);
     }
   };
@@ -74,6 +88,21 @@ export function StreamActions({
             {action.label}
           </button>
         ))}
+      {error && (
+        <div className="basis-full flex flex-wrap items-baseline gap-3">
+          <p role="alert" className="text-red-600 dark:text-red-400">
+            {error}
+          </p>
+          <button
+            type="button"
+            onClick={() => lastDecision && decide(lastDecision)}
+            disabled={busy || lastDecision === null}
+            className="font-medium underline underline-offset-2 disabled:opacity-50"
+          >
+            Retry
+          </button>
+        </div>
+      )}
     </div>
   );
 }
