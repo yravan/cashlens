@@ -7,7 +7,7 @@ import { formatMinorUnits } from "../lib/ledger/minor-units";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
-import { signedInState } from "./session";
+import { signedInContext, signedInState } from "./session";
 
 const FIXTURE = path.join(__dirname, "statement-fixture.csv");
 const WALLET_ID = SEED_ACCOUNTS.find((row) => row.name === "Cash Wallet")!.id;
@@ -176,10 +176,7 @@ test.describe("statement import", () => {
     await expect(wallet).toContainText(usd(WALLET.currentMinor! + AFTER_ANCHOR_MINOR + 600));
     await expect(wallet.getByTestId("reported-balance")).toHaveText(reported(WALLET.sinceCount + 4));
 
-    const contextB = await browser.newContext({
-      baseURL,
-      storageState: await signedInState(browser, "b"),
-    });
+    const contextB = await signedInContext(browser, "b", baseURL);
     try {
       const pageB = await contextB.newPage();
       await pageB.goto("/transactions");

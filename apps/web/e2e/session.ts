@@ -78,3 +78,22 @@ export async function signedInState(
   }
   return file;
 }
+
+export async function signedInContext(
+  browser: Browser,
+  user: "a" | "b",
+  baseURL = BASE_URL,
+) {
+  const context = await browser.newContext({
+    ...devices["Desktop Chrome"],
+    baseURL,
+    storageState: await signedInState(browser, user),
+  });
+  try {
+    await setupClerkTestingToken({ context });
+    return context;
+  } catch (error) {
+    await context.close();
+    throw error;
+  }
+}
