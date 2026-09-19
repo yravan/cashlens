@@ -67,7 +67,7 @@ async function storedSnapshots(key: "a" | "b", accountId: string) {
 
 const SEED_CASH = EXPECTED.demo.overview.cashOnHand.USD;
 const SEED_OWED = EXPECTED.demo.overview.creditOwed.USD;
-const usd = (minor: number) => formatMinorUnits(minor, "USD");
+const usd = (minor: number | bigint) => formatMinorUnits(minor, "USD");
 
 test.use({ timezoneId: "America/Los_Angeles" });
 
@@ -148,7 +148,7 @@ test.describe("offline accounts", () => {
     await expect(accountRow(page, "Petty Cash").getByTestId("reported-balance")).toHaveText(
       `Reported ${usd(10000)} on 2026-09-11`,
     );
-    await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH + 10000));
+    await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH + BigInt(10000)));
 
     await page.goto("/transactions");
     await clerk.loaded({ page });
@@ -169,7 +169,7 @@ test.describe("offline accounts", () => {
     await expect(accountRow(page, "Petty Cash").getByTestId("reported-balance")).toHaveText(
       `Reported ${usd(10000)} on 2026-09-11 · 1 transaction since`,
     );
-    await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH + 7500));
+    await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH + BigInt(7500)));
     expect(await storedSnapshots("a", accountId)).toEqual(anchor);
 
     await accountRow(page, "Petty Cash").getByRole("button", { name: "Update balance" }).click();
@@ -184,7 +184,7 @@ test.describe("offline accounts", () => {
     await expect(accountRow(page, "Petty Cash").getByTestId("reported-balance")).toHaveText(
       `Reported ${usd(8000)} on 2026-09-11`,
     );
-    await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH + 8000));
+    await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH + BigInt(8000)));
     const corrected = await storedSnapshots("a", accountId);
     expect(corrected).toEqual([{
       ...anchor[0], current_minor: "8000", observed_at: expect.any(String), updated_at: expect.any(String),
@@ -287,7 +287,7 @@ test.describe("offline accounts", () => {
       clickAtReportedTime(page, add.getByRole("button", { name: "Add account" })),
     );
     await reloadAccountsSession(page);
-    await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED + 4000));
+    await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED + BigInt(4000)));
 
     await accountRow(page, "Store Card").getByRole("button", { name: "Update balance" }).click();
     const update = page.getByRole("form", { name: "Update balance" });
@@ -297,7 +297,7 @@ test.describe("offline accounts", () => {
       clickAtReportedTime(page, update.getByRole("button", { name: "Save balance" })),
     );
     await reloadAccountsSession(page);
-    await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED - 500));
+    await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED - BigInt(500)));
 
     const overflow = () =>
       page.evaluate(
@@ -311,7 +311,7 @@ test.describe("offline accounts", () => {
       rename.getByRole("button", { name: "Save name" }).click(),
     );
     await expect(accountRow(page, "Department Store Card")).toContainText(usd(-500));
-    await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED - 500));
+    await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED - BigInt(500)));
     expect(await overflow()).toBeLessThanOrEqual(0);
   });
 });

@@ -170,10 +170,11 @@ export function projectUpcoming(
         : undefined;
     const advance = (date: string) => nextExpectedDate(date, stream.cadence, anchorDay);
     const first = advance(stream.lastDate);
+    if (!isIsoDate(first)) continue;
     let next = first;
     if (first < reference) {
       next = advance(first);
-      if (next < reference) {
+      if (isIsoDate(next) && next < reference) {
         stale.push(base);
         continue;
       }
@@ -185,7 +186,7 @@ export function projectUpcoming(
         possibleOverlap: false,
       });
     }
-    for (; next <= monthEnd; next = advance(next)) {
+    for (; isIsoDate(next) && next <= monthEnd; next = advance(next)) {
       listed.push({
         ...base,
         source: "detected",

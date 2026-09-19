@@ -574,4 +574,44 @@ test.describe("upcoming expenses view", () => {
       expect(await documentOverflow(page)).toBeLessThanOrEqual(0);
     });
   });
+
+  for (const width of [320, 390]) {
+    test.describe(`phone viewport ${width}px`, () => {
+      test.use({ viewport: { width, height: 844 }, hasTouch: true });
+
+      test("the total, the list, and the calendar all reach a phone screen", async ({ page }) => {
+        await page.goto("/upcoming?on=2026-04-01");
+
+        await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$2,496.00", {
+          timeout: 30_000,
+        });
+        await expect(
+          page.getByTestId("upcoming-charge").filter({ hasText: "Streamflix" }),
+        ).toHaveCount(2);
+        const calendar = page.getByTestId("upcoming-calendar");
+        for (const weekday of ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]) {
+          await expect(calendar.getByRole("columnheader", { name: weekday, exact: true })).toHaveCount(1);
+        }
+
+        const documentWidth = await page.evaluate(() => ({
+          scroll: document.documentElement.scrollWidth,
+          client: document.documentElement.clientWidth,
+        }));
+        expect(documentWidth.scroll).toBe(documentWidth.client);
+
+        const calendarScroll = await calendar.evaluate((table) => {
+          const container = table.parentElement!;
+          container.scrollLeft = container.scrollWidth;
+          return {
+            width: table.getBoundingClientRect().width,
+            overflow: container.scrollWidth - container.clientWidth,
+            scrolled: container.scrollLeft,
+          };
+        });
+        expect(calendarScroll.width).toBe(576);
+        expect(calendarScroll.overflow).toBeGreaterThan(0);
+        expect(calendarScroll.scrolled).toBe(calendarScroll.overflow);
+      });
+    });
+  }
 });

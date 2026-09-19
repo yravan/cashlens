@@ -79,7 +79,7 @@ test("an offline balance is the anchor plus the posted rows after it, signed by 
     mask: null,
     currency: "USD",
     source: "manual",
-    currentMinor: 10000 + SINCE_MINOR,
+    currentMinor: BigInt(10000 + SINCE_MINOR),
     reportedMinor: 10000,
     reportedOn: "2026-04-01",
     sinceCount: SINCE_COUNT,
@@ -87,20 +87,20 @@ test("an offline balance is the anchor plus the posted rows after it, signed by 
     obligationCount: 0,
   });
   expect(overviewRow(overview, owed)).toMatchObject({
-    currentMinor: 5000 - SINCE_MINOR,
+    currentMinor: BigInt(5000 - SINCE_MINOR),
     reportedMinor: 5000,
     sinceCount: SINCE_COUNT,
   });
   expect(overviewRow(overview, provider)).toMatchObject({
     source: "plaid",
-    currentMinor: 10000,
+    currentMinor: BigInt(10000),
     reportedMinor: 10000,
     reportedOn: "2026-04-01",
     sinceCount: 0,
   });
-  expect(overviewRow(overview, stamped)).toMatchObject({ source: "import", currentMinor: 10000, sinceCount: 0 });
-  expect(overview.cashOnHand).toEqual({ USD: 10000 + SINCE_MINOR + 10000 + 10000 });
-  expect(overview.creditOwed).toEqual({ USD: 5000 - SINCE_MINOR });
+  expect(overviewRow(overview, stamped)).toMatchObject({ source: "import", currentMinor: BigInt(10000), sinceCount: 0 });
+  expect(overview.cashOnHand).toEqual({ USD: BigInt(10000 + SINCE_MINOR + 10000 + 10000) });
+  expect(overview.creditOwed).toEqual({ USD: BigInt(5000 - SINCE_MINOR) });
 });
 
 test("an offline account without an anchor day or without a balance row shows the stored figure", async () => {
@@ -114,7 +114,7 @@ test("an offline account without an anchor day or without a balance row shows th
 
   const overview = await withAuth(owner.clerkUserId, () => accountOverview());
   expect(overviewRow(overview, unanchored)).toMatchObject({
-    currentMinor: 4200,
+    currentMinor: BigInt(4200),
     reportedMinor: 4200,
     reportedOn: null,
     sinceCount: 0,
@@ -206,7 +206,9 @@ test("create inserts the account and its anchor and the overview moves by the ex
 
   const after = await withAuth(owner.clerkUserId, () => accountOverview());
   expect(after.accounts).toHaveLength(before.accounts.length + 1);
-  expect(after.cashOnHand).toEqual({ USD: (before.cashOnHand.USD ?? 0) - 1250 });
+  expect(after.cashOnHand).toEqual({
+    USD: (before.cashOnHand.USD ?? BigInt(0)) - BigInt(1250),
+  });
   expect(after.creditOwed).toEqual(before.creditOwed);
 
   const owedResponse = await withAuth(owner.clerkUserId, () =>
@@ -214,7 +216,7 @@ test("create inserts the account and its anchor and the overview moves by the ex
   );
   expect(owedResponse.status).toBe(201);
   const withCard = await withAuth(owner.clerkUserId, () => accountOverview());
-  expect(withCard.creditOwed).toEqual({ USD: 4000 });
+  expect(withCard.creditOwed).toEqual({ USD: BigInt(4000) });
   expect(withCard.cashOnHand).toEqual(after.cashOnHand);
   expect(await countRows(owner.id)).toBe(0);
 });
@@ -253,7 +255,7 @@ test("update balance re-anchors the single balance row and recomputes the rows s
   });
   expect(rows[0].asOf.getTime()).toBeGreaterThan(previous.getTime());
   expect(overviewRow(await withAuth(owner.clerkUserId, () => accountOverview()), id)).toMatchObject({
-    currentMinor: 8000,
+    currentMinor: BigInt(8000),
     reportedMinor: 8000,
     reportedOn: "2026-04-05",
     sinceCount: 0,

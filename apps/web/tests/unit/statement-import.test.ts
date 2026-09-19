@@ -98,6 +98,21 @@ test.each([
   expect(normalizeAmount(value, mark)).toBe(expected);
 });
 
+test("padded preview amounts stay valid at the server boundary without changing identity", async () => {
+  const padded = normalizeAmount(`${"0".repeat(40)}1.00`, ".");
+  expect(padded).toBe("1.00");
+  expect(normalizeAmount("-0012.34", ".")).toBe("-12.34");
+
+  const parsed = parseStatementImportInput({ rows: [row("2026-03-14", padded!, "Coffee")] });
+  expect(parsed).toEqual({ ok: true, input: { rows: [row("2026-03-14", "1.00", "Coffee")] } });
+  if (!parsed.ok) return;
+  const fromPreview = await importRows(parsed.input.rows, "USD");
+  const ordinary = await importRows([row("2026-03-14", "1.00", "Coffee")], "USD");
+  expect(fromPreview).not.toBeNull();
+  expect(ordinary).not.toBeNull();
+  expect(fromPreview![0]).toMatchObject({ amountMinor: 100, sourceId: ordinary![0].sourceId });
+});
+
 test("a single amount column flips as a whole and two columns pick the side that moves", () => {
   expect(statementAmount({ amount: "(12.34)" }, ".", false)).toBe("-12.34");
   expect(statementAmount({ amount: "12.34" }, ".", true)).toBe("-12.34");

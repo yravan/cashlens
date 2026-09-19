@@ -24,7 +24,7 @@ function Summary({
 }: {
   title: string;
   detail: string;
-  totals: Record<string, number>;
+  totals: Record<string, bigint>;
   testId: string;
 }) {
   const entries = Object.entries(totals).sort(([a], [b]) => a.localeCompare(b));
@@ -42,13 +42,13 @@ function Summary({
       ) : (
         <ul className="mt-4 space-y-2">
           {entries.map(([currency, amount]) => (
-            <li key={currency} className="flex items-baseline justify-between gap-4">
+            <li key={currency} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
               <span className="text-xs font-medium tracking-wide text-zinc-500 dark:text-zinc-400">
                 {currency}
               </span>
               <span
                 data-testid={`${testId}-${currency}`}
-                className="font-mono text-xl font-medium tabular-nums tracking-tight"
+                className="max-w-full min-w-0 break-all font-mono text-sm font-medium tabular-nums sm:text-base"
               >
                 {formatMinorUnits(amount, currency)}
               </span>
@@ -75,17 +75,17 @@ function AccountRow({ account }: { account: Account }) {
   return (
     <li
       data-testid="account-row"
-      className="grid gap-3 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+      className="grid gap-3 py-4 sm:flex sm:flex-wrap sm:items-center"
     >
-      <div className="min-w-0">
+      <div className="min-w-0 sm:min-w-40 sm:flex-1">
         <p className="truncate text-sm font-medium">{account.name}</p>
         {detail && <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{detail}</p>}
       </div>
-      <div className="sm:text-right">
+      <div className="max-w-full min-w-0 sm:ml-auto sm:text-right">
         {account.currentMinor === null ? (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">Balance unavailable</p>
         ) : (
-          <p className="font-mono text-base font-medium tabular-nums">
+          <p className="break-all font-mono text-sm font-medium tabular-nums sm:text-base">
             {formatMinorUnits(account.currentMinor, account.currency)}
           </p>
         )}
@@ -102,7 +102,7 @@ function AccountRow({ account }: { account: Account }) {
         )}
       </div>
       {offline && (
-        <div className="min-w-0 sm:col-span-2">
+        <div className="min-w-0 sm:basis-full">
           <OfflineAccountActions account={account} />
         </div>
       )}

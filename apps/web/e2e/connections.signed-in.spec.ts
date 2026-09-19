@@ -159,6 +159,7 @@ test.describe("connection management (real sandbox)", () => {
   });
 
   test("cleanup re-authenticates after a signed-out browser redirect", async ({ browser, baseURL }) => {
+    test.setTimeout(120_000);
     const context = await browser.newContext({
       baseURL,
       storageState: { cookies: [], origins: [] },

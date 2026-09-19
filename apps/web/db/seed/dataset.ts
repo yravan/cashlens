@@ -251,9 +251,9 @@ export const SEED_BALANCES: SeedRow<typeof accountBalances.$inferInsert>[] = [
 ];
 
 type PostedTotals = { inflowMinor: number; outflowMinor: number; netMinor: number; count: number };
-type MonthFlow = { month: string; inflowMinor: number; outflowMinor: number; netMinor: number };
+type MonthFlow = { month: string; inflowMinor: bigint; outflowMinor: bigint; netMinor: bigint };
 type CurrencyFlow = { currency: string; months: MonthFlow[] };
-type CategoryFlowTotals = { spentMinor: number; receivedMinor: number; netMinor: number };
+type CategoryFlowTotals = { spentMinor: bigint; receivedMinor: bigint; netMinor: bigint };
 type SpendingLeaf = CategoryFlowTotals & { id: string; name: string };
 type SpendingGroup = SpendingLeaf & { categories: SpendingLeaf[] };
 type CurrencySpending = {
@@ -266,7 +266,7 @@ type OverviewAccount = Pick<
   (typeof SEED_ACCOUNTS)[number],
   "name" | "type" | "subtype" | "mask" | "currency" | "source"
 > & {
-  currentMinor: number | null;
+  currentMinor: bigint | null;
   reportedMinor: number | null;
   reportedOn: string | null;
   sinceCount: number;
@@ -289,8 +289,8 @@ export type ExpectedPersona = {
   spending: CurrencySpending[];
   overview: {
     accounts: OverviewAccount[];
-    cashOnHand: Record<string, number>;
-    creditOwed: Record<string, number>;
+    cashOnHand: Record<string, bigint>;
+    creditOwed: Record<string, bigint>;
   };
   history: { order: string[]; currencies: string[] };
   transfers: {
@@ -327,13 +327,13 @@ function overviewFor(persona: SeedPersona): ExpectedPersona["overview"] {
         source === "manual" && reportedOn !== null
           ? rows.filter((t) => t.status === "posted" && t.date >= reportedOn)
           : [];
-      const sinceMinor = since.reduce((sum, t) => sum + t.amountMinor, 0);
+      const sinceMinor = since.reduce((sum, t) => sum + BigInt(t.amountMinor), BigInt(0));
       const currentMinor =
         reportedMinor === null || source !== "manual"
-          ? reportedMinor
+          ? reportedMinor === null ? null : BigInt(reportedMinor)
           : OWED_ACCOUNT_TYPES.has(type)
-            ? reportedMinor - sinceMinor
-            : reportedMinor + sinceMinor;
+            ? BigInt(reportedMinor) - sinceMinor
+            : BigInt(reportedMinor) + sinceMinor;
       return {
         name, type, subtype: subtype ?? null, mask: mask ?? null, currency, source,
         currentMinor, reportedMinor, reportedOn, sinceCount: since.length, transactionCount: rows.length,
@@ -346,10 +346,10 @@ function overviewFor(persona: SeedPersona): ExpectedPersona["overview"] {
         a.name.localeCompare(b.name),
     );
   const total = (type: "depository" | "credit") => {
-    const totals: Record<string, number> = {};
+    const totals: Record<string, bigint> = {};
     for (const a of accounts) {
       if (a.type === type && a.currentMinor !== null) {
-        totals[a.currency] = (totals[a.currency] ?? 0) + a.currentMinor;
+        totals[a.currency] = (totals[a.currency] ?? BigInt(0)) + a.currentMinor;
       }
     }
     return totals;
@@ -394,11 +394,16 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     const month = t.date.slice(0, 7);
     const months = buckets.get(t.currency) ?? new Map<string, MonthFlow>();
     buckets.set(t.currency, months);
-    const totals = months.get(month) ?? { month, inflowMinor: 0, outflowMinor: 0, netMinor: 0 };
+    const totals = months.get(month) ?? {
+      month,
+      inflowMinor: BigInt(0),
+      outflowMinor: BigInt(0),
+      netMinor: BigInt(0),
+    };
     months.set(month, totals);
-    if (t.amountMinor >= 0) totals.inflowMinor += t.amountMinor;
-    else totals.outflowMinor += t.amountMinor;
-    totals.netMinor += t.amountMinor;
+    if (t.amountMinor >= 0) totals.inflowMinor += BigInt(t.amountMinor);
+    else totals.outflowMinor += BigInt(t.amountMinor);
+    totals.netMinor += BigInt(t.amountMinor);
   }
   const flow = [...buckets.keys()].sort().map((currency) => ({
     currency,
@@ -417,18 +422,22 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     const perCategory = spendBuckets.get(t.currency) ?? new Map<string | null, CategoryFlowTotals>();
     spendBuckets.set(t.currency, perCategory);
     const key = t.categoryId ?? null;
-    const totals = perCategory.get(key) ?? { spentMinor: 0, receivedMinor: 0, netMinor: 0 };
+    const totals = perCategory.get(key) ?? {
+      spentMinor: BigInt(0),
+      receivedMinor: BigInt(0),
+      netMinor: BigInt(0),
+    };
     perCategory.set(key, totals);
-    if (t.amountMinor >= 0) totals.receivedMinor += t.amountMinor;
-    else totals.spentMinor += t.amountMinor;
-    totals.netMinor += t.amountMinor;
+    if (t.amountMinor >= 0) totals.receivedMinor += BigInt(t.amountMinor);
+    else totals.spentMinor += BigInt(t.amountMinor);
+    totals.netMinor += BigInt(t.amountMinor);
   }
   const byNet = (a: SpendingLeaf, b: SpendingLeaf) =>
-    a.netMinor - b.netMinor || a.name.localeCompare(b.name);
+    a.netMinor < b.netMinor ? -1 : a.netMinor > b.netMinor ? 1 : a.name.localeCompare(b.name);
   const spending: CurrencySpending[] = [...spendBuckets.keys()].sort().map((currency) => {
     const perCategory = spendBuckets.get(currency)!;
     const groups = new Map<string, SpendingGroup>();
-    const sectionTotals = { spentMinor: 0, receivedMinor: 0, netMinor: 0 };
+    const sectionTotals = { spentMinor: BigInt(0), receivedMinor: BigInt(0), netMinor: BigInt(0) };
     for (const [categoryId, totals] of perCategory) {
       sectionTotals.spentMinor += totals.spentMinor;
       sectionTotals.receivedMinor += totals.receivedMinor;
@@ -438,7 +447,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
       const parent = row.parentId === null ? row : catById.get(row.parentId)!;
       const group =
         groups.get(parent.id) ??
-        ({ id: parent.id, name: parent.name, spentMinor: 0, receivedMinor: 0, netMinor: 0, categories: [] } satisfies SpendingGroup);
+        ({ id: parent.id, name: parent.name, spentMinor: BigInt(0), receivedMinor: BigInt(0), netMinor: BigInt(0), categories: [] } satisfies SpendingGroup);
       groups.set(parent.id, group);
       group.spentMinor += totals.spentMinor;
       group.receivedMinor += totals.receivedMinor;

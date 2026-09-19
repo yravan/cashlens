@@ -47,84 +47,84 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     flow: [
       {
         currency: "EUR",
-        months: [{ month: "2026-03", inflowMinor: 20000, outflowMinor: -5650, netMinor: 14350 }],
+        months: [{ month: "2026-03", inflowMinor: BigInt(20000), outflowMinor: BigInt(-5650), netMinor: BigInt(14350) }],
       },
       {
         currency: "USD",
         months: [
-          { month: "2026-03", inflowMinor: 272112, outflowMinor: -15279, netMinor: 256833 },
-          { month: "2026-02", inflowMinor: 250000, outflowMinor: -21299, netMinor: 228701 },
-          { month: "2026-01", inflowMinor: 250000, outflowMinor: -2300, netMinor: 247700 },
+          { month: "2026-03", inflowMinor: BigInt(272112), outflowMinor: BigInt(-15279), netMinor: BigInt(256833) },
+          { month: "2026-02", inflowMinor: BigInt(250000), outflowMinor: BigInt(-21299), netMinor: BigInt(228701) },
+          { month: "2026-01", inflowMinor: BigInt(250000), outflowMinor: BigInt(-2300), netMinor: BigInt(247700) },
         ],
       },
     ],
     spending: [
       {
         currency: "EUR",
-        totals: { spentMinor: -5650, receivedMinor: 20000, netMinor: 14350 },
+        totals: { spentMinor: BigInt(-5650), receivedMinor: BigInt(20000), netMinor: BigInt(14350) },
         groups: [
           {
             id: seedCategory("demo", "Transportation", "group"),
             name: "Transportation",
-            spentMinor: -5650,
-            receivedMinor: 0,
-            netMinor: -5650,
+            spentMinor: BigInt(-5650),
+            receivedMinor: BigInt(0),
+            netMinor: BigInt(-5650),
             categories: [
-              { id: seedCategory("demo", "Public Transit", "leaf"), name: "Public Transit", spentMinor: -5650, receivedMinor: 0, netMinor: -5650 },
+              { id: seedCategory("demo", "Public Transit", "leaf"), name: "Public Transit", spentMinor: BigInt(-5650), receivedMinor: BigInt(0), netMinor: BigInt(-5650) },
             ],
           },
         ],
-        uncategorized: { spentMinor: 0, receivedMinor: 20000, netMinor: 20000 },
+        uncategorized: { spentMinor: BigInt(0), receivedMinor: BigInt(20000), netMinor: BigInt(20000) },
       },
       {
         currency: "USD",
-        totals: { spentMinor: -38878, receivedMinor: 772112, netMinor: 733234 },
+        totals: { spentMinor: BigInt(-38878), receivedMinor: BigInt(772112), netMinor: BigInt(733234) },
         groups: [
           {
             id: seedCategory("demo", "Food & Drink", "group"),
             name: "Food & Drink",
-            spentMinor: -11179,
-            receivedMinor: 0,
-            netMinor: -11179,
+            spentMinor: BigInt(-11179),
+            receivedMinor: BigInt(0),
+            netMinor: BigInt(-11179),
             categories: [
-              { id: seedCategory("demo", "Groceries", "leaf"), name: "Groceries", spentMinor: -6742, receivedMinor: 0, netMinor: -6742 },
-              { id: seedCategory("demo", "Restaurants & Bars", "leaf"), name: "Restaurants & Bars", spentMinor: -4437, receivedMinor: 0, netMinor: -4437 },
+              { id: seedCategory("demo", "Groceries", "leaf"), name: "Groceries", spentMinor: BigInt(-6742), receivedMinor: BigInt(0), netMinor: BigInt(-6742) },
+              { id: seedCategory("demo", "Restaurants & Bars", "leaf"), name: "Restaurants & Bars", spentMinor: BigInt(-4437), receivedMinor: BigInt(0), netMinor: BigInt(-4437) },
             ],
           },
           {
             id: seedCategory("demo", "Entertainment", "group"),
             name: "Entertainment",
-            spentMinor: -6900,
-            receivedMinor: 0,
-            netMinor: -6900,
+            spentMinor: BigInt(-6900),
+            receivedMinor: BigInt(0),
+            netMinor: BigInt(-6900),
             categories: [
-              { id: seedCategory("demo", "Streaming & Music", "leaf"), name: "Streaming & Music", spentMinor: -6900, receivedMinor: 0, netMinor: -6900 },
+              { id: seedCategory("demo", "Streaming & Music", "leaf"), name: "Streaming & Music", spentMinor: BigInt(-6900), receivedMinor: BigInt(0), netMinor: BigInt(-6900) },
             ],
           },
           {
             id: seedCategory("demo", "Income", "group"),
             name: "Income",
-            spentMinor: 0,
-            receivedMinor: 750000,
-            netMinor: 750000,
+            spentMinor: BigInt(0),
+            receivedMinor: BigInt(750000),
+            netMinor: BigInt(750000),
             categories: [
-              { id: seedCategory("demo", "Paycheck", "leaf"), name: "Paycheck", spentMinor: 0, receivedMinor: 750000, netMinor: 750000 },
+              { id: seedCategory("demo", "Paycheck", "leaf"), name: "Paycheck", spentMinor: BigInt(0), receivedMinor: BigInt(750000), netMinor: BigInt(750000) },
             ],
           },
         ],
-        uncategorized: { spentMinor: -20799, receivedMinor: 22112, netMinor: 1313 },
+        uncategorized: { spentMinor: BigInt(-20799), receivedMinor: BigInt(22112), netMinor: BigInt(1313) },
       },
     ],
     overview: {
       accounts: [
-        { name: "Berlin Checking", type: "depository", subtype: "checking", mask: "0300", currency: "EUR", source: "import", currentMinor: 120450, reportedMinor: 120450, reportedOn: null, sinceCount: 0, transactionCount: 2, obligationCount: 0 },
-        { name: "Everyday Checking", type: "depository", subtype: "checking", mask: "0100", currency: "USD", source: "plaid", currentMinor: 235370, reportedMinor: 235370, reportedOn: null, sinceCount: 0, transactionCount: 7, obligationCount: 2 },
-        { name: "Rainy Day Savings", type: "depository", subtype: "savings", mask: "0200", currency: "USD", source: "plaid", currentMinor: 1500000, reportedMinor: 1500000, reportedOn: null, sinceCount: 0, transactionCount: 2, obligationCount: 0 },
-        { name: "Cash Rewards Card", type: "credit", subtype: "credit card", mask: "4321", currency: "USD", source: "plaid", currentMinor: 51245, reportedMinor: 51245, reportedOn: null, sinceCount: 0, transactionCount: 7, obligationCount: 1 },
-        { name: "Cash Wallet", type: "other", subtype: null, mask: null, currency: "USD", source: "manual", currentMinor: 6800, reportedMinor: 8600, reportedOn: "2026-03-14", sinceCount: 1, transactionCount: 1, obligationCount: 0 },
+        { name: "Berlin Checking", type: "depository", subtype: "checking", mask: "0300", currency: "EUR", source: "import", currentMinor: BigInt(120450), reportedMinor: 120450, reportedOn: null, sinceCount: 0, transactionCount: 2, obligationCount: 0 },
+        { name: "Everyday Checking", type: "depository", subtype: "checking", mask: "0100", currency: "USD", source: "plaid", currentMinor: BigInt(235370), reportedMinor: 235370, reportedOn: null, sinceCount: 0, transactionCount: 7, obligationCount: 2 },
+        { name: "Rainy Day Savings", type: "depository", subtype: "savings", mask: "0200", currency: "USD", source: "plaid", currentMinor: BigInt(1500000), reportedMinor: 1500000, reportedOn: null, sinceCount: 0, transactionCount: 2, obligationCount: 0 },
+        { name: "Cash Rewards Card", type: "credit", subtype: "credit card", mask: "4321", currency: "USD", source: "plaid", currentMinor: BigInt(51245), reportedMinor: 51245, reportedOn: null, sinceCount: 0, transactionCount: 7, obligationCount: 1 },
+        { name: "Cash Wallet", type: "other", subtype: null, mask: null, currency: "USD", source: "manual", currentMinor: BigInt(6800), reportedMinor: 8600, reportedOn: "2026-03-14", sinceCount: 1, transactionCount: 1, obligationCount: 0 },
       ],
-      cashOnHand: { EUR: 120450, USD: 1735370 },
-      creditOwed: { USD: 51245 },
+      cashOnHand: { EUR: BigInt(120450), USD: BigInt(1735370) },
+      creditOwed: { USD: BigInt(51245) },
     },
     history: { order: expect.any(Array), currencies: ["EUR", "USD"] },
     transfers: { pairs: expect.any(Array), pairedRows: 4, autoQueue: 5 },
@@ -180,33 +180,33 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     flow: [
       {
         currency: "USD",
-        months: [{ month: "2026-03", inflowMinor: 75000, outflowMinor: -12345, netMinor: 62655 }],
+        months: [{ month: "2026-03", inflowMinor: BigInt(75000), outflowMinor: BigInt(-12345), netMinor: BigInt(62655) }],
       },
     ],
     spending: [
       {
         currency: "USD",
-        totals: { spentMinor: -12345, receivedMinor: 75000, netMinor: 62655 },
+        totals: { spentMinor: BigInt(-12345), receivedMinor: BigInt(75000), netMinor: BigInt(62655) },
         groups: [
           {
             id: seedCategory("neighbor", "Shopping", "group"),
             name: "Shopping",
-            spentMinor: -12345,
-            receivedMinor: 0,
-            netMinor: -12345,
+            spentMinor: BigInt(-12345),
+            receivedMinor: BigInt(0),
+            netMinor: BigInt(-12345),
             categories: [
-              { id: seedCategory("neighbor", "Electronics", "leaf"), name: "Electronics", spentMinor: -12345, receivedMinor: 0, netMinor: -12345 },
+              { id: seedCategory("neighbor", "Electronics", "leaf"), name: "Electronics", spentMinor: BigInt(-12345), receivedMinor: BigInt(0), netMinor: BigInt(-12345) },
             ],
           },
         ],
-        uncategorized: { spentMinor: 0, receivedMinor: 75000, netMinor: 75000 },
+        uncategorized: { spentMinor: BigInt(0), receivedMinor: BigInt(75000), netMinor: BigInt(75000) },
       },
     ],
     overview: {
       accounts: [
-        { name: "Neighbor Checking", type: "depository", subtype: "checking", mask: "0900", currency: "USD", source: "plaid", currentMinor: 50000, reportedMinor: 50000, reportedOn: null, sinceCount: 0, transactionCount: 2, obligationCount: 1 },
+        { name: "Neighbor Checking", type: "depository", subtype: "checking", mask: "0900", currency: "USD", source: "plaid", currentMinor: BigInt(50000), reportedMinor: 50000, reportedOn: null, sinceCount: 0, transactionCount: 2, obligationCount: 1 },
       ],
-      cashOnHand: { USD: 50000 },
+      cashOnHand: { USD: BigInt(50000) },
       creditOwed: {},
     },
     history: { order: expect.any(Array), currencies: ["USD"] },
@@ -387,9 +387,9 @@ test("true spend: the paired legs count in neither flow direction, and net is in
   const marchUsd = EXPECTED.demo.flow.find((f) => f.currency === "USD")!.months[0];
   expect(marchUsd).toEqual({
     month: "2026-03",
-    inflowMinor: 272112,
-    outflowMinor: -15279,
-    netMinor: 256833,
+    inflowMinor: BigInt(272112),
+    outflowMinor: BigInt(-15279),
+    netMinor: BigInt(256833),
   });
 
   const marchUsdPosted = SEED_TRANSACTIONS.filter(
@@ -409,9 +409,9 @@ test("true spend: the paired legs count in neither flow direction, and net is in
   expect(outflowWithPairs).toBe(-220279);
 
   const pairedLegTotal = 120000 + 85000;
-  expect(marchUsd.inflowMinor).toBe(inflowWithPairs - pairedLegTotal);
-  expect(marchUsd.outflowMinor).toBe(outflowWithPairs + pairedLegTotal);
-  expect(marchUsd.netMinor).toBe(inflowWithPairs + outflowWithPairs);
+  expect(marchUsd.inflowMinor).toBe(BigInt(inflowWithPairs - pairedLegTotal));
+  expect(marchUsd.outflowMinor).toBe(BigInt(outflowWithPairs + pairedLegTotal));
+  expect(marchUsd.netMinor).toBe(BigInt(inflowWithPairs + outflowWithPairs));
 });
 
 test("spending reconciles to flow: category rows sum to the period totals, nothing missing", () => {
@@ -422,17 +422,17 @@ test("spending reconciles to flow: category rows sum to the period totals, nothi
     for (const section of EXPECTED[persona].spending) {
       const months = EXPECTED[persona].flow.find((f) => f.currency === section.currency)!.months;
       expect(section.totals).toEqual({
-        spentMinor: months.reduce((sum, m) => sum + m.outflowMinor, 0),
-        receivedMinor: months.reduce((sum, m) => sum + m.inflowMinor, 0),
-        netMinor: months.reduce((sum, m) => sum + m.netMinor, 0),
+        spentMinor: months.reduce((sum, m) => sum + m.outflowMinor, BigInt(0)),
+        receivedMinor: months.reduce((sum, m) => sum + m.inflowMinor, BigInt(0)),
+        netMinor: months.reduce((sum, m) => sum + m.netMinor, BigInt(0)),
       });
       const rows = [...section.groups, ...(section.uncategorized ? [section.uncategorized] : [])];
-      expect(rows.reduce((sum, row) => sum + row.netMinor, 0)).toBe(section.totals.netMinor);
+      expect(rows.reduce((sum, row) => sum + row.netMinor, BigInt(0))).toBe(section.totals.netMinor);
       for (const group of section.groups) {
         expect({
-          spentMinor: group.categories.reduce((sum, c) => sum + c.spentMinor, 0),
-          receivedMinor: group.categories.reduce((sum, c) => sum + c.receivedMinor, 0),
-          netMinor: group.categories.reduce((sum, c) => sum + c.netMinor, 0),
+          spentMinor: group.categories.reduce((sum, c) => sum + c.spentMinor, BigInt(0)),
+          receivedMinor: group.categories.reduce((sum, c) => sum + c.receivedMinor, BigInt(0)),
+          netMinor: group.categories.reduce((sum, c) => sum + c.netMinor, BigInt(0)),
         }).toEqual({ spentMinor: group.spentMinor, receivedMinor: group.receivedMinor, netMinor: group.netMinor });
       }
     }

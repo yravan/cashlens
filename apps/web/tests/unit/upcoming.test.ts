@@ -101,6 +101,10 @@ test("the query accepts only a real ISO date under the single `on` key", () => {
     ok: true,
     query: { on: "2026-04-01" },
   });
+  expect(parseUpcomingQuery({ on: "9999-12-01" })).toEqual({
+    ok: true,
+    query: { on: "9999-12-01" },
+  });
   expect(parseUpcomingQuery({ on: "" })).toEqual({ ok: true, query: { on: null } });
   expect(parseUpcomingQuery({ on: undefined })).toEqual({ ok: true, query: { on: null } });
   for (const bad of [
@@ -299,6 +303,60 @@ test("the December window ends at the 31st and never spills into January", () =>
   expect(projected.monthEnd).toBe("2026-12-31");
   expect(projected.currencies[0].charges).toEqual([occurrenceOf(streamflix, "2026-12-05")]);
 });
+
+test.each([
+  ["monthly", "9999-11-30", ["9999-12-30"], -2300],
+  ["annual", "9998-12-31", ["9999-12-31"], -2300],
+  ["weekly", "9999-11-27", ["9999-12-04", "9999-12-11", "9999-12-18", "9999-12-25"], -9200],
+  ["biweekly", "9999-11-20", ["9999-12-04", "9999-12-18"], -4600],
+] as const)(
+  "stops when a %s projection crosses the four-digit year boundary",
+  (cadence, lastDate, dates, total) => {
+    const source = stream({ cadence, lastDate });
+    const projected = projectUpcoming([source], "9999-12-01");
+    expect(projected.monthEnd).toBe("9999-12-31");
+    expect(projected.currencies[0].charges.map(({ date, overdue }) => [date, overdue])).toEqual(
+      dates.map((date) => [date, false]),
+    );
+    expect(projected.currencies[0].toLeaveMinor).toBe(total);
+    expect(projected.stale).toEqual([]);
+  },
+);
+
+test.each([
+  ["monthly", "9999-11-30", [["9999-12-30", true]], -2300],
+  ["annual", "9998-11-30", [["9999-11-30", true]], -2300],
+  ["weekly", "9999-12-18", [["9999-12-25", true]], -2300],
+  ["biweekly", "9999-12-04", [["9999-12-18", true]], -2300],
+] as const)(
+  "keeps a valid overdue %s occurrence when its successor crosses the year boundary",
+  (cadence, lastDate, expected, total) => {
+    const source = stream({ cadence, lastDate });
+    const projected = projectUpcoming([source], "9999-12-31");
+    expect(projected.currencies[0].charges.map(({ date, overdue }) => [date, overdue])).toEqual(
+      expected,
+    );
+    expect(projected.currencies[0].toLeaveMinor).toBe(total);
+    expect(projected.stale).toEqual([]);
+  },
+);
+
+test.each([
+  ["monthly", "9999-12-30"],
+  ["annual", "9999-12-31"],
+  ["weekly", "9999-12-30"],
+  ["biweekly", "9999-12-30"],
+] as const)(
+  "omits a %s stream whose first projected date is outside the four-digit year domain",
+  (cadence, lastDate) => {
+    const source = stream({ cadence, lastDate });
+    expect(projectUpcoming([source], "9999-12-31")).toEqual({
+      monthEnd: "9999-12-31",
+      currencies: [],
+      stale: [],
+    });
+  },
+);
 
 test("a month-end anchor clamps into February through 6.4.1's next-date rule", () => {
   const rent = stream({ lastDate: "2026-01-31", typicalAmountMinor: -180000 });

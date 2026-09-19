@@ -167,7 +167,15 @@ export async function transactionHistory(parsed: ParsedHistoryQuery) {
 
 export type TransactionHistory = Awaited<ReturnType<typeof transactionHistory>>;
 
-type MonthFlow = { month: string; inflowMinor: number; outflowMinor: number; netMinor: number };
+const exactAggregate = {
+  mapFromDriverValue(value: unknown): bigint {
+    if (typeof value === "bigint") return value;
+    if (typeof value === "string" && /^-?\d+$/.test(value)) return BigInt(value);
+    throw new Error("money aggregate must be an exact integer");
+  },
+};
+
+type MonthFlow = { month: string; inflowMinor: bigint; outflowMinor: bigint; netMinor: bigint };
 
 // True spend = posted rows minus active-pair members, whatever their category
 // (the 3.3.1 contract). Dismissed pairs count again.
@@ -193,9 +201,9 @@ export async function cashFlowSummary() {
       .select({
         currency: transactions.currency,
         month,
-        inflowMinor: sql`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} >= 0), 0)`.mapWith(Number),
-        outflowMinor: sql`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} < 0), 0)`.mapWith(Number),
-        netMinor: sql`sum(${transactions.amountMinor})`.mapWith(Number),
+        inflowMinor: sql`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} >= 0), 0)`.mapWith(exactAggregate),
+        outflowMinor: sql`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} < 0), 0)`.mapWith(exactAggregate),
+        netMinor: sql`sum(${transactions.amountMinor})`.mapWith(exactAggregate),
       })
       .from(transactions)
       .where(and(posted, notExists(activePair)))
@@ -223,7 +231,7 @@ export async function cashFlowSummary() {
 
 export type CashFlowSummary = Awaited<ReturnType<typeof cashFlowSummary>>;
 
-type CategoryFlowTotals = { spentMinor: number; receivedMinor: number; netMinor: number };
+type CategoryFlowTotals = { spentMinor: bigint; receivedMinor: bigint; netMinor: bigint };
 type SpendingLeaf = CategoryFlowTotals & { id: string; name: string };
 type SpendingGroup = SpendingLeaf & { categories: SpendingLeaf[] };
 
@@ -267,8 +275,8 @@ export async function spendingByCategory(parsed: ParsedSpendingQuery) {
       .select({
         currency: transactions.currency,
         categoryId: transactions.categoryId,
-        spentMinor: sql`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} < 0), 0)`.mapWith(Number),
-        receivedMinor: sql`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} >= 0), 0)`.mapWith(Number),
+        spentMinor: sql`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} < 0), 0)`.mapWith(exactAggregate),
+        receivedMinor: sql`coalesce(sum(${transactions.amountMinor}) filter (where ${transactions.amountMinor} >= 0), 0)`.mapWith(exactAggregate),
       })
       .from(transactions)
       .where(and(posted, notExists(activePair)))
@@ -308,7 +316,7 @@ export async function spendingByCategory(parsed: ParsedSpendingQuery) {
       const section =
         sections.get(row.currency) ??
         ({
-          totals: { spentMinor: 0, receivedMinor: 0, netMinor: 0 },
+          totals: { spentMinor: BigInt(0), receivedMinor: BigInt(0), netMinor: BigInt(0) },
           groups: new Map(),
           uncategorized: null,
         } satisfies Section);
@@ -329,9 +337,9 @@ export async function spendingByCategory(parsed: ParsedSpendingQuery) {
         ({
           id: groupId,
           name: nameOf.get(groupId) ?? "",
-          spentMinor: 0,
-          receivedMinor: 0,
-          netMinor: 0,
+          spentMinor: BigInt(0),
+          receivedMinor: BigInt(0),
+          netMinor: BigInt(0),
           categories: [],
         } satisfies SpendingGroup);
       section.groups.set(groupId, group);
@@ -342,7 +350,7 @@ export async function spendingByCategory(parsed: ParsedSpendingQuery) {
     }
 
     const byNet = (a: SpendingLeaf, b: SpendingLeaf) =>
-      a.netMinor - b.netMinor || a.name.localeCompare(b.name);
+      a.netMinor < b.netMinor ? -1 : a.netMinor > b.netMinor ? 1 : a.name.localeCompare(b.name);
     const currencies = [...sections.keys()].sort().map((currency) => {
       const section = sections.get(currency)!;
       return {
@@ -395,7 +403,7 @@ export async function accountOverview() {
         source: accounts.source,
         reportedMinor: accountBalances.currentMinor,
         reportedOn: accountBalances.reportedOn,
-        sinceMinor: sql`coalesce((select sum(${transactions.amountMinor}) from ${transactions} where ${sinceAnchor}), 0)`.mapWith(Number),
+        sinceMinor: sql`coalesce((select sum(${transactions.amountMinor}) from ${transactions} where ${sinceAnchor}), 0)`.mapWith(exactAggregate),
         sinceCount: sql`(select count(*) from ${transactions} where ${sinceAnchor})`.mapWith(Number),
         transactionCount: sql`(select count(*) from ${transactions} where ${ownRows})`.mapWith(Number),
         obligationCount: sql`(select count(*) from ${scheduledObligations} where ${ownObligations})`.mapWith(Number),
@@ -410,14 +418,14 @@ export async function accountOverview() {
         row.reportedMinor === null
           ? row.reportedMinor
           : OWED_TYPES.has(row.type)
-            ? row.reportedMinor - sinceMinor
-            : row.reportedMinor + sinceMinor,
+            ? BigInt(row.reportedMinor) - sinceMinor
+            : BigInt(row.reportedMinor) + sinceMinor,
     }));
     const total = (type: "depository" | "credit") => {
-      const totals: Record<string, number> = {};
+      const totals: Record<string, bigint> = {};
       for (const account of shown) {
         if (account.type === type && account.currentMinor !== null) {
-          totals[account.currency] = (totals[account.currency] ?? 0) + account.currentMinor;
+          totals[account.currency] = (totals[account.currency] ?? BigInt(0)) + account.currentMinor;
         }
       }
       return totals;
