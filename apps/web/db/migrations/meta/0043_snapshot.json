@@ -1,6 +1,6 @@
 {
-  "id": "72f7c9a2-9927-4c95-b860-7aacb4b6c286",
-  "prevId": "3282ca77-a013-48e9-aeb0-0bbadacbe427",
+  "id": "efeb4d67-0a4e-4536-9b84-04520d69c45b",
+  "prevId": "8b447f80-0781-4d4e-886d-b3998a86bc99",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1875,7 +1875,7 @@
         },
         "recurring_streams_name_bounded": {
           "name": "recurring_streams_name_bounded",
-          "value": "normalized_name = btrim(normalized_name) and char_length(normalized_name) between 1 and 200"
+          "value": "normalized_name = btrim(normalized_name) and char_length(normalized_name) between 1 and 1500"
         }
       },
       "isRLSEnabled": false

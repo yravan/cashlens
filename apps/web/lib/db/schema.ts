@@ -11,6 +11,7 @@ import {
   pgPolicy,
   pgRole,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -62,6 +63,17 @@ export const accountType = pgEnum("account_type", [
   "loan",
   "investment",
   "other",
+]);
+
+export const balanceSnapshotSource = pgEnum("balance_snapshot_source", [
+  "provider",
+  "manual_anchor",
+]);
+
+export const balanceCaptureReason = pgEnum("balance_capture_reason", [
+  "event",
+  "bootstrap",
+  "reconciliation",
 ]);
 
 export const transactionStatus = pgEnum("transaction_status", [
@@ -738,6 +750,46 @@ export const accountBalances = pgTable(
     ),
     ...ownRowPolicies("account_balances"),
     pgPolicy("account_balances_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
+  ],
+);
+
+export const accountBalanceSnapshots = pgTable(
+  "account_balance_snapshots",
+  {
+    accountId: uuid("account_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    snapshotDay: date("snapshot_day").notNull(),
+    currentMinor: bigint("current_minor", { mode: "number" }).notNull(),
+    currency: char("currency", { length: 3 }).notNull(),
+    source: balanceSnapshotSource("source").notNull(),
+    captureReason: balanceCaptureReason("capture_reason").notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    providerAsOf: timestamp("provider_as_of", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    primaryKey({
+      name: "account_balance_snapshots_account_day_pk",
+      columns: [t.accountId, t.snapshotDay],
+    }),
+    foreignKey({
+      name: "account_balance_snapshots_account_user_fk",
+      columns: [t.accountId, t.userId],
+      foreignColumns: [accounts.id, accounts.userId],
+    }).onDelete("cascade"),
+    index("account_balance_snapshots_user_day_account_idx").on(
+      t.userId,
+      t.snapshotDay,
+      t.accountId,
+    ),
+    check("account_balance_snapshots_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
+    ...ownRowPolicies("account_balance_snapshots"),
+    pgPolicy("account_balance_snapshots_update_own", {
       for: "update",
       to: appRole,
       using: ownRow,

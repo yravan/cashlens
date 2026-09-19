@@ -1,6 +1,6 @@
 {
-  "id": "72f7c9a2-9927-4c95-b860-7aacb4b6c286",
-  "prevId": "3282ca77-a013-48e9-aeb0-0bbadacbe427",
+  "id": "8b447f80-0781-4d4e-886d-b3998a86bc99",
+  "prevId": "72f7c9a2-9927-4c95-b860-7aacb4b6c286",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -103,26 +103,26 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "account_balance_snapshots_account_user_fk": {
           "name": "account_balance_snapshots_account_user_fk",
           "tableFrom": "account_balance_snapshots",
-          "tableTo": "accounts",
           "columnsFrom": [
             "account_id",
             "user_id"
           ],
+          "tableTo": "accounts",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -239,26 +239,26 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "account_balances_account_user_fk": {
           "name": "account_balances_account_user_fk",
           "tableFrom": "account_balances",
-          "tableTo": "accounts",
           "columnsFrom": [
             "account_id",
             "user_id"
           ],
+          "tableTo": "accounts",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -395,9 +395,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "accounts_user_source_row_key": {
           "name": "accounts_user_source_row_key",
@@ -422,10 +422,10 @@
             }
           ],
           "isUnique": true,
-          "where": "source_id is not null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "source_id is not null",
+          "concurrently": false
         },
         "accounts_user_id_idx": {
           "name": "accounts_user_id_idx",
@@ -438,50 +438,50 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "accounts_user_id_users_id_fk": {
           "name": "accounts_user_id_users_id_fk",
           "tableFrom": "accounts",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "accounts_connection_user_fk": {
           "name": "accounts_connection_user_fk",
           "tableFrom": "accounts",
-          "tableTo": "connections",
           "columnsFrom": [
             "connection_id",
             "user_id"
           ],
+          "tableTo": "connections",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "accounts_id_user_id_unique": {
           "name": "accounts_id_user_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "id",
             "user_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -605,10 +605,10 @@
             }
           ],
           "isUnique": true,
-          "where": "parent_id is null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "parent_id is null",
+          "concurrently": false
         },
         "categories_user_parent_name_key": {
           "name": "categories_user_parent_name_key",
@@ -633,10 +633,10 @@
             }
           ],
           "isUnique": true,
-          "where": "parent_id is not null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "parent_id is not null",
+          "concurrently": false
         },
         "categories_user_id_idx": {
           "name": "categories_user_id_idx",
@@ -649,50 +649,50 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "categories_user_id_users_id_fk": {
           "name": "categories_user_id_users_id_fk",
           "tableFrom": "categories",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "categories_parent_user_fk": {
           "name": "categories_parent_user_fk",
           "tableFrom": "categories",
-          "tableTo": "categories",
           "columnsFrom": [
             "parent_id",
             "user_id"
           ],
+          "tableTo": "categories",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "categories_id_user_id_unique": {
           "name": "categories_id_user_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "id",
             "user_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -910,9 +910,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "classification_proposals_transaction_idx": {
           "name": "classification_proposals_transaction_idx",
@@ -925,99 +925,99 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "classification_proposals_run_owner_fk": {
           "name": "classification_proposals_run_owner_fk",
           "tableFrom": "classification_proposals",
-          "tableTo": "classification_runs",
           "columnsFrom": [
             "run_id",
             "owner_user_id",
             "run_kind"
           ],
+          "tableTo": "classification_runs",
           "columnsTo": [
             "id",
             "owner_user_id",
             "kind"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "classification_proposals_transaction_owner_fk": {
           "name": "classification_proposals_transaction_owner_fk",
           "tableFrom": "classification_proposals",
-          "tableTo": "transactions",
           "columnsFrom": [
             "transaction_id",
             "owner_user_id"
           ],
+          "tableTo": "transactions",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "classification_proposals_category_owner_fk": {
           "name": "classification_proposals_category_owner_fk",
           "tableFrom": "classification_proposals",
-          "tableTo": "categories",
           "columnsFrom": [
             "proposed_category_id",
             "owner_user_id"
           ],
+          "tableTo": "categories",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "classification_proposals_before_category_owner_fk": {
           "name": "classification_proposals_before_category_owner_fk",
           "tableFrom": "classification_proposals",
-          "tableTo": "categories",
           "columnsFrom": [
             "before_category_id",
             "owner_user_id"
           ],
+          "tableTo": "categories",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "classification_proposals_before_run_owner_fk": {
           "name": "classification_proposals_before_run_owner_fk",
           "tableFrom": "classification_proposals",
-          "tableTo": "classification_runs",
           "columnsFrom": [
             "before_category_run_id",
             "owner_user_id"
           ],
+          "tableTo": "classification_runs",
           "columnsTo": [
             "id",
             "owner_user_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "classification_proposals_run_transaction_unique": {
           "name": "classification_proposals_run_transaction_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "run_id",
             "transaction_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -1273,10 +1273,10 @@
             }
           ],
           "isUnique": true,
-          "where": "status = 'inferring'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "status = 'inferring'",
+          "concurrently": false
         },
         "classification_runs_owner_created_idx": {
           "name": "classification_runs_owner_created_idx",
@@ -1295,44 +1295,44 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "classification_runs_owner_user_id_users_id_fk": {
           "name": "classification_runs_owner_user_id_users_id_fk",
           "tableFrom": "classification_runs",
-          "tableTo": "users",
           "columnsFrom": [
             "owner_user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "classification_runs_id_owner_unique": {
           "name": "classification_runs_id_owner_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "id",
             "owner_user_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         },
         "classification_runs_id_owner_kind_unique": {
           "name": "classification_runs_id_owner_kind_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "id",
             "owner_user_id",
             "kind"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -1446,26 +1446,26 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "connection_credentials_connection_user_fk": {
           "name": "connection_credentials_connection_user_fk",
           "tableFrom": "connection_credentials",
-          "tableTo": "connections",
           "columnsFrom": [
             "connection_id",
             "user_id"
           ],
+          "tableTo": "connections",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -1616,10 +1616,10 @@
             }
           ],
           "isUnique": true,
-          "where": "provider_item_id is not null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "provider_item_id is not null",
+          "concurrently": false
         },
         "connections_user_id_idx": {
           "name": "connections_user_id_idx",
@@ -1632,35 +1632,35 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "connections_user_id_users_id_fk": {
           "name": "connections_user_id_users_id_fk",
           "tableFrom": "connections",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "connections_id_user_id_unique": {
           "name": "connections_id_user_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "id",
             "user_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -1799,9 +1799,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "recurring_streams_user_id_idx": {
           "name": "recurring_streams_user_id_idx",
@@ -1814,26 +1814,26 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "recurring_streams_account_user_fk": {
           "name": "recurring_streams_account_user_fk",
           "tableFrom": "recurring_streams",
-          "tableTo": "accounts",
           "columnsFrom": [
             "account_id",
             "user_id"
           ],
+          "tableTo": "accounts",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -1979,9 +1979,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "scheduled_obligations_active_user_start_idx": {
           "name": "scheduled_obligations_active_user_start_idx",
@@ -2000,51 +2000,51 @@
             }
           ],
           "isUnique": false,
-          "where": "ended_at is null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "ended_at is null",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "scheduled_obligations_user_id_users_id_fk": {
           "name": "scheduled_obligations_user_id_users_id_fk",
           "tableFrom": "scheduled_obligations",
-          "tableTo": "users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "scheduled_obligations_account_user_fk": {
           "name": "scheduled_obligations_account_user_fk",
           "tableFrom": "scheduled_obligations",
-          "tableTo": "accounts",
           "columnsFrom": [
             "account_id",
             "user_id"
           ],
+          "tableTo": "accounts",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "scheduled_obligations_id_user_id_unique": {
           "name": "scheduled_obligations_id_user_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "id",
             "user_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -2252,10 +2252,10 @@
             }
           ],
           "isUnique": true,
-          "where": "source_id is not null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "source_id is not null",
+          "concurrently": false
         },
         "transactions_user_date_idx": {
           "name": "transactions_user_date_idx",
@@ -2274,9 +2274,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "transactions_account_date_idx": {
           "name": "transactions_account_date_idx",
@@ -2295,67 +2295,67 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "transactions_account_user_fk": {
           "name": "transactions_account_user_fk",
           "tableFrom": "transactions",
-          "tableTo": "accounts",
           "columnsFrom": [
             "account_id",
             "user_id"
           ],
+          "tableTo": "accounts",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "transactions_category_user_fk": {
           "name": "transactions_category_user_fk",
           "tableFrom": "transactions",
-          "tableTo": "categories",
           "columnsFrom": [
             "category_id",
             "user_id"
           ],
+          "tableTo": "categories",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "transactions_category_run_user_fk": {
           "name": "transactions_category_run_user_fk",
           "tableFrom": "transactions",
-          "tableTo": "classification_runs",
           "columnsFrom": [
             "category_run_id",
             "user_id"
           ],
+          "tableTo": "classification_runs",
           "columnsTo": [
             "id",
             "owner_user_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "transactions_id_user_id_unique": {
           "name": "transactions_id_user_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "id",
             "user_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -2487,10 +2487,10 @@
             }
           ],
           "isUnique": true,
-          "where": "dismissed_at is null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "dismissed_at is null",
+          "concurrently": false
         },
         "transfer_pairs_active_inflow_key": {
           "name": "transfer_pairs_active_inflow_key",
@@ -2503,10 +2503,10 @@
             }
           ],
           "isUnique": true,
-          "where": "dismissed_at is null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "dismissed_at is null",
+          "concurrently": false
         },
         "transfer_pairs_inflow_idx": {
           "name": "transfer_pairs_inflow_idx",
@@ -2519,9 +2519,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "transfer_pairs_user_id_idx": {
           "name": "transfer_pairs_user_id_idx",
@@ -2534,52 +2534,52 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "transfer_pairs_outflow_user_fk": {
           "name": "transfer_pairs_outflow_user_fk",
           "tableFrom": "transfer_pairs",
-          "tableTo": "transactions",
           "columnsFrom": [
             "outflow_transaction_id",
             "user_id"
           ],
+          "tableTo": "transactions",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "transfer_pairs_inflow_user_fk": {
           "name": "transfer_pairs_inflow_user_fk",
           "tableFrom": "transfer_pairs",
-          "tableTo": "transactions",
           "columnsFrom": [
             "inflow_transaction_id",
             "user_id"
           ],
+          "tableTo": "transactions",
           "columnsTo": [
             "id",
             "user_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "transfer_pairs_combo_unique": {
           "name": "transfer_pairs_combo_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "outflow_transaction_id",
             "inflow_transaction_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -2660,10 +2660,10 @@
       "uniqueConstraints": {
         "users_clerk_user_id_unique": {
           "name": "users_clerk_user_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "clerk_user_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -2853,10 +2853,10 @@
     }
   },
   "schemas": {},
+  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
-  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},
