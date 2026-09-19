@@ -29,9 +29,16 @@ export class DatabaseQueryError extends Error {
 }
 
 function sanitizeDatabaseError(error: unknown): never {
-  const cause = error instanceof DrizzleQueryError ? error.cause : error;
-  if (!(cause instanceof DatabaseError)) throw error;
-  throw new DatabaseQueryError(cause.code, cause.constraint);
+  if (error instanceof DrizzleQueryError) {
+    const cause = error.cause;
+    throw cause instanceof DatabaseError
+      ? new DatabaseQueryError(cause.code, cause.constraint)
+      : new DatabaseQueryError();
+  }
+  if (error instanceof DatabaseError) {
+    throw new DatabaseQueryError(error.code, error.constraint);
+  }
+  throw error;
 }
 
 // Lazy: `next build` and previews must succeed without DATABASE_URL. Global: one pool across dev reloads.
