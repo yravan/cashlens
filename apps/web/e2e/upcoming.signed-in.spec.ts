@@ -93,6 +93,13 @@ test.describe("upcoming expenses view", () => {
       /^\/transactions\?account=[0-9a-f-]+&q=Streamflix$/,
     );
     await expect(known.locator('a[href^="/transactions?"]')).toHaveCount(0);
+    await expect(predicted).toContainText("Monthly · expected Apr 29, 2026 · last on Mar 29, 2026");
+
+    const deposit = page.getByTestId("upcoming-deposit");
+    await expect(deposit).toHaveCount(1);
+    await expect(deposit).toContainText("Acme Corp");
+    await expect(deposit).toContainText("expected Apr 27, 2026");
+    await expect(deposit).toContainText("+$2,500.00");
 
     await expect(page.getByTestId("upcoming-pinned")).toContainText("Projected as of Apr 1, 2026");
     await page.getByRole("link", { name: "Back to today" }).click();
