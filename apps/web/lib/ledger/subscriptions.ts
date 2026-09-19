@@ -17,9 +17,9 @@ export const CYCLES_PER_YEAR: Record<RecurringCadence, number> = {
 };
 
 export const annualAmountMinor = (stream: Pick<RecurringStream, "cadence" | "typicalAmountMinor">) =>
-  stream.typicalAmountMinor * CYCLES_PER_YEAR[stream.cadence];
+  stream.typicalAmountMinor * BigInt(CYCLES_PER_YEAR[stream.cadence]);
 
-export type AnnualTotal = { currency: string; outMinor: number; inMinor: number };
+export type AnnualTotal = { currency: string; outMinor: bigint; inMinor: bigint };
 
 export function annualTotals(
   streams: readonly (Pick<RecurringStream, "currency" | "direction" | "cadence" | "typicalAmountMinor"> & {
@@ -31,8 +31,8 @@ export function annualTotals(
     if (!tracked(stream.status)) continue;
     const total = byCurrency.get(stream.currency) ?? {
       currency: stream.currency,
-      outMinor: 0,
-      inMinor: 0,
+      outMinor: BigInt(0),
+      inMinor: BigInt(0),
     };
     byCurrency.set(stream.currency, total);
     if (stream.direction === "outflow") total.outMinor += annualAmountMinor(stream);

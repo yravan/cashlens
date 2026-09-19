@@ -23,8 +23,8 @@ const monthOf = (iso: string) => MONTHS[Number(iso.slice(5, 7)) - 1];
 const monthName = (iso: string) => `${monthOf(iso)} ${iso.slice(0, 4)}`;
 const shortDate = (iso: string) =>
   `${monthOf(iso).slice(0, 3)} ${Number(iso.slice(8, 10))}, ${iso.slice(0, 4)}`;
-const signed = (minor: number, currency: string) =>
-  `${minor > 0 ? "+" : ""}${formatMinorUnits(minor, currency)}`;
+const signed = (minor: bigint, currency: string) =>
+  `${minor > BigInt(0) ? "+" : ""}${formatMinorUnits(minor, currency)}`;
 const occurrenceKey = (occurrence: UpcomingOccurrence) =>
   occurrence.source === "obligation"
     ? `${occurrence.obligationId}:${occurrence.date}`
@@ -55,7 +55,7 @@ function MonthCalendar({ overview }: { overview: UpcomingOverview }) {
   const referenceDay = Number(overview.reference.slice(8, 10));
 
   return (
-    <div className="mt-6 overflow-x-auto">
+    <div className="relative mt-6 overflow-x-auto">
       <table data-testid="upcoming-calendar" className="w-full min-w-[36rem] table-fixed border-collapse text-left">
         <caption className="pb-2 text-left text-sm font-medium">{monthName(overview.reference)}</caption>
         <thead>
@@ -155,7 +155,7 @@ function CurrencySection({ section, monthLabel }: { section: UpcomingOverview["c
               {formatMinorUnits(section.toLeaveMinor, section.currency)}
             </p>
           </div>
-          {section.toArriveMinor !== 0 && (
+          {section.toArriveMinor !== BigInt(0) && (
             <div>
               <p className="text-xs font-medium tracking-wide text-zinc-500 dark:text-zinc-400">Expected in</p>
               <p data-testid="upcoming-to-arrive" className="mt-0.5 font-mono text-lg font-semibold tabular-nums">

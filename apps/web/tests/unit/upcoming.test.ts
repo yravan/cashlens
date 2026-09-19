@@ -18,8 +18,8 @@ const stream = (over: Partial<UpcomingInput> = {}): UpcomingInput => {
     normalizedName: `STREAM ${sequence}`,
     name: `Stream ${sequence}`,
     cadence: "monthly",
-    typicalAmountMinor: -2300,
-    lastAmountMinor: -2300,
+    typicalAmountMinor: -BigInt(2300),
+    lastAmountMinor: -BigInt(2300),
     firstDate: "2026-01-29",
     lastDate: "2026-03-29",
     occurrences: 3,
@@ -88,7 +88,7 @@ const obligationOccurrenceOf = (
   direction: "outflow",
   name: source.name,
   cadence: source.cadence,
-  amountMinor: -source.amountMinor,
+  amountMinor: -BigInt(source.amountMinor),
   date,
   overdue,
   possibleOverlap,
@@ -99,6 +99,10 @@ test("the query accepts only a real ISO date under the single `on` key", () => {
   expect(parseUpcomingQuery({ on: "2026-04-01" })).toEqual({
     ok: true,
     query: { on: "2026-04-01" },
+  });
+  expect(parseUpcomingQuery({ on: "9999-12-01" })).toEqual({
+    ok: true,
+    query: { on: "9999-12-01" },
   });
   expect(parseUpcomingQuery({ on: "" })).toEqual({ ok: true, query: { on: null } });
   expect(parseUpcomingQuery({ on: undefined })).toEqual({ ok: true, query: { on: null } });
@@ -131,8 +135,8 @@ test("a monthly stream projects its next date inside the reference month", () =>
     currencies: [
       {
         currency: "USD",
-        toLeaveMinor: -2300,
-        toArriveMinor: 0,
+        toLeaveMinor: -BigInt(2300),
+        toArriveMinor: BigInt(0),
         charges: [occurrenceOf(streamflix, "2026-04-29")],
         deposits: [],
       },
@@ -147,8 +151,8 @@ test("a date the reference has passed shows overdue and still counts to leave", 
   expect(projected.currencies).toEqual([
     {
       currency: "USD",
-      toLeaveMinor: -2300,
-      toArriveMinor: 0,
+      toLeaveMinor: -BigInt(2300),
+      toArriveMinor: BigInt(0),
       charges: [occurrenceOf(streamflix, "2026-04-29", true)],
       deposits: [],
     },
@@ -177,8 +181,8 @@ test("the stale boundary is exact: a second expected date on the reference still
   expect(projected.currencies).toEqual([
     {
       currency: "USD",
-      toLeaveMinor: -4600,
-      toArriveMinor: 0,
+      toLeaveMinor: -BigInt(4600),
+      toArriveMinor: BigInt(0),
       charges: [
         occurrenceOf(streamflix, "2026-04-29", true),
         occurrenceOf(streamflix, "2026-05-29"),
@@ -190,7 +194,7 @@ test("the stale boundary is exact: a second expected date on the reference still
 });
 
 test("a weekly stream projects every remaining date of the month", () => {
-  const gym = stream({ cadence: "weekly", lastDate: "2026-08-31", typicalAmountMinor: -1500 });
+  const gym = stream({ cadence: "weekly", lastDate: "2026-08-31", typicalAmountMinor: -BigInt(1500) });
   const projected = projectUpcoming([gym], "2026-09-01");
   expect(projected.currencies[0].charges).toEqual([
     occurrenceOf(gym, "2026-09-07"),
@@ -198,11 +202,11 @@ test("a weekly stream projects every remaining date of the month", () => {
     occurrenceOf(gym, "2026-09-21"),
     occurrenceOf(gym, "2026-09-28"),
   ]);
-  expect(projected.currencies[0].toLeaveMinor).toBe(-6000);
+  expect(projected.currencies[0].toLeaveMinor).toBe(-BigInt(6000));
 });
 
 test("a weekly stream one week behind lists the missed date once, then the rest", () => {
-  const gym = stream({ cadence: "weekly", lastDate: "2026-09-01", typicalAmountMinor: -1500 });
+  const gym = stream({ cadence: "weekly", lastDate: "2026-09-01", typicalAmountMinor: -BigInt(1500) });
   const projected = projectUpcoming([gym], "2026-09-12");
   expect(projected.currencies[0].charges).toEqual([
     occurrenceOf(gym, "2026-09-08", true),
@@ -210,7 +214,7 @@ test("a weekly stream one week behind lists the missed date once, then the rest"
     occurrenceOf(gym, "2026-09-22"),
     occurrenceOf(gym, "2026-09-29"),
   ]);
-  expect(projected.currencies[0].toLeaveMinor).toBe(-6000);
+  expect(projected.currencies[0].toLeaveMinor).toBe(-BigInt(6000));
 });
 
 test("dismissed streams neither project nor count as stale", () => {
@@ -230,8 +234,8 @@ test("canceled streams leave the projection entirely: neither listed nor stale",
   expect(projected.currencies).toEqual([
     {
       currency: "USD",
-      toLeaveMinor: -2300,
-      toArriveMinor: 0,
+      toLeaveMinor: -BigInt(2300),
+      toArriveMinor: BigInt(0),
       charges: [occurrenceOf(active, "2026-04-29")],
       deposits: [],
     },
@@ -244,22 +248,22 @@ test("proposed and confirmed both project", () => {
   const confirmed = stream({ status: "confirmed" });
   const projected = projectUpcoming([proposed, confirmed], "2026-04-01");
   expect(projected.currencies[0].charges).toHaveLength(2);
-  expect(projected.currencies[0].toLeaveMinor).toBe(-4600);
+  expect(projected.currencies[0].toLeaveMinor).toBe(-BigInt(4600));
 });
 
 test("inflows land in deposits and to-arrive, never in the charges total", () => {
   const paycheck = stream({
     direction: "inflow",
-    typicalAmountMinor: 250000,
-    lastAmountMinor: 250000,
+    typicalAmountMinor: BigInt(250000),
+    lastAmountMinor: BigInt(250000),
     lastDate: "2026-03-27",
   });
   const streamflix = stream();
   expect(projectUpcoming([paycheck, streamflix], "2026-04-01").currencies).toEqual([
     {
       currency: "USD",
-      toLeaveMinor: -2300,
-      toArriveMinor: 250000,
+      toLeaveMinor: -BigInt(2300),
+      toArriveMinor: BigInt(250000),
       charges: [occurrenceOf(streamflix, "2026-04-29")],
       deposits: [occurrenceOf(paycheck, "2026-04-27")],
     },
@@ -268,11 +272,11 @@ test("inflows land in deposits and to-arrive, never in the charges total", () =>
 
 test("currencies stay separate sections, sorted, sums never mixed", () => {
   const usd = stream();
-  const eur = stream({ currency: "EUR", typicalAmountMinor: -999, lastDate: "2026-03-10" });
+  const eur = stream({ currency: "EUR", typicalAmountMinor: -BigInt(999), lastDate: "2026-03-10" });
   const projected = projectUpcoming([eur, usd], "2026-04-01");
   expect(projected.currencies.map((section) => [section.currency, section.toLeaveMinor])).toEqual([
-    ["EUR", -999],
-    ["USD", -2300],
+    ["EUR", -BigInt(999)],
+    ["USD", -BigInt(2300)],
   ]);
 });
 
@@ -299,20 +303,74 @@ test("the December window ends at the 31st and never spills into January", () =>
   expect(projected.currencies[0].charges).toEqual([occurrenceOf(streamflix, "2026-12-05")]);
 });
 
+test.each([
+  ["monthly", "9999-11-30", ["9999-12-30"], -2300],
+  ["annual", "9998-12-31", ["9999-12-31"], -2300],
+  ["weekly", "9999-11-27", ["9999-12-04", "9999-12-11", "9999-12-18", "9999-12-25"], -9200],
+  ["biweekly", "9999-11-20", ["9999-12-04", "9999-12-18"], -4600],
+] as const)(
+  "stops when a %s projection crosses the four-digit year boundary",
+  (cadence, lastDate, dates, total) => {
+    const source = stream({ cadence, lastDate });
+    const projected = projectUpcoming([source], "9999-12-01");
+    expect(projected.monthEnd).toBe("9999-12-31");
+    expect(projected.currencies[0].charges.map(({ date, overdue }) => [date, overdue])).toEqual(
+      dates.map((date) => [date, false]),
+    );
+    expect(projected.currencies[0].toLeaveMinor).toBe(BigInt(total));
+    expect(projected.stale).toEqual([]);
+  },
+);
+
+test.each([
+  ["monthly", "9999-11-30", [["9999-12-30", true]], -2300],
+  ["annual", "9998-11-30", [["9999-11-30", true]], -2300],
+  ["weekly", "9999-12-18", [["9999-12-25", true]], -2300],
+  ["biweekly", "9999-12-04", [["9999-12-18", true]], -2300],
+] as const)(
+  "keeps a valid overdue %s occurrence when its successor crosses the year boundary",
+  (cadence, lastDate, expected, total) => {
+    const source = stream({ cadence, lastDate });
+    const projected = projectUpcoming([source], "9999-12-31");
+    expect(projected.currencies[0].charges.map(({ date, overdue }) => [date, overdue])).toEqual(
+      expected,
+    );
+    expect(projected.currencies[0].toLeaveMinor).toBe(BigInt(total));
+    expect(projected.stale).toEqual([]);
+  },
+);
+
+test.each([
+  ["monthly", "9999-12-30"],
+  ["annual", "9999-12-31"],
+  ["weekly", "9999-12-30"],
+  ["biweekly", "9999-12-30"],
+] as const)(
+  "omits a %s stream whose first projected date is outside the four-digit year domain",
+  (cadence, lastDate) => {
+    const source = stream({ cadence, lastDate });
+    expect(projectUpcoming([source], "9999-12-31")).toEqual({
+      monthEnd: "9999-12-31",
+      currencies: [],
+      stale: [],
+    });
+  },
+);
+
 test("a month-end anchor clamps into February through 6.4.1's next-date rule", () => {
-  const rent = stream({ lastDate: "2026-01-31", typicalAmountMinor: -180000 });
+  const rent = stream({ lastDate: "2026-01-31", typicalAmountMinor: -BigInt(180000) });
   const projected = projectUpcoming([rent], "2026-02-01");
   expect(projected.currencies[0].charges).toEqual([occurrenceOf(rent, "2026-02-28")]);
 });
 
 test("a month-end anchor returns to its original day after February", () => {
-  const rent = stream({ lastDate: "2026-01-31", typicalAmountMinor: -180000 });
+  const rent = stream({ lastDate: "2026-01-31", typicalAmountMinor: -BigInt(180000) });
   const projected = projectUpcoming([rent], "2026-03-29");
   expect(projected.currencies).toEqual([
     {
       currency: "USD",
-      toLeaveMinor: -360000,
-      toArriveMinor: 0,
+      toLeaveMinor: -BigInt(360000),
+      toArriveMinor: BigInt(0),
       charges: [
         occurrenceOf(rent, "2026-02-28", true),
         occurrenceOf(rent, "2026-03-31"),
@@ -327,18 +385,18 @@ test.each([
   ["2026-01-29", "2026-03-28", "2026-03-29"],
   ["2026-01-30", "2026-03-29", "2026-03-30"],
 ] as const)("day %s returns after a non-leap February", (lastDate, reference, nextDate) => {
-  const rent = stream({ lastDate, typicalAmountMinor: -180000 });
+  const rent = stream({ lastDate, typicalAmountMinor: -BigInt(180000) });
   const projected = projectUpcoming([rent], reference);
   expect(projected.currencies[0].charges).toEqual([
     occurrenceOf(rent, "2026-02-28", true),
     occurrenceOf(rent, nextDate),
   ]);
-  expect(projected.currencies[0].toLeaveMinor).toBe(-360000);
+  expect(projected.currencies[0].toLeaveMinor).toBe(-BigInt(360000));
   expect(projected.stale).toEqual([]);
 });
 
 test("the month-end anchor is due on its original March day and stale the next day", () => {
-  const rent = stream({ lastDate: "2026-01-31", typicalAmountMinor: -180000 });
+  const rent = stream({ lastDate: "2026-01-31", typicalAmountMinor: -BigInt(180000) });
   const due = projectUpcoming([rent], "2026-03-31");
   expect(due.currencies[0].charges).toEqual([
     occurrenceOf(rent, "2026-02-28", true),
@@ -386,8 +444,8 @@ test("a known monthly obligation projects a negative outflow occurrence", () => 
     currencies: [
       {
         currency: "USD",
-        toLeaveMinor: -180000,
-        toArriveMinor: 0,
+        toLeaveMinor: -BigInt(180000),
+        toArriveMinor: BigInt(0),
         charges: [obligationOccurrenceOf(rent, "2026-04-05")],
         deposits: [],
       },
@@ -409,15 +467,15 @@ test("known obligations stay in separate currency totals", () => {
   expect(projectUpcoming([], "2026-04-01", [rent, insurance]).currencies).toEqual([
     {
       currency: "EUR",
-      toLeaveMinor: -120000,
-      toArriveMinor: 0,
+      toLeaveMinor: -BigInt(120000),
+      toArriveMinor: BigInt(0),
       charges: [obligationOccurrenceOf(insurance, "2026-04-12")],
       deposits: [],
     },
     {
       currency: "USD",
-      toLeaveMinor: -180000,
-      toArriveMinor: 0,
+      toLeaveMinor: -BigInt(180000),
+      toArriveMinor: BigInt(0),
       charges: [obligationOccurrenceOf(rent, "2026-04-05")],
       deposits: [],
     },
@@ -428,8 +486,8 @@ test("an exact known and detected overlap marks and counts both occurrences", ()
   const predicted = stream({
     normalizedName: "RENT HISTORY",
     name: "Rent prediction",
-    typicalAmountMinor: -180000,
-    lastAmountMinor: -180000,
+    typicalAmountMinor: -BigInt(180000),
+    lastAmountMinor: -BigInt(180000),
     lastDate: "2026-03-05",
   });
   const rent = obligation();
@@ -437,8 +495,8 @@ test("an exact known and detected overlap marks and counts both occurrences", ()
   expect(projectUpcoming([predicted], "2026-04-01", [rent]).currencies).toEqual([
     {
       currency: "USD",
-      toLeaveMinor: -360000,
-      toArriveMinor: 0,
+      toLeaveMinor: -BigInt(360000),
+      toArriveMinor: BigInt(0),
       charges: [
         obligationOccurrenceOf(rent, "2026-04-05", false, true),
         occurrenceOf(predicted, "2026-04-05", false, true),
@@ -457,8 +515,8 @@ test.each([
   const predicted = stream({
     normalizedName: "RENT HISTORY",
     name: "Rent prediction",
-    typicalAmountMinor: -180000,
-    lastAmountMinor: -180000,
+    typicalAmountMinor: -BigInt(180000),
+    lastAmountMinor: -BigInt(180000),
     lastDate: "2026-03-05",
   });
   const rent = obligation(difference);
@@ -482,15 +540,15 @@ test("same-source duplicates do not create a possible-overlap warning", () => {
   const firstDetected = stream({
     normalizedName: "RENT ONE",
     name: "Rent prediction",
-    typicalAmountMinor: -180000,
-    lastAmountMinor: -180000,
+    typicalAmountMinor: -BigInt(180000),
+    lastAmountMinor: -BigInt(180000),
     lastDate: "2026-03-05",
   });
   const secondDetected = stream({
     normalizedName: "RENT TWO",
     name: "Rent prediction",
-    typicalAmountMinor: -180000,
-    lastAmountMinor: -180000,
+    typicalAmountMinor: -BigInt(180000),
+    lastAmountMinor: -BigInt(180000),
     lastDate: "2026-03-05",
   });
   const detected = projectUpcoming([firstDetected, secondDetected], "2026-04-01");
@@ -504,8 +562,8 @@ test("combined occurrences order by source before source-specific identity", () 
   const predicted = stream({
     normalizedName: "ZZZ RENT",
     name: "Rent",
-    typicalAmountMinor: -179999,
-    lastAmountMinor: -179999,
+    typicalAmountMinor: -BigInt(179999),
+    lastAmountMinor: -BigInt(179999),
     lastDate: "2026-03-05",
   });
   const rent = obligation({ obligationId: "00000000-0000-4000-8000-000000000001" });
@@ -545,8 +603,8 @@ test("a monthly obligation keeps its original anchor around the reference", () =
   expect(projected.currencies).toEqual([
     {
       currency: "USD",
-      toLeaveMinor: -360000,
-      toArriveMinor: 0,
+      toLeaveMinor: -BigInt(360000),
+      toArriveMinor: BigInt(0),
       charges: [
         obligationOccurrenceOf(rent, "2026-02-28", true),
         obligationOccurrenceOf(rent, "2026-03-31"),
@@ -567,8 +625,8 @@ test.each([
   expect(projected.currencies).toEqual([
     {
       currency: "USD",
-      toLeaveMinor: -charge.amountMinor * dates.length,
-      toArriveMinor: 0,
+      toLeaveMinor: -BigInt(charge.amountMinor) * BigInt(dates.length),
+      toArriveMinor: BigInt(0),
       charges: dates.map((date, index) => obligationOccurrenceOf(charge, date, index === 0)),
       deposits: [],
     },
@@ -592,8 +650,8 @@ test("a February 29 annual obligation clamps and returns to its leap-day anchor"
   expect(projectUpcoming([], "2027-02-28", [insurance]).currencies).toEqual([
     {
       currency: "USD",
-      toLeaveMinor: -360000,
-      toArriveMinor: 0,
+      toLeaveMinor: -BigInt(360000),
+      toArriveMinor: BigInt(0),
       charges: [
         obligationOccurrenceOf(insurance, "2026-02-28", true),
         obligationOccurrenceOf(insurance, "2027-02-28"),
@@ -624,8 +682,8 @@ test.each([
       expect(projected.currencies).toEqual([
         {
           currency: "USD",
-          toLeaveMinor: -180000,
-          toArriveMinor: 0,
+          toLeaveMinor: -BigInt(180000),
+          toArriveMinor: BigInt(0),
           charges: [obligationOccurrenceOf(tuition, expected, overdue)],
           deposits: [],
         },
@@ -671,8 +729,8 @@ test.each([
     expect(projectUpcoming([], reference, [finite]).currencies).toEqual([
       {
         currency: "USD",
-        toLeaveMinor: -180000,
-        toArriveMinor: 0,
+        toLeaveMinor: -BigInt(180000),
+        toArriveMinor: BigInt(0),
         charges: [obligationOccurrenceOf(finite, expected, true)],
         deposits: [],
       },

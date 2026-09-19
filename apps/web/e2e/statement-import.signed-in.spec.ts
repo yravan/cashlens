@@ -242,4 +242,18 @@ test.describe("statement import", () => {
     );
     expect(await overflow()).toBeLessThanOrEqual(0);
   });
+
+  test("an oversized CSV explains complete-date recovery", async ({ page }) => {
+    await page.goto("/accounts");
+    await accountRow(page, "Cash Wallet").getByRole("button", { name: "Import", exact: true }).click();
+    const form = page.getByRole("form", { name: "Import statement" });
+    await form.getByTestId("import-file").setInputFiles({
+      name: "oversized.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.alloc(1024 * 1024 + 1, 120),
+    });
+    await expect(form.getByRole("alert")).toHaveText(
+      "That file is too large to import in one go. Split it into files by complete dates, keeping every row for a date together. A single date over the limit cannot be imported yet; do not split that date across files.",
+    );
+  });
 });
