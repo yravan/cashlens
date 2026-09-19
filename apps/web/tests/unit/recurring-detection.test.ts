@@ -51,6 +51,12 @@ test("normalization strips per-charge descriptor noise, keeps identity", () => {
   expect(normalizeRecurringName("!!!")).toBe("");
 });
 
+test("normalization observes a 3-to-1 Unicode uppercase expansion", () => {
+  const normalized = normalizeRecurringName("\uFB03".repeat(500));
+  expect(normalized).toHaveLength(1500);
+  expect(normalized).toBe("FFI".repeat(500));
+});
+
 test("monthly cadence: month-length variance and Feb-end clamping stay in class", () => {
   const stream = only(
     detectRecurringStreams([

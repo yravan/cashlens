@@ -4,7 +4,12 @@ import { expect, test } from "vitest";
 import { POST as streamsRoute } from "@/app/api/recurring/streams/route";
 import { EXPECTED, SEED_ACCOUNTS, SEED_USERS } from "@/db/seed/dataset";
 import { seedDataset } from "@/db/seed/seed";
-import { recurringOverview, setRecurringStatus, type StreamIdentity } from "@/lib/data/recurring";
+import {
+  recurringOverview,
+  setRecurringStatus,
+  upcomingOverview,
+  type StreamIdentity,
+} from "@/lib/data/recurring";
 import { matchTransfers } from "@/lib/data/transfers";
 import { chargedAfterCancel, priceIncreased } from "@/lib/ledger/subscriptions";
 import { requireUser } from "@/lib/data/users";
@@ -12,6 +17,8 @@ import { withRequestScope } from "@/lib/db/client";
 import { accounts, recurringStreams, transactions } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
+import { sandboxTransaction } from "../harness/plaid";
+import { backfilled } from "./plaid-helpers";
 
 type Row = {
   account: number;
@@ -297,6 +304,85 @@ test("the route stores a decision for the signed-in user and 404s unknown stream
   expect(unknown.status).toBe(404);
 });
 
+test("Plaid's 500-unit Unicode identities stay distinct through decisions and projections", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const name = "\uFB03".repeat(500);
+  const secondName = `${"\uFB03".repeat(499)}A`;
+  const checkingNormalized = "FFI".repeat(500);
+  const cardNormalized = `${"FFI".repeat(499)}A`;
+  await backfilled(
+    clerkUserId,
+    ...["2026-01-15", "2026-02-15", "2026-03-15"].flatMap((date) => [
+      sandboxTransaction("acct-checking", 12, name, date),
+      sandboxTransaction("acct-checking", 12, secondName, date),
+    ]),
+  );
+
+  const overview = await withAuth(clerkUserId, () => recurringOverview());
+  const ingested = await adminDb()
+    .select({ description: transactions.description, merchant: transactions.merchant })
+    .from(transactions);
+  expect(ingested).toHaveLength(6);
+  expect(ingested.every((row) => row.description.length === 500 && row.merchant === null)).toBe(true);
+  expect(new Set(overview.streams.map((stream) => stream.normalizedName))).toEqual(
+    new Set([cardNormalized, checkingNormalized]),
+  );
+  expect(overview.streams.every((stream) => stream.normalizedName.length <= 1500)).toBe(true);
+  expect(new Set(overview.streams.map((stream) => stream.normalizedName)).size).toBe(2);
+  expect(overview.annual).toEqual([{ currency: "USD", outMinor: -28800, inMinor: 0 }]);
+
+  const checking = overview.streams.find((stream) => stream.normalizedName === checkingNormalized)!;
+  const second = overview.streams.find((stream) => stream.normalizedName === cardNormalized)!;
+  const checkingIdentity: StreamIdentity = {
+    accountId: checking.accountId,
+    currency: checking.currency,
+    direction: checking.direction,
+    normalizedName: checking.normalizedName,
+  };
+  const secondIdentity: StreamIdentity = {
+    accountId: second.accountId,
+    currency: second.currency,
+    direction: second.direction,
+    normalizedName: second.normalizedName,
+  };
+  const post = (identity: StreamIdentity, status: "confirmed" | "canceled") =>
+    withAuth(clerkUserId, () => postStatus({ ...identity, status }));
+
+  expect((await post(checkingIdentity, "confirmed")).status).toBe(200);
+  expect((await post(secondIdentity, "confirmed")).status).toBe(200);
+  expect(await withAuth(clerkUserId, () => recurringOverview())).toMatchObject({
+    annual: [{ currency: "USD", outMinor: -28800, inMinor: 0 }],
+  });
+  const beforeCancel = await withAuth(clerkUserId, () => upcomingOverview("2026-04-01"));
+  expect(beforeCancel).toMatchObject({
+    trackedCount: 2,
+    currencies: [{ currency: "USD", toLeaveMinor: -2400 }],
+  });
+  expect((await post(checkingIdentity, "canceled")).status).toBe(200);
+  expect(await decisionRows((await withAuth(clerkUserId, () => requireUser())).id)).toEqual([
+    { accountId: second.accountId, normalizedName: cardNormalized, status: "confirmed" },
+    { accountId: checking.accountId, normalizedName: checkingNormalized, status: "canceled" },
+  ]);
+  expect(checkingNormalized).toHaveLength(1500);
+
+  expect(await withAuth(clerkUserId, () => recurringOverview())).toMatchObject({
+    annual: [{ currency: "USD", outMinor: -14400, inMinor: 0 }],
+  });
+  expect(await withAuth(clerkUserId, () => upcomingOverview("2026-04-01"))).toMatchObject({
+    trackedCount: 1,
+    currencies: [{ currency: "USD", toLeaveMinor: -1200 }],
+  });
+
+  const tooLong = await withAuth(clerkUserId, () =>
+    postStatus({
+      ...checkingIdentity,
+      normalizedName: `${checkingNormalized}X`,
+      status: "confirmed",
+    }),
+  );
+  expect(tooLong.status).toBe(400);
+});
+
 test("the route rejects signed-out, cross-origin, and malformed callers before any work", async () => {
   await seedDataset(adminDb());
   const acme = { ...demoStream("ACME CORP"), status: "confirmed" };
@@ -315,7 +401,7 @@ test("the route rejects signed-out, cross-origin, and malformed callers before a
     { ...acme, direction: "sideways" },
     { ...acme, normalizedName: "" },
     { ...acme, normalizedName: " PADDED " },
-    { ...acme, normalizedName: "X".repeat(201) },
+    { ...acme, normalizedName: "X".repeat(1501) },
     { ...acme, status: "maybe" },
     { ...acme, status: "cancelled" },
   ]) {
