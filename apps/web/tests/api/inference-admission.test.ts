@@ -318,7 +318,7 @@ test("the run records the captured request and actual sanitized provider metadat
     status: "succeeded",
     requestedModel: "openai/gpt-5-nano",
     responseModel: "openai/gpt-5-nano",
-    promptVersion: "classification-prompt-v1",
+    promptVersion: "classification-prompt-v2",
     assignmentSchemaVersion: "transaction-classification-v1",
     providerInputTokens: 1,
     providerOutputTokens: 1,

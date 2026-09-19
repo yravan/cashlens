@@ -28,7 +28,7 @@ export type UpcomingStream = {
   normalizedName: string;
   name: string;
   cadence: RecurringCadence;
-  amountMinor: number;
+  amountMinor: bigint;
   lastDate: string;
 };
 
@@ -47,7 +47,7 @@ export type UpcomingObligationOccurrence = {
   direction: "outflow";
   name: string;
   cadence: UpcomingObligationInput["cadence"];
-  amountMinor: number;
+  amountMinor: bigint;
   date: string;
   overdue: boolean;
   possibleOverlap: boolean;
@@ -57,8 +57,8 @@ export type UpcomingOccurrence = UpcomingDetectedOccurrence | UpcomingObligation
 
 export type UpcomingCurrency = {
   currency: string;
-  toLeaveMinor: number;
-  toArriveMinor: number;
+  toLeaveMinor: bigint;
+  toArriveMinor: bigint;
   charges: UpcomingOccurrence[];
   deposits: UpcomingOccurrence[];
 };
@@ -207,7 +207,7 @@ export function projectUpcoming(
       direction: "outflow" as const,
       name: obligation.name,
       cadence: obligation.cadence,
-      amountMinor: -obligation.amountMinor,
+      amountMinor: -BigInt(obligation.amountMinor),
       date,
       overdue,
       possibleOverlap: false,
@@ -295,7 +295,7 @@ export function projectUpcoming(
       occurrence.accountId,
       occurrence.currency,
       occurrence.date,
-      occurrence.amountMinor,
+      occurrence.amountMinor.toString(),
     ]);
   const detectedOverlapKeys = new Set(
     listed.filter((occurrence) => occurrence.source === "detected").map(overlapKey),
@@ -333,8 +333,8 @@ export function projectUpcoming(
   for (const occurrence of listed) {
     const section = byCurrency.get(occurrence.currency) ?? {
       currency: occurrence.currency,
-      toLeaveMinor: 0,
-      toArriveMinor: 0,
+      toLeaveMinor: BigInt(0),
+      toArriveMinor: BigInt(0),
       charges: [],
       deposits: [],
     };

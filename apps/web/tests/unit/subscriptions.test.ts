@@ -15,8 +15,8 @@ type Stream = {
   currency: string;
   direction: RecurringDirection;
   cadence: RecurringCadence;
-  typicalAmountMinor: number;
-  lastAmountMinor: number;
+  typicalAmountMinor: bigint;
+  lastAmountMinor: bigint;
   status: StreamStatus;
 };
 
@@ -24,8 +24,8 @@ const stream = (over: Partial<Stream> = {}): Stream => ({
   currency: "USD",
   direction: "outflow",
   cadence: "monthly",
-  typicalAmountMinor: -2300,
-  lastAmountMinor: -2300,
+  typicalAmountMinor: -BigInt(2300),
+  lastAmountMinor: -BigInt(2300),
   status: "proposed",
   ...over,
 });
@@ -38,46 +38,46 @@ test("to review and confirmed streams are tracked; dismissed and canceled are no
 
 test("yearly cost is the typical amount times the cycles in a year, sign preserved", () => {
   expect(CYCLES_PER_YEAR).toEqual({ weekly: 52, biweekly: 26, monthly: 12, annual: 1 });
-  expect(annualAmountMinor(stream({ cadence: "weekly", typicalAmountMinor: -1500 }))).toBe(-78000);
-  expect(annualAmountMinor(stream({ cadence: "biweekly", typicalAmountMinor: 250000 }))).toBe(6500000);
-  expect(annualAmountMinor(stream({ cadence: "monthly", typicalAmountMinor: -2300 }))).toBe(-27600);
-  expect(annualAmountMinor(stream({ cadence: "annual", typicalAmountMinor: -9999 }))).toBe(-9999);
+  expect(annualAmountMinor(stream({ cadence: "weekly", typicalAmountMinor: -BigInt(1500) }))).toBe(-BigInt(78000));
+  expect(annualAmountMinor(stream({ cadence: "biweekly", typicalAmountMinor: BigInt(250000) }))).toBe(BigInt(6500000));
+  expect(annualAmountMinor(stream({ cadence: "monthly", typicalAmountMinor: -BigInt(2300) }))).toBe(-BigInt(27600));
+  expect(annualAmountMinor(stream({ cadence: "annual", typicalAmountMinor: -BigInt(9999) }))).toBe(-BigInt(9999));
 });
 
 test("yearly totals split per currency with charges and deposits apart, never netted or converted", () => {
   const totals = annualTotals([
     stream(),
-    stream({ direction: "inflow", typicalAmountMinor: 250000, status: "confirmed" }),
-    stream({ currency: "EUR", cadence: "annual", typicalAmountMinor: -9999, status: "confirmed" }),
-    stream({ cadence: "weekly", typicalAmountMinor: -1500, status: "confirmed" }),
+    stream({ direction: "inflow", typicalAmountMinor: BigInt(250000), status: "confirmed" }),
+    stream({ currency: "EUR", cadence: "annual", typicalAmountMinor: -BigInt(9999), status: "confirmed" }),
+    stream({ cadence: "weekly", typicalAmountMinor: -BigInt(1500), status: "confirmed" }),
   ]);
   expect(totals).toEqual([
-    { currency: "EUR", outMinor: -9999, inMinor: 0 },
-    { currency: "USD", outMinor: -105600, inMinor: 3000000 },
+    { currency: "EUR", outMinor: -BigInt(9999), inMinor: BigInt(0) },
+    { currency: "USD", outMinor: -BigInt(105600), inMinor: BigInt(3000000) },
   ]);
 });
 
 test("canceled and dismissed streams leave the yearly totals; nothing tracked totals nothing", () => {
-  const canceled = stream({ typicalAmountMinor: -5000, status: "canceled" });
-  const dismissed = stream({ direction: "inflow", typicalAmountMinor: 250000, status: "dismissed" });
+  const canceled = stream({ typicalAmountMinor: -BigInt(5000), status: "canceled" });
+  const dismissed = stream({ direction: "inflow", typicalAmountMinor: BigInt(250000), status: "dismissed" });
   expect(annualTotals([stream(), canceled, dismissed])).toEqual([
-    { currency: "USD", outMinor: -27600, inMinor: 0 },
+    { currency: "USD", outMinor: -BigInt(27600), inMinor: BigInt(0) },
   ]);
   expect(annualTotals([canceled, dismissed])).toEqual([]);
   expect(annualTotals([])).toEqual([]);
 });
 
 test.each([
-  ["outflow", -2300, -2472, false],
-  ["outflow", -2300, -2473, true],
-  ["outflow", -4000, -4300, false],
-  ["outflow", -4000, -4301, true],
-  ["outflow", -2300, -2599, true],
-  ["outflow", -2300, -2300, false],
-  ["outflow", -2300, -2100, false],
-  ["outflow", -2300, -1000, false],
-  ["inflow", 250000, 300000, false],
-  ["inflow", 250000, 200000, false],
+  ["outflow", -BigInt(2300), -BigInt(2472), false],
+  ["outflow", -BigInt(2300), -BigInt(2473), true],
+  ["outflow", -BigInt(4000), -BigInt(4300), false],
+  ["outflow", -BigInt(4000), -BigInt(4301), true],
+  ["outflow", -BigInt(2300), -BigInt(2599), true],
+  ["outflow", -BigInt(2300), -BigInt(2300), false],
+  ["outflow", -BigInt(2300), -BigInt(2100), false],
+  ["outflow", -BigInt(2300), -BigInt(1000), false],
+  ["inflow", BigInt(250000), BigInt(300000), false],
+  ["inflow", BigInt(250000), BigInt(200000), false],
 ] as const)(
   "a price increase is an %s whose last charge %d moved from the usual %d beyond the 7.5% band: %s",
   (direction, typicalAmountMinor, lastAmountMinor, flagged) => {

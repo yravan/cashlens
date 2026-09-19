@@ -84,8 +84,8 @@ test("a stored positive obligation projects exactly once as a negative outflow",
     currencies: [
       {
         currency: "USD",
-        toLeaveMinor: -180000,
-        toArriveMinor: 0,
+        toLeaveMinor: -BigInt(180000),
+        toArriveMinor: BigInt(0),
         charges: [
           {
             source: "obligation",
@@ -95,7 +95,7 @@ test("a stored positive obligation projects exactly once as a negative outflow",
             direction: "outflow",
             name: "Rent",
             cadence: "once",
-            amountMinor: -180000,
+            amountMinor: -BigInt(180000),
             date: "2026-04-15",
             overdue: false,
             possibleOverlap: false,
@@ -114,19 +114,19 @@ test("the canonical exact overlap keeps, counts, and marks both sources", async 
 
   const overview = await overviewAs("demo", SEED_UPCOMING_REFERENCE);
   const [usd] = overview.currencies;
-  expect(usd.toLeaveMinor).toBe(-249600);
+  expect(usd.toLeaveMinor).toBe(-BigInt(249600));
   expect(
     usd.charges
       .filter(
         (charge) =>
           charge.accountId === streamflix.accountId &&
           charge.date === "2026-04-29" &&
-          Math.abs(charge.amountMinor) === 2300,
+          charge.amountMinor === -BigInt(2300),
       )
       .map((charge) => [charge.source, charge.amountMinor, charge.possibleOverlap]),
   ).toEqual([
-    ["detected", -2300, true],
-    ["obligation", -2300, true],
+    ["detected", -BigInt(2300), true],
+    ["obligation", -BigInt(2300), true],
   ]);
 });
 
@@ -141,20 +141,20 @@ test("a deposit and an obligation of equal magnitude on one account and day neve
 
   const overview = await overviewAs("demo", SEED_UPCOMING_REFERENCE);
   const [usd] = overview.currencies;
-  expect(usd.toLeaveMinor).toBe(-499600);
-  expect(usd.toArriveMinor).toBe(250000);
+  expect(usd.toLeaveMinor).toBe(-BigInt(499600));
+  expect(usd.toArriveMinor).toBe(BigInt(250000));
   expect(
     [...usd.charges, ...usd.deposits]
       .filter(
         (occurrence) =>
           occurrence.accountId === acme.accountId &&
           occurrence.date === "2026-04-27" &&
-          Math.abs(occurrence.amountMinor) === 250000,
+          [BigInt(250000), -BigInt(250000)].includes(occurrence.amountMinor),
       )
       .map((occurrence) => [occurrence.source, occurrence.amountMinor, occurrence.possibleOverlap]),
   ).toEqual([
-    ["obligation", -250000, false],
-    ["detected", 250000, false],
+    ["obligation", -BigInt(250000), false],
+    ["detected", BigInt(250000), false],
   ]);
 });
 
@@ -185,11 +185,11 @@ test("projection eligibility is scoped to retained active declarations", async (
   expect(mine.currencies.flatMap(({ charges }) => charges.map(({ name }) => name))).toEqual([
     "Owner active",
   ]);
-  expect(mine.currencies[0]?.toLeaveMinor).toBe(-180000);
+  expect(mine.currencies[0]?.toLeaveMinor).toBe(-BigInt(180000));
   expect(theirs.currencies.flatMap(({ charges }) => charges.map(({ name }) => name))).toEqual([
     "Neighbor active",
   ]);
-  expect(theirs.currencies[0]?.toLeaveMinor).toBe(-180000);
+  expect(theirs.currencies[0]?.toLeaveMinor).toBe(-BigInt(180000));
 });
 
 test("management returns owned account options and only active declarations with their next dates", async () => {
@@ -257,7 +257,7 @@ test("dismissing a stream removes its projection and total; re-confirming restor
   await withAuth(clerkUserId, () => setRecurringStatus(streamflix, "dismissed"));
   const dismissed = await overviewAs("demo", SEED_UPCOMING_REFERENCE);
   expect(dismissed.trackedCount).toBe(1);
-  expect(dismissed.currencies[0]?.toLeaveMinor).toBe(-247300);
+  expect(dismissed.currencies[0]?.toLeaveMinor).toBe(-BigInt(247300));
   expect(
     dismissed.currencies[0]?.charges.map(({ source, name, possibleOverlap }) => [
       source,
@@ -290,7 +290,7 @@ test("canceling a stream removes its projection and total exactly like dismissin
   await withAuth(clerkUserId, () => setRecurringStatus(streamflix, "canceled"));
   const canceled = await overviewAs("demo", SEED_UPCOMING_REFERENCE);
   expect(canceled.trackedCount).toBe(1);
-  expect(canceled.currencies[0]?.toLeaveMinor).toBe(-247300);
+  expect(canceled.currencies[0]?.toLeaveMinor).toBe(-BigInt(247300));
   expect(canceled.currencies[0]?.charges.map(({ source, name }) => [source, name])).toEqual([
     ["obligation", "Rent"],
     ["obligation", "Tuition"],
@@ -312,8 +312,8 @@ test("a reference after an expected date marks it overdue and still counts it", 
 
   const overview = await overviewAs("demo", "2026-04-28");
   const [usd] = overview.currencies;
-  expect(usd.toLeaveMinor).toBe(-249600);
-  expect(usd.toArriveMinor).toBe(250000);
+  expect(usd.toLeaveMinor).toBe(-BigInt(249600));
+  expect(usd.toArriveMinor).toBe(BigInt(250000));
   expect(usd.charges.map((c) => [c.source, c.name, c.date, c.overdue])).toEqual([
     ["obligation", "Rent", "2026-04-05", true],
     ["obligation", "Tuition", "2026-04-18", true],
@@ -329,7 +329,7 @@ test("a reference far past the data goes honestly stale: no phantom months of ch
   await seedDataset(adminDb());
 
   const overview = await overviewAs("demo", "2026-09-01");
-  expect(overview.currencies[0]?.toLeaveMinor).toBe(-429600);
+  expect(overview.currencies[0]?.toLeaveMinor).toBe(-BigInt(429600));
   expect(
     overview.currencies[0]?.charges.map(({ source, name, date, overdue }) => [
       source,
@@ -361,7 +361,7 @@ test("a detected January month-end stream keeps March's anchor and both charges"
   `);
   const overview = await overviewAs("demo", "2026-03-29");
   const [usd] = overview.currencies;
-  expect(usd?.toLeaveMinor).toBe(-4600);
+  expect(usd?.toLeaveMinor).toBe(-BigInt(4600));
   expect(usd.charges.map(({ name, date, overdue }) => [name, date, overdue])).toEqual([
     ["Streamflix", "2026-02-28", true],
     ["Streamflix", "2026-03-31", false],
@@ -376,8 +376,8 @@ test("cross-user isolation: the neighbor sees only their known insurance declara
   expect(theirs.currencies).toEqual([
     {
       currency: "USD",
-      toLeaveMinor: -120000,
-      toArriveMinor: 0,
+      toLeaveMinor: -BigInt(120000),
+      toArriveMinor: BigInt(0),
       charges: [
         {
           ...EXPECTED.neighbor.upcoming.currencies[0].charges[0],

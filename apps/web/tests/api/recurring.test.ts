@@ -148,13 +148,13 @@ test("canceling or dismissing a stream drops its yearly cost from the totals; it
   const [usd] = EXPECTED.demo.annual;
 
   await withAuth(clerkUserId, () => setRecurringStatus(demoStream("STREAMFLIX"), "canceled"));
-  expect(await annual()).toEqual([{ ...usd, outMinor: 0 }]);
+  expect(await annual()).toEqual([{ ...usd, outMinor: BigInt(0) }]);
 
   await withAuth(clerkUserId, () => setRecurringStatus(demoStream("STREAMFLIX"), "confirmed"));
   expect(await annual()).toEqual(EXPECTED.demo.annual);
 
   await withAuth(clerkUserId, () => setRecurringStatus(demoStream("ACME CORP"), "dismissed"));
-  expect(await annual()).toEqual([{ ...usd, inMinor: 0 }]);
+  expect(await annual()).toEqual([{ ...usd, inMinor: BigInt(0) }]);
 });
 
 test("a price increase reads the detector's last kept charge against the typical amount", async () => {
@@ -173,8 +173,8 @@ test("a price increase reads the detector's last kept charge against the typical
   ]);
   const [stream] = (await withAuth(hiked, () => recurringOverview())).streams;
   expect(stream).toMatchObject({
-    typicalAmountMinor: -1549,
-    lastAmountMinor: -1799,
+    typicalAmountMinor: -BigInt(1549),
+    lastAmountMinor: -BigInt(1799),
     confidence: "medium",
   });
   expect(priceIncreased(stream)).toBe(true);
@@ -189,7 +189,7 @@ test("a price increase reads the detector's last kept charge against the typical
     music(-1799, "2026-06-10"),
   ]);
   const [caughtUp] = (await withAuth(settled, () => recurringOverview())).streams;
-  expect(caughtUp).toMatchObject({ typicalAmountMinor: -1674, lastAmountMinor: -1799 });
+  expect(caughtUp).toMatchObject({ typicalAmountMinor: -BigInt(1674), lastAmountMinor: -BigInt(1799) });
   expect(priceIncreased(caughtUp)).toBe(false);
 });
 
@@ -255,7 +255,7 @@ test("a decision reattaches when new occurrences extend the stream", async () =>
     status: "confirmed",
     occurrences: 4,
     lastDate: "2026-04-29",
-    typicalAmountMinor: -2300,
+    typicalAmountMinor: -BigInt(2300),
   });
 });
 
@@ -269,8 +269,8 @@ test("true-spend law: matched transfer legs stop counting as recurring evidence"
 
   const before = await withAuth(clerkUserId, () => recurringOverview());
   expect(before.streams.map((s) => [s.direction, s.cadence, s.typicalAmountMinor])).toEqual([
-    ["inflow", "monthly", 50000],
-    ["outflow", "monthly", -50000],
+    ["inflow", "monthly", BigInt(50000)],
+    ["outflow", "monthly", -BigInt(50000)],
   ]);
 
   await withAuth(clerkUserId, () => matchTransfers());
@@ -329,7 +329,7 @@ test("Plaid's 500-unit Unicode identities stay distinct through decisions and pr
   );
   expect(overview.streams.every((stream) => stream.normalizedName.length <= 1500)).toBe(true);
   expect(new Set(overview.streams.map((stream) => stream.normalizedName)).size).toBe(2);
-  expect(overview.annual).toEqual([{ currency: "USD", outMinor: -28800, inMinor: 0 }]);
+  expect(overview.annual).toEqual([{ currency: "USD", outMinor: BigInt(-28800), inMinor: BigInt(0) }]);
 
   const checking = overview.streams.find((stream) => stream.normalizedName === checkingNormalized)!;
   const second = overview.streams.find((stream) => stream.normalizedName === cardNormalized)!;
@@ -351,12 +351,12 @@ test("Plaid's 500-unit Unicode identities stay distinct through decisions and pr
   expect((await post(checkingIdentity, "confirmed")).status).toBe(200);
   expect((await post(secondIdentity, "confirmed")).status).toBe(200);
   expect(await withAuth(clerkUserId, () => recurringOverview())).toMatchObject({
-    annual: [{ currency: "USD", outMinor: -28800, inMinor: 0 }],
+    annual: [{ currency: "USD", outMinor: BigInt(-28800), inMinor: BigInt(0) }],
   });
   const beforeCancel = await withAuth(clerkUserId, () => upcomingOverview("2026-04-01"));
   expect(beforeCancel).toMatchObject({
     trackedCount: 2,
-    currencies: [{ currency: "USD", toLeaveMinor: -2400 }],
+    currencies: [{ currency: "USD", toLeaveMinor: BigInt(-2400) }],
   });
   expect((await post(checkingIdentity, "canceled")).status).toBe(200);
   expect(await decisionRows((await withAuth(clerkUserId, () => requireUser())).id)).toEqual([
@@ -366,11 +366,11 @@ test("Plaid's 500-unit Unicode identities stay distinct through decisions and pr
   expect(checkingNormalized).toHaveLength(1500);
 
   expect(await withAuth(clerkUserId, () => recurringOverview())).toMatchObject({
-    annual: [{ currency: "USD", outMinor: -14400, inMinor: 0 }],
+    annual: [{ currency: "USD", outMinor: BigInt(-14400), inMinor: BigInt(0) }],
   });
   expect(await withAuth(clerkUserId, () => upcomingOverview("2026-04-01"))).toMatchObject({
     trackedCount: 1,
-    currencies: [{ currency: "USD", toLeaveMinor: -1200 }],
+    currencies: [{ currency: "USD", toLeaveMinor: BigInt(-1200) }],
   });
 
   const tooLong = await withAuth(clerkUserId, () =>

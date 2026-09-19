@@ -68,8 +68,8 @@ test("monthly cadence: month-length variance and Feb-end clamping stay in class"
   expect(stream).toMatchObject({
     cadence: "monthly",
     confidence: "high",
-    typicalAmountMinor: -2300,
-    lastAmountMinor: -2300,
+    typicalAmountMinor: -BigInt(2300),
+    lastAmountMinor: -BigInt(2300),
     firstDate: "2026-01-29",
     lastDate: "2026-03-29",
     occurrences: 3,
@@ -243,8 +243,8 @@ test("amounts within the 7.5% stable band keep high confidence, median is typica
   );
   expect(stream).toMatchObject({
     confidence: "high",
-    typicalAmountMinor: -2050,
-    lastAmountMinor: -2050,
+    typicalAmountMinor: -BigInt(2050),
+    lastAmountMinor: -BigInt(2050),
   });
 });
 
@@ -257,7 +257,7 @@ test("typical amount medians an even count over the middle pair, truncating towa
       row("2026-04-10", -2300),
     ]),
   );
-  expect(stream).toMatchObject({ typicalAmountMinor: -2150, occurrences: 4, confidence: "high" });
+  expect(stream).toMatchObject({ typicalAmountMinor: -BigInt(2150), occurrences: 4, confidence: "high" });
 });
 
 test("amount drift beyond 7.5% but inside 25% demotes to medium, stream survives", () => {
@@ -268,7 +268,7 @@ test("amount drift beyond 7.5% but inside 25% demotes to medium, stream survives
       row("2026-03-10", -2050),
     ]),
   );
-  expect(stream).toMatchObject({ confidence: "medium", typicalAmountMinor: -2050, occurrences: 3 });
+  expect(stream).toMatchObject({ confidence: "medium", typicalAmountMinor: -BigInt(2050), occurrences: 3 });
 });
 
 test("stable-band boundary is inclusive at exactly 7.5% and exclusive one unit past", () => {
@@ -323,7 +323,7 @@ test("one wild outlier is ejected and the remaining occurrences still form the s
   expect(stream).toMatchObject({
     cadence: "monthly",
     confidence: "medium",
-    typicalAmountMinor: -1549,
+    typicalAmountMinor: -BigInt(1549),
     occurrences: 3,
     lastDate: "2026-03-03",
   });
@@ -359,7 +359,7 @@ test("same-day rows aggregate into one occurrence with the summed amount", () =>
       row("2026-03-05", -2300),
     ]),
   );
-  expect(stream).toMatchObject({ typicalAmountMinor: -2300, occurrences: 3, confidence: "high" });
+  expect(stream).toMatchObject({ typicalAmountMinor: -BigInt(2300), occurrences: 3, confidence: "high" });
 });
 
 test("minimum occurrences is a hard boundary: two dates never, three exactly does", () => {

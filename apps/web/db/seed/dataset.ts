@@ -157,8 +157,8 @@ export const SEED_TRANSFER_PAIRS: {
 // clamp (gaps 30, 29) — and nothing else repeats three times.
 const SEED_RECURRING_STREAMS: Record<SeedPersona, RecurringStream[]> = {
   demo: [
-    { accountId: A.card, currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", typicalAmountMinor: -2300, lastAmountMinor: -2300, firstDate: "2026-01-29", lastDate: "2026-03-29", occurrences: 3, confidence: "high" },
-    { accountId: A.checking, currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", typicalAmountMinor: 250000, lastAmountMinor: 250000, firstDate: "2026-01-27", lastDate: "2026-03-27", occurrences: 3, confidence: "high" },
+    { accountId: A.card, currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", typicalAmountMinor: -BigInt(2300), lastAmountMinor: -BigInt(2300), firstDate: "2026-01-29", lastDate: "2026-03-29", occurrences: 3, confidence: "high" },
+    { accountId: A.checking, currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", typicalAmountMinor: BigInt(250000), lastAmountMinor: BigInt(250000), firstDate: "2026-01-27", lastDate: "2026-03-27", occurrences: 3, confidence: "high" },
   ],
   neighbor: [],
   empty: [],
@@ -178,16 +178,16 @@ const SEED_UPCOMING: Record<SeedPersona, UpcomingProjection> = {
     currencies: [
       {
         currency: "USD",
-        toLeaveMinor: -249600,
-        toArriveMinor: 250000,
+        toLeaveMinor: -BigInt(249600),
+        toArriveMinor: BigInt(250000),
         charges: [
-          { source: "obligation", obligationId: uid(0x301), accountId: A.checking, currency: "USD", direction: "outflow", name: "Rent", cadence: "monthly", amountMinor: -180000, date: "2026-04-05", overdue: false, possibleOverlap: false },
-          { source: "obligation", obligationId: uid(0x302), accountId: A.checking, currency: "USD", direction: "outflow", name: "Tuition", cadence: "once", amountMinor: -65000, date: "2026-04-18", overdue: false, possibleOverlap: false },
-          { source: "detected", accountId: A.card, currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -2300, lastDate: "2026-03-29", date: "2026-04-29", overdue: false, possibleOverlap: true },
-          { source: "obligation", obligationId: uid(0x303), accountId: A.card, currency: "USD", direction: "outflow", name: "Streamflix", cadence: "monthly", amountMinor: -2300, date: "2026-04-29", overdue: false, possibleOverlap: true },
+          { source: "obligation", obligationId: uid(0x301), accountId: A.checking, currency: "USD", direction: "outflow", name: "Rent", cadence: "monthly", amountMinor: -BigInt(180000), date: "2026-04-05", overdue: false, possibleOverlap: false },
+          { source: "obligation", obligationId: uid(0x302), accountId: A.checking, currency: "USD", direction: "outflow", name: "Tuition", cadence: "once", amountMinor: -BigInt(65000), date: "2026-04-18", overdue: false, possibleOverlap: false },
+          { source: "detected", accountId: A.card, currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -BigInt(2300), lastDate: "2026-03-29", date: "2026-04-29", overdue: false, possibleOverlap: true },
+          { source: "obligation", obligationId: uid(0x303), accountId: A.card, currency: "USD", direction: "outflow", name: "Streamflix", cadence: "monthly", amountMinor: -BigInt(2300), date: "2026-04-29", overdue: false, possibleOverlap: true },
         ],
         deposits: [
-          { source: "detected", accountId: A.checking, currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: 250000, lastDate: "2026-03-27", date: "2026-04-27", overdue: false, possibleOverlap: false },
+          { source: "detected", accountId: A.checking, currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: BigInt(250000), lastDate: "2026-03-27", date: "2026-04-27", overdue: false, possibleOverlap: false },
         ],
       },
     ],
@@ -198,10 +198,10 @@ const SEED_UPCOMING: Record<SeedPersona, UpcomingProjection> = {
     currencies: [
       {
         currency: "USD",
-        toLeaveMinor: -120000,
-        toArriveMinor: 0,
+        toLeaveMinor: -BigInt(120000),
+        toArriveMinor: BigInt(0),
         charges: [
-          { source: "obligation", obligationId: uid(0x304), accountId: A.neighborChecking, currency: "USD", direction: "outflow", name: "Insurance", cadence: "annual", amountMinor: -120000, date: "2026-04-12", overdue: false, possibleOverlap: false },
+          { source: "obligation", obligationId: uid(0x304), accountId: A.neighborChecking, currency: "USD", direction: "outflow", name: "Insurance", cadence: "annual", amountMinor: -BigInt(120000), date: "2026-04-12", overdue: false, possibleOverlap: false },
         ],
         deposits: [],
       },
@@ -234,7 +234,7 @@ function upcomingFor(persona: SeedPersona): ExpectedPersona["upcoming"] {
 // charges of the typical amount, charges and deposits kept apart), never
 // computed by the rule.
 const SEED_ANNUAL: Record<SeedPersona, AnnualTotal[]> = {
-  demo: [{ currency: "USD", outMinor: -27600, inMinor: 3000000 }],
+  demo: [{ currency: "USD", outMinor: -BigInt(27600), inMinor: BigInt(3000000) }],
   neighbor: [],
   empty: [],
 };
