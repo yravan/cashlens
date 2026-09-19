@@ -469,6 +469,32 @@ test.describe("upcoming expenses view", () => {
     }
   });
 
+  test("a ledger with no streams and no declarations shows the empty state", async ({
+    browser,
+    baseURL,
+  }) => {
+    await adminQuery("delete from scheduled_obligations where user_id = $1", [await userIdOf("b")]);
+    const contextB = await browser.newContext({
+      baseURL,
+      storageState: await signedInState(browser, "b"),
+    });
+    try {
+      const pageB = await contextB.newPage();
+      await pageB.goto("/upcoming?on=2026-04-01");
+      await expect(pageB.getByTestId("upcoming-empty")).toContainText("Nothing to project yet", {
+        timeout: 30_000,
+      });
+      await expect(pageB.getByTestId("upcoming-calendar")).toHaveCount(0);
+      await expect(pageB.getByTestId("upcoming-quiet")).toHaveCount(0);
+      await expect(pageB.getByTestId("upcoming-to-leave")).toHaveCount(0);
+      await expect(pageB.getByTestId("known-obligations")).toContainText(
+        "Add rent, insurance, tuition, or another known charge.",
+      );
+    } finally {
+      await contextB.close();
+    }
+  });
+
   test.describe("phone viewport", () => {
     test.use({ viewport: { width: 320, height: 800 }, hasTouch: true });
 
