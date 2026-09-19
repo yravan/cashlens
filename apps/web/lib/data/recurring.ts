@@ -127,6 +127,7 @@ export async function upcomingOverview(reference: string) {
       .from(accounts)
       .where(eq(accounts.userId, user.id))
       .orderBy(asc(accounts.name), asc(accounts.id));
+    const accountName = new Map(ownedAccounts.map((account) => [account.id, account.name]));
     const trackedCount = streams.filter((stream) => tracked(stream.status)).length;
     return {
       reference,
@@ -135,7 +136,7 @@ export async function upcomingOverview(reference: string) {
       obligations: obligations.map((obligation) => ({
         id: obligation.obligationId,
         accountId: obligation.accountId,
-        accountName: obligation.accountName,
+        accountName: accountName.get(obligation.accountId) ?? "",
         name: obligation.name,
         amountMinor: obligation.amountMinor,
         currency: obligation.currency,

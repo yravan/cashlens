@@ -39,17 +39,14 @@ function isAccountReferenceError(error: unknown): boolean {
   );
 }
 
-export type ActiveObligation = UpcomingObligationInput & { accountName: string };
-
 export function activeObligationsFor(
   tx: ScopedTx,
   userId: string,
-): Promise<ActiveObligation[]> {
+): Promise<UpcomingObligationInput[]> {
   return tx
     .select({
       obligationId: scheduledObligations.id,
       accountId: scheduledObligations.accountId,
-      accountName: accounts.name,
       name: scheduledObligations.name,
       amountMinor: scheduledObligations.amountMinor,
       currency: scheduledObligations.currency,
@@ -59,13 +56,6 @@ export function activeObligationsFor(
       endedAt: scheduledObligations.endedAt,
     })
     .from(scheduledObligations)
-    .innerJoin(
-      accounts,
-      and(
-        eq(accounts.id, scheduledObligations.accountId),
-        eq(accounts.userId, scheduledObligations.userId),
-      ),
-    )
     .where(
       and(
         eq(scheduledObligations.userId, userId),
