@@ -196,6 +196,7 @@ test.describe("recurring charge detection", () => {
   test("a stale stream 404 refreshes without showing a transport error", async ({ page }) => {
     await page.goto("/recurring");
     const acme = section(page, "proposed").getByTestId("recurring-stream").filter({ hasText: "Acme Corp" });
+    await expect(acme.getByRole("button", { name: "Confirm: Acme Corp" })).toBeVisible();
     await adminQuery("delete from transactions where user_id = $1 and merchant = $2", [await userIdOf("a"), "Acme Corp"]);
     const response = page.waitForResponse((item) =>
       item.url().endsWith("/api/recurring/streams") && item.request().method() === "POST",
