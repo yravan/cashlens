@@ -5,6 +5,8 @@ import { POST as abandonRoute } from "@/app/api/plaid/abandon/route";
 import { POST as disconnectRoute } from "@/app/api/connections/[connectionId]/disconnect/route";
 import { POST as repairTokenRoute } from "@/app/api/connections/[connectionId]/repair-token/route";
 import { POST as repairedRoute } from "@/app/api/connections/[connectionId]/repaired/route";
+import { listConnectionsWithStats } from "@/lib/data/connections";
+import { createObligation, endObligation } from "@/lib/data/obligations";
 import {
   accountBalances,
   accounts,
@@ -28,7 +30,7 @@ import {
   usd,
   type SandboxAccount,
 } from "../harness/plaid";
-import { backfilled, CHECKING, connect, pushHistory, step } from "./plaid-helpers";
+import { backfilled, CARD, CHECKING, connect, pushHistory, step } from "./plaid-helpers";
 
 beforeEach(resetPlaidSubstitute);
 
@@ -135,6 +137,44 @@ test("every action route requires a session and rejects cross-origin browsers", 
     );
     expect(crossOrigin.status).toBe(403);
   }
+});
+
+test("connection purge disclosure counts transactions and every retained obligation without multiplying either", async () => {
+  const item = await backfilled(
+    fakeClerkUserId(),
+    sandboxTransaction(CHECKING, 12, "CHECKING 1", "2026-08-20"),
+    sandboxTransaction(CHECKING, 7, "CHECKING 2", "2026-08-21"),
+    sandboxTransaction(CARD, 5, "CARD 1", "2026-08-22"),
+  );
+  const create = (accountId: string, name: string) =>
+    withAuth(item.clerkUserId, () =>
+      createObligation({
+        accountId,
+        name,
+        amountMinor: 1000,
+        currency: "USD",
+        cadence: "once",
+        startsOn: "2026-09-01",
+        endsOn: null,
+      }),
+    );
+  const ended = await create(item.accountId.get(CHECKING)!, "Ended checking obligation");
+  await create(item.accountId.get(CHECKING)!, "Active checking obligation");
+  await create(item.accountId.get(CARD)!, "Active card obligation");
+  expect(
+    await withAuth(item.clerkUserId, () =>
+      endObligation((ended as { obligationId: string }).obligationId),
+    ),
+  ).toEqual({});
+
+  const listed = await withAuth(item.clerkUserId, () => listConnectionsWithStats());
+  expect(listed).toHaveLength(1);
+  expect(listed[0]).toMatchObject({
+    id: item.connectionId,
+    accounts: 2,
+    transactions: 3,
+    obligations: 3,
+  });
 });
 
 test("disconnect without purge removes the item at Plaid and the credential, and keeps every ledger row", async () => {

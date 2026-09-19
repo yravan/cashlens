@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlaidLink, type PlaidLinkOnExit, type PlaidLinkOnSuccess } from "react-plaid-link";
 
+import { countList } from "./count-list";
 import { pollSync } from "./sync-poll";
 
 export type ActionableConnection = {
@@ -13,6 +14,7 @@ export type ActionableConnection = {
   repairable: boolean;
   accounts: number;
   transactions: number;
+  obligations: number;
 };
 
 const dangerButton =
@@ -100,7 +102,12 @@ export function ConnectionActions({ connection }: { connection: ActionableConnec
   };
 
   const alreadyGone = connection.status === "disconnected";
-  const consequence = `${connection.accounts} account${connection.accounts === 1 ? "" : "s"} and ${connection.transactions} imported transaction${connection.transactions === 1 ? "" : "s"}`;
+  const consequence =
+    countList([
+      [connection.accounts, "account"],
+      [connection.transactions, "imported transaction"],
+      [connection.obligations, "known obligation"],
+    ]) || "imported data";
 
   return (
     <div className="mt-3">

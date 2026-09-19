@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, count, countDistinct, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, lte, sql } from "drizzle-orm";
 
 import { decryptCredential, encryptCredential, SecretString, UUID_PATTERN } from "@/lib/crypto/credentials";
 import {
@@ -8,7 +8,13 @@ import {
 } from "@/lib/connection-cleanup-policy";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
-import { accounts, connectionCredentials, connections, transactions } from "@/lib/db/schema";
+import {
+  accounts,
+  connectionCredentials,
+  connections,
+  scheduledObligations,
+  transactions,
+} from "@/lib/db/schema";
 
 const safeShape = {
   id: connections.id,
@@ -108,24 +114,37 @@ export async function listConnectionsWithStats() {
   const user = await requireUser();
   const [listed, stats] = await Promise.all([
     listConnections(),
-    withRequestScope(user.clerkUserId, (tx) =>
-      tx
+    withRequestScope(user.clerkUserId, (tx) => {
+      const ownTransactions = and(
+        eq(transactions.accountId, accounts.id),
+        eq(transactions.userId, accounts.userId),
+      )!;
+      const ownObligations = and(
+        eq(scheduledObligations.accountId, accounts.id),
+        eq(scheduledObligations.userId, accounts.userId),
+      )!;
+      return tx
         .select({
           connectionId: accounts.connectionId,
-          accounts: countDistinct(accounts.id),
-          transactions: count(transactions.id),
+          accounts: count(),
+          transactions: sql`sum((
+            select count(*) from ${transactions} where ${ownTransactions}
+          ))`.mapWith(Number),
+          obligations: sql`sum((
+            select count(*) from ${scheduledObligations} where ${ownObligations}
+          ))`.mapWith(Number),
         })
         .from(accounts)
-        .leftJoin(transactions, eq(transactions.accountId, accounts.id))
         .where(eq(accounts.userId, user.id))
-        .groupBy(accounts.connectionId),
-    ),
+        .groupBy(accounts.connectionId);
+    }),
   ]);
   const byConnection = new Map(stats.map((row) => [row.connectionId, row]));
   return listed.map((connection) => ({
     ...connection,
     accounts: byConnection.get(connection.id)?.accounts ?? 0,
     transactions: byConnection.get(connection.id)?.transactions ?? 0,
+    obligations: byConnection.get(connection.id)?.obligations ?? 0,
   }));
 }
 

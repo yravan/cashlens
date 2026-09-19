@@ -1,0 +1,319 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import type { ObligationMutationError } from "@/lib/data/obligations";
+import type { ObligationCadence } from "@/lib/ledger/obligations";
+import { formatMajorUnits } from "@/lib/ledger/minor-units";
+import {
+  inputClass,
+  quietButton,
+  responseErrorFor,
+  RowForm,
+  useMutation,
+} from "../mutation-form";
+
+export type ObligationAccount = { id: string; name: string; currency: string };
+export type EditableObligation = {
+  id: string;
+  accountId: string;
+  name: string;
+  amountMinor: number;
+  currency: string;
+  cadence: ObligationCadence;
+  startsOn: string;
+  endsOn: string | null;
+};
+
+const ERROR_COPY: Record<ObligationMutationError | "invalid_request", string> = {
+  invalid_request: "Check the obligation details and try again.",
+  account_not_found: "That account is no longer available.",
+  obligation_not_found: "That obligation is no longer available.",
+};
+const responseError = responseErrorFor(ERROR_COPY);
+const CADENCES: { value: ObligationCadence; label: string }[] = [
+  { value: "once", label: "Once" },
+  { value: "weekly", label: "Weekly" },
+  { value: "biweekly", label: "Every two weeks" },
+  { value: "monthly", label: "Monthly" },
+  { value: "annual", label: "Yearly" },
+];
+
+function ObligationForm({
+  accounts,
+  obligation,
+  onClose,
+}: {
+  accounts: ObligationAccount[];
+  obligation?: EditableObligation;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const mode = obligation
+    ? {
+        label: `Edit ${obligation.name}`,
+        submitLabel: "Save changes",
+        endpoint: `/api/obligations/${obligation.id}`,
+        failure: "Couldn’t update the obligation. Try again.",
+        initial: {
+          accountId: obligation.accountId,
+          name: obligation.name,
+          amount: formatMajorUnits(obligation.amountMinor, obligation.currency),
+          currency: obligation.currency,
+          cadence: obligation.cadence,
+          startsOn: obligation.startsOn,
+          endsOn: obligation.endsOn ?? "",
+        },
+      }
+    : {
+        label: "Add obligation",
+        submitLabel: "Add obligation",
+        endpoint: "/api/obligations",
+        failure: "Couldn’t add the obligation. Try again.",
+        initial: {
+          accountId: accounts[0].id,
+          name: "",
+          amount: "",
+          currency: accounts[0].currency,
+          cadence: "once" as const,
+          startsOn: "",
+          endsOn: "",
+        },
+      };
+  const { initial } = mode;
+  const [accountId, setAccountId] = useState(initial.accountId);
+  const [name, setName] = useState(initial.name);
+  const [amount, setAmount] = useState(initial.amount);
+  const [currency, setCurrency] = useState(initial.currency);
+  const [cadence, setCadence] = useState<ObligationCadence>(initial.cadence);
+  const [startsOn, setStartsOn] = useState(initial.startsOn);
+  const [endsOn, setEndsOn] = useState(initial.endsOn);
+  const { error, pending, run } = useMutation(responseError, () => {
+    onClose();
+    router.refresh();
+  });
+
+  return (
+    <RowForm
+      label={mode.label}
+      submitLabel={mode.submitLabel}
+      pending={pending}
+      error={error}
+      onCancel={onClose}
+      onSubmit={() =>
+        run(
+          mode.endpoint,
+          {
+            accountId,
+            name,
+            amount,
+            currency,
+            cadence,
+            startsOn,
+            endsOn: cadence === "once" ? null : endsOn || null,
+          },
+          mode.failure,
+        )
+      }
+    >
+      <label className="min-w-0 text-sm font-medium">
+        Name
+        <input
+          autoFocus
+          required
+          maxLength={200}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          disabled={pending}
+          className={inputClass}
+        />
+      </label>
+      <label className="min-w-0 text-sm font-medium">
+        Account
+        <select
+          required
+          value={accountId}
+          onChange={(event) => {
+            const selected = accounts.find((account) => account.id === event.target.value)!;
+            setAccountId(selected.id);
+            setCurrency(selected.currency);
+          }}
+          disabled={pending}
+          className={inputClass}
+        >
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="min-w-0 text-sm font-medium">
+        Amount
+        <input
+          required
+          inputMode="decimal"
+          autoComplete="off"
+          maxLength={32}
+          value={amount}
+          onChange={(event) => setAmount(event.target.value)}
+          disabled={pending}
+          className={inputClass}
+        />
+      </label>
+      <label className="min-w-0 text-sm font-medium">
+        Currency
+        <input
+          required
+          maxLength={3}
+          value={currency}
+          onChange={(event) => setCurrency(event.target.value.toUpperCase())}
+          disabled={pending}
+          className={inputClass}
+        />
+      </label>
+      <label className="min-w-0 text-sm font-medium">
+        First due date
+        <input
+          required
+          type="date"
+          value={startsOn}
+          onChange={(event) => setStartsOn(event.target.value)}
+          disabled={pending}
+          className={inputClass}
+        />
+      </label>
+      <label className="min-w-0 text-sm font-medium">
+        Repeat
+        <select
+          value={cadence}
+          onChange={(event) => setCadence(event.target.value as ObligationCadence)}
+          disabled={pending}
+          className={inputClass}
+        >
+          {CADENCES.map(({ value, label: cadenceLabel }) => (
+            <option key={value} value={value}>
+              {cadenceLabel}
+            </option>
+          ))}
+        </select>
+      </label>
+      {cadence !== "once" && (
+        <label className="min-w-0 text-sm font-medium">
+          Final date
+          <input
+            type="date"
+            min={startsOn || undefined}
+            value={endsOn}
+            onChange={(event) => setEndsOn(event.target.value)}
+            disabled={pending}
+            className={inputClass}
+          />
+        </label>
+      )}
+    </RowForm>
+  );
+}
+
+function useDisclosure() {
+  const button = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef(false);
+  const [open, setOpen] = useState(false);
+  const close = () => {
+    returnFocus.current = true;
+    setOpen(false);
+  };
+
+  useEffect(() => {
+    if (open || !returnFocus.current) return;
+    button.current?.focus();
+    returnFocus.current = false;
+  }, [open]);
+
+  return { open, setOpen, button, close };
+}
+
+export function ObligationControl({
+  accounts,
+  obligation,
+}: {
+  accounts: ObligationAccount[];
+  obligation?: EditableObligation;
+}) {
+  const { open, setOpen, button, close } = useDisclosure();
+  const trigger = obligation
+    ? { id: undefined, label: `Edit ${obligation.name}`, spacing: "mt-3", text: "Edit" }
+    : { id: "add-obligation", label: undefined, spacing: "mt-4", text: "Add obligation" };
+
+  if (!open) {
+    return (
+      <button
+        id={trigger.id}
+        ref={button}
+        type="button"
+        aria-label={trigger.label}
+        onClick={() => setOpen(true)}
+        className={`${trigger.spacing} ${quietButton}`}
+      >
+        {trigger.text}
+      </button>
+    );
+  }
+
+  return <ObligationForm accounts={accounts} obligation={obligation} onClose={close} />;
+}
+
+export function EndObligation({
+  obligation,
+}: {
+  obligation: Pick<EditableObligation, "id" | "name">;
+}) {
+  const router = useRouter();
+  const { open, setOpen, button, close } = useDisclosure();
+  const { error, pending, run } = useMutation(responseError, () => {
+    (
+      document.getElementById("add-obligation") ??
+      document.getElementById("known-obligations-heading")
+    )?.focus();
+    router.refresh();
+  });
+
+  if (!open) {
+    return (
+      <button
+        ref={button}
+        type="button"
+        aria-label={`End ${obligation.name}`}
+        onClick={() => setOpen(true)}
+        className={`mt-3 ${quietButton}`}
+      >
+        End
+      </button>
+    );
+  }
+
+  return (
+    <RowForm
+      label={`End ${obligation.name}`}
+      submitLabel="End obligation"
+      pending={pending}
+      error={error}
+      onCancel={close}
+      onSubmit={() =>
+        run(
+          `/api/obligations/${obligation.id}/end`,
+          {},
+          "Couldn’t end the obligation. Try again.",
+        )
+      }
+    >
+      <p className="text-sm leading-6 text-zinc-600 dark:text-zinc-300">
+        <span className="font-medium text-zinc-900 dark:text-zinc-100">
+          End {obligation.name}?
+        </span>{" "}
+        It will stop appearing in Upcoming.
+      </p>
+    </RowForm>
+  );
+}

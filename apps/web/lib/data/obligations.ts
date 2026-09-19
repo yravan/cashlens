@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { bigint, char, date, pgTable, text, uuid } from "drizzle-orm/pg-core";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
@@ -61,7 +61,8 @@ export function activeObligationsFor(
         eq(scheduledObligations.userId, userId),
         isNull(scheduledObligations.endedAt),
       ),
-    );
+    )
+    .orderBy(asc(scheduledObligations.name), asc(scheduledObligations.id));
 }
 
 export async function createObligation(

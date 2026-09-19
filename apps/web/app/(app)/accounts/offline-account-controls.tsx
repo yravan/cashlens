@@ -22,6 +22,7 @@ import {
   RowForm,
   useMutation,
 } from "../mutation-form";
+import { countList } from "./count-list";
 import { StatementImport } from "./statement-import";
 
 const ERROR_COPY: Record<OfflineAccountError, string> = {
@@ -204,6 +205,7 @@ export function OfflineAccountActions({
     reportedMinor: number | null;
     reportedOn: string | null;
     transactionCount: number;
+    obligationCount: number;
   };
 }) {
   const router = useRouter();
@@ -219,9 +221,10 @@ export function OfflineAccountActions({
     setMode(next);
   };
   const close = () => open("idle");
-  const consequence = `${account.transactionCount} transaction${
-    account.transactionCount === 1 ? "" : "s"
-  }`;
+  const consequence = countList([
+    [account.transactionCount, "transaction"],
+    [account.obligationCount, "known obligation"],
+  ]);
 
   if (mode === "balance") {
     return (
@@ -292,7 +295,7 @@ export function OfflineAccountActions({
         className="mt-3 rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950"
       >
         <p className="text-sm">
-          Delete {account.name} and its {consequence}? This cannot be undone.
+          Delete {account.name}{consequence && ` and its ${consequence}`}? This cannot be undone.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button

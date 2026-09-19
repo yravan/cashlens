@@ -1,13 +1,14 @@
 import { inArray, or } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
-import { accountBalances, accounts, categories, transactions, users } from "../../lib/db/schema.ts";
+import { accountBalances, accounts, categories, scheduledObligations, transactions, users } from "../../lib/db/schema.ts";
 import {
   SEED_ACCOUNTS,
   SEED_BALANCES,
   SEED_CATEGORIES,
   SEED_CLERK_IDS,
   SEED_PERSONAS,
+  SEED_OBLIGATIONS,
   SEED_TRANSACTIONS,
   SEED_USERS,
   type SeedPersona,
@@ -38,6 +39,7 @@ export async function seedDataset(
   if (created.length) await db.insert(users).values(created.map((persona) => SEED_USERS[persona]));
   await db.insert(categories).values(owned(SEED_CATEGORIES));
   await db.insert(accounts).values(owned(SEED_ACCOUNTS));
+  await db.insert(scheduledObligations).values(owned(SEED_OBLIGATIONS));
   await db.insert(transactions).values(owned(SEED_TRANSACTIONS));
   await db.insert(accountBalances).values(owned(SEED_BALANCES));
   return ids;

@@ -1,12 +1,13 @@
 import fs from "node:fs";
-import type { Page } from "@playwright/test";
+import { clerk } from "@clerk/testing/playwright";
+import type { Locator, Page } from "@playwright/test";
 
 import { EXPECTED, SEED_CLERK_IDS } from "../db/seed/dataset";
 import { formatMinorUnits } from "../lib/ledger/minor-units";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, appQueryScopedAs, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
-import { signedInContext, signedInState } from "./session";
+import { refreshPageSession, signedInContext, signedInState } from "./session";
 
 const clerkIdOf = (key: "a" | "b"): string =>
   JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8"))[key].clerkUserId;
@@ -28,6 +29,18 @@ async function waitForMutation(page: Page, pathname: string, status: number, act
   expect((await response).status()).toBe(status);
 }
 
+async function clickAtReportedTime(page: Page, button: Locator) {
+  await page.clock.setFixedTime(REPORTED_AT);
+  await button.click();
+  await page.clock.setSystemTime(new Date());
+}
+
+async function reloadAccountsSession(page: Page) {
+  await refreshPageSession(page);
+  await page.goto("/accounts");
+  await clerk.loaded({ page });
+}
+
 async function offlineAccount(userId: string, name: string) {
   return adminQuery(
     `select a.id, a.type, a.currency, a.source, b.current_minor, b.reported_on::text,
@@ -39,6 +52,8 @@ async function offlineAccount(userId: string, name: string) {
     [userId, name],
   );
 }
+
+const REPORTED_AT = new Date("2026-09-11T19:00:00.000Z");
 
 async function storedSnapshots(key: "a" | "b", accountId: string) {
   return (await appQueryScopedAs(clerkIdOf(key),
@@ -93,8 +108,8 @@ test.describe("offline accounts", () => {
     browser,
     baseURL,
   }) => {
-    await page.clock.setFixedTime(new Date("2026-09-11T19:00:00.000Z"));
     await page.goto("/accounts");
+    await clerk.loaded({ page });
     await expect(page.getByTestId("accounts-count")).toHaveText("5 accounts in the ledger");
     await page.getByTestId("add-offline-account").click();
     const add = page.getByRole("form", { name: "Add offline account" });
@@ -103,8 +118,9 @@ test.describe("offline accounts", () => {
     await add.getByLabel("Currency").selectOption("USD");
     await add.getByLabel("Current balance").fill("100.00");
     await waitForMutation(page, "/api/accounts/manual", 201, () =>
-      add.getByRole("button", { name: "Add account" }).click(),
+      clickAtReportedTime(page, add.getByRole("button", { name: "Add account" })),
     );
+    await reloadAccountsSession(page);
 
     const created = await offlineAccount(userA, "Petty Cash");
     expect(created.rows).toEqual([
@@ -135,6 +151,7 @@ test.describe("offline accounts", () => {
     await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH + BigInt(10000)));
 
     await page.goto("/transactions");
+    await clerk.loaded({ page });
     await page.getByRole("button", { name: "Add transaction" }).click();
     const form = page.getByRole("form", { name: "Add transaction" });
     await form.getByLabel("Account").selectOption({ label: "Petty Cash · USD" });
@@ -147,6 +164,7 @@ test.describe("offline accounts", () => {
     );
 
     await page.goto("/accounts");
+    await clerk.loaded({ page });
     await expect(accountRow(page, "Petty Cash")).toContainText(usd(7500));
     await expect(accountRow(page, "Petty Cash").getByTestId("reported-balance")).toHaveText(
       `Reported ${usd(10000)} on 2026-09-11 · 1 transaction since`,
@@ -159,8 +177,9 @@ test.describe("offline accounts", () => {
     await expect(update.getByLabel("Current balance")).toHaveValue("100");
     await update.getByLabel("Current balance").fill("80.00");
     await waitForMutation(page, `/api/accounts/${accountId}/manual`, 200, () =>
-      update.getByRole("button", { name: "Save balance" }).click(),
+      clickAtReportedTime(page, update.getByRole("button", { name: "Save balance" })),
     );
+    await reloadAccountsSession(page);
     await expect(accountRow(page, "Petty Cash")).toContainText(usd(8000));
     await expect(accountRow(page, "Petty Cash").getByTestId("reported-balance")).toHaveText(
       `Reported ${usd(8000)} on 2026-09-11`,
@@ -185,6 +204,20 @@ test.describe("offline accounts", () => {
     expect(await storedSnapshots("a", accountId)).toEqual(corrected);
     expect(await storedSnapshots("b", accountId)).toEqual([]);
 
+    const createdObligation = await page.context().request.post("/api/obligations", {
+      data: {
+        accountId,
+        name: "E2E BIN INSURANCE",
+        amount: "12.00",
+        currency: "USD",
+        cadence: "monthly",
+        startsOn: "2026-09-15",
+        endsOn: null,
+      },
+    });
+    expect(createdObligation.status()).toBe(201);
+    await page.reload();
+
     const contextB = await signedInContext(browser, "b", baseURL);
     try {
       const pageB = await contextB.newPage();
@@ -201,7 +234,7 @@ test.describe("offline accounts", () => {
     await accountRow(page, "Coffee Tin").getByRole("button", { name: "Delete", exact: true }).click();
     const confirm = page.getByTestId("delete-account-confirm");
     await expect(confirm).toContainText(
-      "Delete Coffee Tin and its 1 transaction? This cannot be undone.",
+      "Delete Coffee Tin and its 1 transaction and 1 known obligation? This cannot be undone.",
     );
     await confirm.getByRole("button", { name: "Cancel" }).click();
     await expect(page.getByTestId("delete-account-confirm")).toHaveCount(0);
@@ -225,6 +258,14 @@ test.describe("offline accounts", () => {
         )
       ).rows[0].n,
     ).toBe(0);
+    expect(
+      (
+        await adminQuery(
+          "select count(*)::int as n from scheduled_obligations where user_id = $1 and name = 'E2E BIN INSURANCE'",
+          [userA],
+        )
+      ).rows[0].n,
+    ).toBe(0);
     await expect(page.getByTestId("account-group-other")).toContainText("Cash Wallet");
     for (const name of ["Update balance", "Rename"]) {
       await expect(accountRow(page, "Cash Rewards Card").getByRole("button", { name })).toHaveCount(0);
@@ -235,16 +276,17 @@ test.describe("offline accounts", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 320, height: 800 });
-    await page.clock.setFixedTime(new Date("2026-09-11T19:00:00.000Z"));
     await page.goto("/accounts");
+    await clerk.loaded({ page });
     await page.getByTestId("add-offline-account").click();
     const add = page.getByRole("form", { name: "Add offline account" });
     await add.getByLabel("Name").fill("Store Card");
     await add.getByLabel("Type").selectOption({ label: "Credit card" });
     await add.getByLabel("Amount owed").fill("40");
     await waitForMutation(page, "/api/accounts/manual", 201, () =>
-      add.getByRole("button", { name: "Add account" }).click(),
+      clickAtReportedTime(page, add.getByRole("button", { name: "Add account" })),
     );
+    await reloadAccountsSession(page);
     await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED + BigInt(4000)));
 
     await accountRow(page, "Store Card").getByRole("button", { name: "Update balance" }).click();
@@ -252,8 +294,9 @@ test.describe("offline accounts", () => {
     await update.getByLabel("Amount owed").fill("-5");
     const id = (await offlineAccount(userA, "Store Card")).rows[0].id;
     await waitForMutation(page, `/api/accounts/${id}/manual`, 200, () =>
-      update.getByRole("button", { name: "Save balance" }).click(),
+      clickAtReportedTime(page, update.getByRole("button", { name: "Save balance" })),
     );
+    await reloadAccountsSession(page);
     await expect(page.getByTestId("credit-owed-USD")).toHaveText(usd(SEED_OWED - BigInt(500)));
 
     const overflow = () =>

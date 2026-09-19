@@ -1,11 +1,11 @@
 import "server-only";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
 import { activeObligationsFor } from "@/lib/data/obligations";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope, type ScopedTx } from "@/lib/db/client";
-import { recurringStreams, transactions, transferPairs } from "@/lib/db/schema";
+import { accounts, recurringStreams, transactions, transferPairs } from "@/lib/db/schema";
 import {
   detectRecurringStreams,
   type RecurringStream,
@@ -17,7 +17,7 @@ import {
   type AnnualTotal,
   type StreamStatus,
 } from "@/lib/ledger/subscriptions";
-import { projectUpcoming } from "@/lib/ledger/upcoming";
+import { nextObligationDate, projectUpcoming } from "@/lib/ledger/upcoming";
 
 export type RecurringDecision = Exclude<StreamStatus, "proposed">;
 export type RecurringStatus = StreamStatus;
@@ -122,10 +122,29 @@ export async function upcomingOverview(reference: string) {
   return withRequestScope(user.clerkUserId, async (tx) => {
     const { streams } = await recurringOverviewFor(tx, user.id);
     const obligations = await activeObligationsFor(tx, user.id);
+    const ownedAccounts = await tx
+      .select({ id: accounts.id, name: accounts.name, currency: accounts.currency })
+      .from(accounts)
+      .where(eq(accounts.userId, user.id))
+      .orderBy(asc(accounts.name), asc(accounts.id));
+    const accountName = new Map(ownedAccounts.map((account) => [account.id, account.name]));
     const trackedCount = streams.filter((stream) => tracked(stream.status)).length;
     return {
       reference,
       trackedCount,
+      accounts: ownedAccounts,
+      obligations: obligations.map((obligation) => ({
+        id: obligation.obligationId,
+        accountId: obligation.accountId,
+        accountName: accountName.get(obligation.accountId) ?? "",
+        name: obligation.name,
+        amountMinor: obligation.amountMinor,
+        currency: obligation.currency,
+        cadence: obligation.cadence,
+        startsOn: obligation.startsOn,
+        endsOn: obligation.endsOn,
+        nextOn: nextObligationDate(obligation, reference),
+      })),
       ...projectUpcoming(streams, reference, obligations),
     };
   });

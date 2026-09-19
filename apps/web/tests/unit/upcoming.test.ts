@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import {
   monthEndOf,
+  nextObligationDate,
   parseUpcomingQuery,
   projectUpcoming,
   type UpcomingInput,
@@ -735,5 +736,27 @@ test.each([
         deposits: [],
       },
     ]);
+  },
+);
+
+test.each([
+  ["weekly", "2026-04-01", null, "2026-04-15", "2026-04-15"],
+  ["weekly", "2026-04-01", null, "2026-04-10", "2026-04-15"],
+  ["biweekly", "2026-03-01", null, "2026-03-29", "2026-03-29"],
+  ["biweekly", "2026-03-01", null, "2026-04-10", "2026-04-12"],
+  ["monthly", "2026-01-31", null, "2026-02-01", "2026-02-28"],
+  ["monthly", "2026-01-15", null, "2026-12-20", "2027-01-15"],
+  ["annual", "2024-02-29", null, "2026-01-01", "2026-02-28"],
+  ["annual", "2024-02-29", null, "2028-01-01", "2028-02-29"],
+  ["annual", "2024-02-29", null, "2026-03-01", "2027-02-28"],
+  ["monthly", "2026-01-15", "2026-03-15", "2026-03-01", "2026-03-15"],
+  ["monthly", "2026-01-15", "2026-03-14", "2026-03-01", null],
+  ["monthly", "2026-05-01", null, "2026-04-10", "2026-05-01"],
+  ["once", "2026-04-05", null, "2026-04-05", "2026-04-05"],
+  ["once", "2026-04-05", null, "2026-04-06", null],
+] as const)(
+  "nextObligationDate: %s from %s until %s, seen from %s, is %s",
+  (cadence, startsOn, endsOn, reference, expected) => {
+    expect(nextObligationDate({ cadence, startsOn, endsOn }, reference)).toBe(expected);
   },
 );

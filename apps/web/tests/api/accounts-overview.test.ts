@@ -1,9 +1,10 @@
 import { eq } from "drizzle-orm";
 import { expect, test } from "vitest";
 
-import { EXPECTED, SEED_PERSONAS, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
+import { EXPECTED, SEED_OBLIGATIONS, SEED_PERSONAS, SEED_USERS, type ExpectedPersona } from "@/db/seed/dataset";
 import { seedDataset } from "@/db/seed/seed";
 import { accountOverview } from "@/lib/data/ledger";
+import { endObligation } from "@/lib/data/obligations";
 import { withRequestScope } from "@/lib/db/client";
 import { accountBalances, accounts } from "@/lib/db/schema";
 import { withAuth } from "../harness/clerk";
@@ -21,6 +22,25 @@ test("the overview is exact for each signed-in persona and never includes a neig
     expect(overview.cashOnHand).toEqual(EXPECTED[persona].overview.cashOnHand);
     expect(overview.creditOwed).toEqual(EXPECTED[persona].overview.creditOwed);
   }
+});
+
+test("purge disclosure counts every retained attached obligation, including ended rows", async () => {
+  await seedDataset(adminDb());
+  const tuition = SEED_OBLIGATIONS.find(
+    (row) => row.persona === "demo" && row.name === "Tuition",
+  )!;
+  expect(
+    await withAuth(SEED_USERS.demo.clerkUserId, () => endObligation(tuition.id)),
+  ).toEqual({});
+
+  const demo = await withAuth(SEED_USERS.demo.clerkUserId, () => accountOverview());
+  expect(demo.accounts.find((row) => row.name === "Everyday Checking")?.obligationCount).toBe(
+    2,
+  );
+
+  const neighbor = await withAuth(SEED_USERS.neighbor.clerkUserId, () => accountOverview());
+  expect(neighbor.accounts).toHaveLength(1);
+  expect(neighbor.accounts[0]?.obligationCount).toBe(1);
 });
 
 test("the account and balance tables enforce the signed-in scope even without a DAL filter", async () => {

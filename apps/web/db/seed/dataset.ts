@@ -1,4 +1,4 @@
-import type { accountBalances, accounts, categories, transactions, users } from "../../lib/db/schema.ts";
+import type { accountBalances, accounts, categories, scheduledObligations, transactions, users } from "../../lib/db/schema.ts";
 import { DEFAULT_CATEGORIES } from "../../lib/ledger/default-categories.ts";
 import type { RecurringStream } from "../../lib/ledger/recurring-detection.ts";
 import type { AnnualTotal } from "../../lib/ledger/subscriptions.ts";
@@ -35,6 +35,15 @@ export const SEED_ACCOUNTS: (SeedRow<typeof accounts.$inferInsert> & { id: strin
   { persona: "demo", id: A.wallet, name: "Cash Wallet", type: "other", subtype: null, mask: null, currency: "USD", source: "manual", sourceId: null },
   { persona: "demo", id: A.euro, name: "Berlin Checking", type: "depository", subtype: "checking", mask: "0300", currency: "EUR", source: "import", sourceId: "seed-acct-euro" },
   { persona: "neighbor", id: A.neighborChecking, name: "Neighbor Checking", type: "depository", subtype: "checking", mask: "0900", currency: "USD", source: "plaid", sourceId: "seed-acct-neighbor" },
+];
+
+type SeedObligation = SeedRow<typeof scheduledObligations.$inferInsert> & { id: string };
+
+export const SEED_OBLIGATIONS: SeedObligation[] = [
+  { persona: "demo", id: uid(0x301), accountId: A.checking, name: "Rent", amountMinor: 180000, currency: "USD", cadence: "monthly", startsOn: "2026-04-05", endsOn: null },
+  { persona: "demo", id: uid(0x302), accountId: A.checking, name: "Tuition", amountMinor: 65000, currency: "USD", cadence: "once", startsOn: "2026-04-18", endsOn: null },
+  { persona: "demo", id: uid(0x303), accountId: A.card, name: "Streamflix", amountMinor: 2300, currency: "USD", cadence: "monthly", startsOn: "2026-04-29", endsOn: null },
+  { persona: "neighbor", id: uid(0x304), accountId: A.neighborChecking, name: "Insurance", amountMinor: 120000, currency: "USD", cadence: "annual", startsOn: "2026-04-12", endsOn: null },
 ];
 
 type SeedCategory = SeedRow<typeof categories.$inferInsert> & {
@@ -169,10 +178,13 @@ const SEED_UPCOMING: Record<SeedPersona, UpcomingProjection> = {
     currencies: [
       {
         currency: "USD",
-        toLeaveMinor: -BigInt(2300),
+        toLeaveMinor: -BigInt(249600),
         toArriveMinor: BigInt(250000),
         charges: [
-          { source: "detected", accountId: A.card, currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -BigInt(2300), lastDate: "2026-03-29", date: "2026-04-29", overdue: false, possibleOverlap: false },
+          { source: "obligation", obligationId: uid(0x301), accountId: A.checking, currency: "USD", direction: "outflow", name: "Rent", cadence: "monthly", amountMinor: -BigInt(180000), date: "2026-04-05", overdue: false, possibleOverlap: false },
+          { source: "obligation", obligationId: uid(0x302), accountId: A.checking, currency: "USD", direction: "outflow", name: "Tuition", cadence: "once", amountMinor: -BigInt(65000), date: "2026-04-18", overdue: false, possibleOverlap: false },
+          { source: "detected", accountId: A.card, currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -BigInt(2300), lastDate: "2026-03-29", date: "2026-04-29", overdue: false, possibleOverlap: true },
+          { source: "obligation", obligationId: uid(0x303), accountId: A.card, currency: "USD", direction: "outflow", name: "Streamflix", cadence: "monthly", amountMinor: -BigInt(2300), date: "2026-04-29", overdue: false, possibleOverlap: true },
         ],
         deposits: [
           { source: "detected", accountId: A.checking, currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: BigInt(250000), lastDate: "2026-03-27", date: "2026-04-27", overdue: false, possibleOverlap: false },
@@ -181,9 +193,42 @@ const SEED_UPCOMING: Record<SeedPersona, UpcomingProjection> = {
     ],
     stale: [],
   },
-  neighbor: QUIET_APRIL,
+  neighbor: {
+    monthEnd: "2026-04-30",
+    currencies: [
+      {
+        currency: "USD",
+        toLeaveMinor: -BigInt(120000),
+        toArriveMinor: BigInt(0),
+        charges: [
+          { source: "obligation", obligationId: uid(0x304), accountId: A.neighborChecking, currency: "USD", direction: "outflow", name: "Insurance", cadence: "annual", amountMinor: -BigInt(120000), date: "2026-04-12", overdue: false, possibleOverlap: false },
+        ],
+        deposits: [],
+      },
+    ],
+    stale: [],
+  },
   empty: QUIET_APRIL,
 };
+
+const accountNameOf = (accountId: string) =>
+  SEED_ACCOUNTS.find((account) => account.id === accountId)!.name;
+
+// Every declaration starts on or after the April reference, so its next date
+// is its first; accounts and declarations list in the DAL's name order.
+function upcomingFor(persona: SeedPersona): ExpectedPersona["upcoming"] {
+  return {
+    ...SEED_UPCOMING[persona],
+    accounts: SEED_ACCOUNTS.filter((a) => a.persona === persona)
+      .map(({ id, name, currency }) => ({ id, name, currency }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    obligations: SEED_OBLIGATIONS.filter((row) => row.persona === persona)
+      .map(({ id, accountId, name, amountMinor, currency, cadence, startsOn, endsOn }) => ({
+        id, accountId, accountName: accountNameOf(accountId), name, amountMinor, currency, cadence, startsOn, endsOn, nextOn: startsOn,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
 
 // 6.4.3 yearly cost, hand-derived from the streams above (twelve monthly
 // charges of the typical amount, charges and deposits kept apart), never
@@ -226,12 +271,14 @@ type OverviewAccount = Pick<
   reportedOn: string | null;
   sinceCount: number;
   transactionCount: number;
+  obligationCount: number;
 };
 
 export type ExpectedPersona = {
   accounts: number;
   transactions: number;
   balances: number;
+  obligations: number;
   pendingCount: number;
   categories: number;
   uncategorized: number;
@@ -252,7 +299,10 @@ export type ExpectedPersona = {
     autoQueue: number;
   };
   recurring: RecurringStream[];
-  upcoming: UpcomingProjection;
+  upcoming: UpcomingProjection & {
+    accounts: Pick<(typeof SEED_ACCOUNTS)[number], "id" | "name" | "currency">[];
+    obligations: (Omit<SeedObligation, "persona"> & { accountName: string; nextOn: string | null })[];
+  };
   annual: AnnualTotal[];
 };
 
@@ -266,6 +316,7 @@ function overviewFor(persona: SeedPersona): ExpectedPersona["overview"] {
     SEED_BALANCES.filter((b) => b.persona === persona).map((b) => [b.accountId, b]),
   );
   const mine = SEED_TRANSACTIONS.filter((t) => t.persona === persona);
+  const obligations = SEED_OBLIGATIONS.filter((row) => row.persona === persona);
   const accounts = SEED_ACCOUNTS.filter((a) => a.persona === persona)
     .map(({ id, name, type, subtype, mask, currency, source }) => {
       const balance = balances.get(id);
@@ -286,6 +337,7 @@ function overviewFor(persona: SeedPersona): ExpectedPersona["overview"] {
       return {
         name, type, subtype: subtype ?? null, mask: mask ?? null, currency, source,
         currentMinor, reportedMinor, reportedOn, sinceCount: since.length, transactionCount: rows.length,
+        obligationCount: obligations.filter((row) => row.accountId === id).length,
       };
     })
     .sort(
@@ -416,6 +468,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     accounts: SEED_ACCOUNTS.filter((a) => a.persona === persona).length,
     transactions: mine.length,
     balances: SEED_BALANCES.filter((b) => b.persona === persona).length,
+    obligations: SEED_OBLIGATIONS.filter((row) => row.persona === persona).length,
     pendingCount: mine.filter((t) => t.status === "pending").length,
     categories: SEED_CATEGORIES.filter((c) => c.persona === persona).length,
     uncategorized: mine.filter((t) => !t.categoryId).length,
@@ -433,7 +486,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
       autoQueue: mine.filter((t) => !t.categoryId && !pairedIds.has(t.id)).length,
     },
     recurring: SEED_RECURRING_STREAMS[persona],
-    upcoming: SEED_UPCOMING[persona],
+    upcoming: upcomingFor(persona),
     annual: SEED_ANNUAL[persona],
   };
 }
