@@ -7,7 +7,7 @@ import { formatMinorUnits } from "../lib/ledger/minor-units";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
-import { signedInState } from "./session";
+import { signedInContext, signedInState } from "./session";
 
 const FIXTURE = path.join(__dirname, "statement-fixture.csv");
 const WALLET_ID = SEED_ACCOUNTS.find((row) => row.name === "Cash Wallet")!.id;
@@ -176,10 +176,7 @@ test.describe("statement import", () => {
     await expect(wallet).toContainText(usd(WALLET.currentMinor! + AFTER_ANCHOR_MINOR + 600));
     await expect(wallet.getByTestId("reported-balance")).toHaveText(reported(WALLET.sinceCount + 4));
 
-    const contextB = await browser.newContext({
-      baseURL,
-      storageState: await signedInState(browser, "b"),
-    });
+    const contextB = await signedInContext(browser, "b", baseURL);
     try {
       const pageB = await contextB.newPage();
       await pageB.goto("/transactions");
@@ -190,6 +187,38 @@ test.describe("statement import", () => {
     } finally {
       await contextB.close();
     }
+  });
+
+  test("switching from flipped amounts to explicit out/in columns preserves ledger direction", async ({ page }) => {
+    await page.goto("/accounts");
+    const wallet = accountRow(page, "Cash Wallet");
+    await wallet.getByRole("button", { name: "Import", exact: true }).click();
+    const form = page.getByRole("form", { name: "Import statement" });
+    await form.getByTestId("import-file").setInputFiles({
+      name: "direction.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(
+        "Date,Amount,Debit,Credit,Description\n2026-03-20,12.50,12.50,,E2E DIRECTION PURCHASE\n2026-03-21,-9.75,,9.75,E2E DIRECTION REFUND\n",
+      ),
+    });
+    await form.getByLabel("Money out is positive in this file").check();
+    const amounts = form.getByTestId("import-preview").locator("tbody tr td:nth-child(2)");
+    await expect(amounts).toHaveText([usd(-1250), usd(975)]);
+    await form.getByLabel("Amount columns").selectOption("split");
+    await expect(amounts).toHaveText([usd(-1250), usd(975)]);
+    await expect(form.getByLabel("Money out is positive in this file")).toHaveCount(0);
+    await waitForMutation(page, `/api/accounts/${WALLET_ID}/manual/import`, 200, () =>
+      form.getByRole("button", { name: "Import 2 rows" }).click(),
+    );
+    await expect(page.getByTestId("import-result")).toHaveText(
+      "Imported 2 transactions · 0 were already in the ledger",
+    );
+    await expect(wallet).toContainText(usd(WALLET.currentMinor! - 1250 + 975));
+    const saved = await adminQuery(
+      "select amount_minor::int as amount from transactions where user_id = $1 and account_id = $2 and source = 'import' order by date",
+      [userA, WALLET_ID],
+    );
+    expect(saved.rows).toEqual([{ amount: -1250 }, { amount: 975 }]);
   });
 
   test("imports at 320px without horizontal overflow", async ({ page }) => {

@@ -259,15 +259,17 @@ export function StatementImport({
                 <option value=",">Comma (1.234,56)</option>
               </select>
             </label>
-            <label className="flex min-w-0 items-center gap-2 text-sm font-medium sm:col-span-2">
-              <input
-                type="checkbox"
-                checked={mapping.flip}
-                onChange={(event) => update({ flip: event.target.checked })}
-                disabled={pending}
-              />
-              Money out is positive in this file
-            </label>
+            {mapping.layout === "signed" && (
+              <label className="flex min-w-0 items-center gap-2 text-sm font-medium sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={mapping.flip}
+                  onChange={(event) => update({ flip: event.target.checked })}
+                  disabled={pending}
+                />
+                Money out is positive in this file
+              </label>
+            )}
           </>
         )}
       </div>

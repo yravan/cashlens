@@ -89,10 +89,8 @@ function pairedAmount(outflow: string, inflow: string, decimalMark: DecimalMark)
 }
 
 export function statementAmount(cells: AmountCells, decimalMark: DecimalMark, flip: boolean): string | null {
-  const amount =
-    "amount" in cells
-      ? normalizeAmount(cells.amount, decimalMark)
-      : pairedAmount(cells.outflow, cells.inflow, decimalMark);
+  if (!("amount" in cells)) return pairedAmount(cells.outflow, cells.inflow, decimalMark);
+  const amount = normalizeAmount(cells.amount, decimalMark);
   if (amount === null || !flip || !moves(amount)) return amount;
   return amount.startsWith("-") ? amount.slice(1) : `-${amount}`;
 }

@@ -125,13 +125,37 @@ test("a single amount column flips as a whole and two columns pick the side that
   expect(statementAmount({ outflow: "0", inflow: "5" }, ".", false)).toBe("5");
   expect(statementAmount({ outflow: "-12.34", inflow: "" }, ".", false)).toBe("-12.34");
   expect(statementAmount({ outflow: "", inflow: "-5.00" }, ".", false)).toBe("5.00");
-  expect(statementAmount({ outflow: "12.34", inflow: "" }, ".", true)).toBe("12.34");
+  expect(statementAmount({ outflow: "12.34", inflow: "" }, ".", true)).toBe("-12.34");
+  expect(statementAmount({ outflow: "", inflow: "5.00" }, ".", true)).toBe("5.00");
   expect(statementAmount({ outflow: "", inflow: "" }, ".", false)).toBe("0");
   expect(statementAmount({ outflow: "0.00", inflow: "0.00" }, ".", false)).toBe("0");
   expect(statementAmount({ outflow: "12.34", inflow: "5.00" }, ".", false)).toBeNull();
   expect(statementAmount({ outflow: "x", inflow: "" }, ".", false)).toBeNull();
   expect(statementAmount({ outflow: "", inflow: "1e3" }, ".", false)).toBeNull();
   expect(statementAmount({ outflow: "12,34", inflow: "" }, ",", false)).toBe("-12.34");
+});
+
+test("switching to explicit money-out and money-in columns ignores a persisted signed-column flip", () => {
+  const parsed = {
+    data: [
+      { Date: "03/10/2026", Amount: "12.50", Debit: "12.50", Credit: "", Description: "COFFEE" },
+      { Date: "03/11/2026", Amount: "-9.75", Debit: "", Credit: "9.75", Description: "REFUND" },
+    ],
+    errors: [],
+  };
+  const signed = mapping({ flip: true });
+  const switched = { ...signed, layout: "split" as const, outflow: "Debit", inflow: "Credit" };
+  const expected = {
+    rows: [
+      { date: "2026-03-10", amount: "-12.50", description: "COFFEE", amountMinor: -1250 },
+      { date: "2026-03-11", amount: "9.75", description: "REFUND", amountMinor: 975 },
+    ],
+    malformed: [],
+  };
+
+  expect(interpretStatement(parsed, signed, "USD")).toEqual(expected);
+  expect(interpretStatement(parsed, { ...switched, flip: false }, "USD")).toEqual(expected);
+  expect(interpretStatement(parsed, switched, "USD")).toEqual(expected);
 });
 
 test("rows convert at the currency exponent and carry a normalized content key with an occurrence", async () => {
