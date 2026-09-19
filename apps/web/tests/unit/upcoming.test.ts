@@ -317,7 +317,7 @@ test.each([
     expect(projected.currencies[0].charges.map(({ date, overdue }) => [date, overdue])).toEqual(
       dates.map((date) => [date, false]),
     );
-    expect(projected.currencies[0].toLeaveMinor).toBe(total);
+    expect(projected.currencies[0].toLeaveMinor).toBe(BigInt(total));
     expect(projected.stale).toEqual([]);
   },
 );
@@ -335,7 +335,7 @@ test.each([
     expect(projected.currencies[0].charges.map(({ date, overdue }) => [date, overdue])).toEqual(
       expected,
     );
-    expect(projected.currencies[0].toLeaveMinor).toBe(total);
+    expect(projected.currencies[0].toLeaveMinor).toBe(BigInt(total));
     expect(projected.stale).toEqual([]);
   },
 );
