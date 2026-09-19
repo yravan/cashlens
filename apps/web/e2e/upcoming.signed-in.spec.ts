@@ -121,6 +121,7 @@ test.describe("upcoming expenses view", () => {
     const warning = "Possible overlap — both are counted until matching is available.";
     await expect(overlaps.nth(0)).toContainText(warning);
     await expect(overlaps.nth(1)).toContainText(warning);
+    await expect(calendar.locator("p", { hasText: warning })).toHaveCount(0);
     await expect(calendar.locator("td").filter({ hasText: "Streamflix" })).toContainText("29");
     await expect(calendar.locator("td").filter({ hasText: "Acme Corp" })).toContainText("27");
   });

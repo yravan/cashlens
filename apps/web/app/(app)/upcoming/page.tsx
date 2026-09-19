@@ -113,9 +113,12 @@ function MonthCalendar({ overview }: { overview: UpcomingOverview }) {
                           <SourceBadge source={occurrence.source} />
                         </p>
                         {occurrence.possibleOverlap && (
-                          <p className="mt-0.5 text-[0.65rem] leading-3 text-amber-700 dark:text-amber-300">
-                            {OVERLAP_WARNING}
-                          </p>
+                          <>
+                            <p aria-hidden="true" className="mt-0.5 text-[0.65rem] font-medium leading-3 text-amber-700 dark:text-amber-300">
+                              Overlap?
+                            </p>
+                            <span className="sr-only">{OVERLAP_WARNING}</span>
+                          </>
                         )}
                         {occurrence.overdue && (
                           <span className="sr-only">
