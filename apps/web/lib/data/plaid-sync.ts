@@ -2,12 +2,14 @@ import "server-only";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
+import { captureBalanceSnapshot } from "@/lib/data/balance-history";
 import { readConnectionCredentialAs, setProviderErrorAs } from "@/lib/data/connections";
 import { matchTransfersFor } from "@/lib/data/transfers";
 import {
   balanceRow,
   currencyOf,
   LOGIN_REPAIR_CODES,
+  providerBalanceCapture,
   ProviderError,
   ReauthRequiredError,
   translated,
@@ -431,8 +433,8 @@ async function refreshBalances(
         : [];
     });
     if (rows.length === 0) return;
-    await withRequestScope(user.clerkUserId, (tx) =>
-      tx
+    await withRequestScope(user.clerkUserId, async (tx) => {
+      await tx
         .insert(accountBalances)
         .values(rows)
         .onConflictDoUpdate({
@@ -443,8 +445,20 @@ async function refreshBalances(
             limitMinor: sql`excluded.limit_minor`,
             asOf: sql`excluded.as_of`,
           },
-        }),
-    );
+        });
+      for (const account of fresh) {
+        const registered = bySourceId.get(account.account_id);
+        if (!registered) continue;
+        const capture = providerBalanceCapture(
+          registered.id,
+          user.id,
+          account.balances,
+          asOf,
+          registered.currency,
+        );
+        if (capture) await captureBalanceSnapshot(tx, capture);
+      }
+    });
   } catch (error) {
     logEvent("plaid_sync.balance_refresh_failed", { connectionId, ...errorFields(error) });
   }
