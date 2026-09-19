@@ -234,7 +234,7 @@ function KnownObligations({ overview }: { overview: UpcomingOverview }) {
       aria-labelledby="known-obligations-heading"
       className="mt-12 border-t border-zinc-300 pt-6 dark:border-zinc-700"
     >
-      <h2 id="known-obligations-heading" className="text-lg font-medium tracking-tight">
+      <h2 id="known-obligations-heading" tabIndex={-1} className="text-lg font-medium tracking-tight">
         Known obligations
       </h2>
       <p className="mt-1 max-w-xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">

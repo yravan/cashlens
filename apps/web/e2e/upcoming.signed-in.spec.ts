@@ -293,6 +293,22 @@ test.describe("upcoming expenses view", () => {
     await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$1,846.00");
     await expect(management.getByRole("button", { name: "Add obligation" })).toBeFocused();
     await expect(transactionCount(userId)).resolves.toBe(before);
+
+    await management.getByRole("button", { name: "Add obligation" }).click();
+    const addForm = management.getByRole("form", { name: "Add obligation" });
+    await expect(addForm.getByLabel("Name")).toBeFocused();
+    const rent = obligationCard(management, "Rent");
+    await rent.getByRole("button", { name: "End Rent" }).click();
+    await rent
+      .getByRole("form", { name: "End Rent" })
+      .getByRole("button", { name: "End obligation" })
+      .click();
+
+    await expect(rent).toHaveCount(0, { timeout: 30_000 });
+    await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$46.00");
+    await expect(addForm).toHaveCount(1);
+    await expect(management.getByRole("heading", { name: "Known obligations" })).toBeFocused();
+    await expect(transactionCount(userId)).resolves.toBe(before);
   });
 
   test("a passed known obligation uses neutral copy and never links to transactions", async ({

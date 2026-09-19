@@ -318,7 +318,10 @@ export function EndObligation({
     setOpen(false);
   };
   const { error, pending, run } = useMutation(responseError, () => {
-    document.getElementById("add-obligation")?.focus();
+    (
+      document.getElementById("add-obligation") ??
+      document.getElementById("known-obligations-heading")
+    )?.focus();
     router.refresh();
   });
 
