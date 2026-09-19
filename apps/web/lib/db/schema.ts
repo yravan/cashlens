@@ -634,7 +634,7 @@ export const recurringStreams = pgTable(
     check("recurring_streams_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
     check(
       "recurring_streams_name_bounded",
-      sql`normalized_name = btrim(normalized_name) and char_length(normalized_name) between 1 and 200`,
+      sql`normalized_name = btrim(normalized_name) and char_length(normalized_name) between 1 and 1500`,
     ),
     ...ownRowPolicies("recurring_streams"),
     pgPolicy("recurring_streams_update_own", {

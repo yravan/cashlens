@@ -138,6 +138,32 @@ test.describe("recurring charge detection", () => {
     await expect(page.getByTestId("upcoming-charge")).toContainText("Streamflix");
   });
 
+  test("a 500-unit Unicode descriptor can be confirmed, canceled, and reloaded", async ({
+    page,
+  }) => {
+    const descriptor = "\uFB03".repeat(500);
+    await adminQuery(
+      "update transactions set description = $1, merchant = $1 where user_id = $2 and merchant = 'Streamflix'",
+      [descriptor, await userIdOf("a")],
+    );
+
+    await page.goto("/recurring");
+    await expect(streams(page)).toHaveCount(2, { timeout: 30_000 });
+    const longStream = section(page, "proposed").getByTestId("recurring-stream").nth(0);
+    await expect(longStream.getByTestId("stream-amount")).toHaveText("-$23.00");
+    await longStream.getByRole("button", { name: /^Confirm:/ }).click();
+    const confirmed = section(page, "confirmed").getByTestId("recurring-stream");
+    await expect(confirmed.getByTestId("stream-amount")).toHaveText("-$23.00");
+    await confirmed.getByRole("button", { name: /^Mark canceled:/ }).click();
+    const canceled = section(page, "canceled").getByTestId("recurring-stream");
+    await expect(canceled.getByTestId("stream-amount")).toHaveText("-$23.00");
+    await expect(page.getByTestId("annual-out")).toHaveText("$0.00");
+
+    await page.reload();
+    await expect(section(page, "canceled").getByTestId("recurring-stream")).toHaveCount(1);
+    await expect(page.getByTestId("annual-out")).toHaveText("$0.00");
+  });
+
   test("a dropped recurring action reports an error and retries the real mutation", async ({
     page,
   }) => {
