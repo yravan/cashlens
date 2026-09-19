@@ -1,8 +1,9 @@
 import fs from "node:fs";
+import { clerk } from "@clerk/testing/playwright";
 
-import { STORAGE_STATE_A } from "../playwright.config";
+import { E2E_USER_A_EMAIL, STORAGE_STATE_A } from "../playwright.config";
 import { expect, test } from "./fixtures";
-import { savedRemainingMs, signedInState } from "./session";
+import { savedRemainingMs, signedInContext, signedInState } from "./session";
 
 // A dead 60-second __session leaves a state file that still carries every
 // other cookie — which is why a stale suite looks fine until something reads
@@ -55,5 +56,56 @@ test("a request context built from a dead storage state is refreshed, not silent
   } catch (error) {
     fs.writeFileSync(STORAGE_STATE_A, backup);
     throw error;
+  }
+});
+
+test("a fresh token without client state is repaired before a request context uses it", async ({
+  browser,
+  playwright,
+  baseURL,
+}) => {
+  test.setTimeout(60_000);
+  await signedInState(browser);
+  const backup = fs.readFileSync(STORAGE_STATE_A, "utf8");
+  const state = JSON.parse(backup);
+  state.cookies = state.cookies.filter(
+    (cookie: { name: string }) => !cookie.name.startsWith("__client_uat"),
+  );
+  fs.writeFileSync(STORAGE_STATE_A, JSON.stringify(state));
+  try {
+    expect(savedRemainingMs()).toBeGreaterThan(20_000);
+    const broken = await playwright.request.newContext({ baseURL, storageState: STORAGE_STATE_A });
+    try {
+      expect((await broken.get("/api/me", { maxRedirects: 0 })).status()).toBe(307);
+    } finally {
+      await broken.dispose();
+    }
+
+    const repaired = await playwright.request.newContext({
+      baseURL,
+      storageState: await signedInState(browser),
+    });
+    try {
+      const response = await repaired.get("/api/me", { maxRedirects: 0 });
+      expect(response.status()).toBe(200);
+      expect(response.headers()["content-type"]).toContain("application/json");
+      expect(await response.json()).toMatchObject({ id: expect.any(String) });
+    } finally {
+      await repaired.dispose();
+    }
+    const context = await signedInContext(browser, "a", baseURL);
+    try {
+      const page = await context.newPage();
+      await page.goto("/categories");
+      await clerk.loaded({ page });
+      await expect(page.getByTestId("signed-in-email")).toHaveText(E2E_USER_A_EMAIL);
+      const response = await context.request.get("/api/me", { maxRedirects: 0 });
+      expect(response.status()).toBe(200);
+      expect(response.headers()["content-type"]).toContain("application/json");
+    } finally {
+      await context.close();
+    }
+  } finally {
+    fs.writeFileSync(STORAGE_STATE_A, backup);
   }
 });

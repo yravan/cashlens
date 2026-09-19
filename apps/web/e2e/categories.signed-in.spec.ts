@@ -4,9 +4,9 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { EXPECTED, SEED_CATEGORIES, SEED_CLERK_IDS, SEED_TRANSACTIONS } from "../db/seed/dataset";
 import { DEFAULT_CATEGORIES } from "../lib/ledger/default-categories";
 import { formatMinorUnits } from "../lib/ledger/minor-units";
-import { E2E_USERS_FILE, STORAGE_STATE_B } from "../playwright.config";
+import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, seedLedgerFixture } from "./db";
-import { signedInState } from "./session";
+import { signedInContext, signedInState } from "./session";
 
 const clerkIdOf = (key: "a" | "b"): string =>
   JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8"))[key].clerkUserId;
@@ -43,7 +43,7 @@ test.describe("category assignment", () => {
     // stale mid-suite (see plaid.signed-in.spec.ts), and an unasserted 307 here only
     // resurfaces as a missing row further down.
     expect((await request.get("/api/me")).status()).toBe(200);
-    const requestB = await playwright.request.newContext({ baseURL, storageState: STORAGE_STATE_B });
+    const requestB = await playwright.request.newContext({ baseURL, storageState: await signedInState(browser, "b") });
     expect((await requestB.get("/api/me")).status()).toBe(200);
     await requestB.dispose();
 
@@ -88,7 +88,7 @@ test.describe("category assignment", () => {
       .locator("option", { hasText: "Groceries" })
       .getAttribute("value");
 
-    const contextB = await browser.newContext({ baseURL, storageState: STORAGE_STATE_B });
+    const contextB = await signedInContext(browser, "b", baseURL);
     try {
       const pageB = await contextB.newPage();
       await pageB.goto("/transactions");
@@ -406,10 +406,7 @@ test.describe("taxonomy editing", () => {
       "Food shopping",
     );
 
-    const contextB = await browser.newContext({
-      baseURL,
-      storageState: await signedInState(browser, "b"),
-    });
+    const contextB = await signedInContext(browser, "b", baseURL);
     try {
       const pageB = await contextB.newPage();
       await pageB.goto("/categories");

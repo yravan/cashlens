@@ -6,7 +6,7 @@ import { formatMinorUnits } from "../lib/ledger/minor-units";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, appQuery, appQueryScopedAs, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
-import { signedInState } from "./session";
+import { signedInContext, signedInState } from "./session";
 
 const PROBE_A = "ledger_rls_probe_a";
 const PROBE_B = "ledger_rls_probe_b";
@@ -409,10 +409,7 @@ test.describe("ledger read seam", () => {
 
     await expectLedger(page, EXPECTED.demo);
 
-    const contextB = await browser.newContext({
-      baseURL,
-      storageState: await signedInState(browser, "b"),
-    });
+    const contextB = await signedInContext(browser, "b", baseURL);
     try {
       const pageB = await contextB.newPage();
       await expectLedger(pageB, EXPECTED.neighbor);

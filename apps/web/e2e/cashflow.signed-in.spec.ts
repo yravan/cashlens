@@ -6,7 +6,7 @@ import { formatMinorUnits } from "../lib/ledger/minor-units";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
-import { signedInState } from "./session";
+import { signedInContext, signedInState } from "./session";
 
 const clerkIdOf = (key: "a" | "b"): string =>
   JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8"))[key].clerkUserId;
@@ -342,10 +342,7 @@ test.describe("cash-flow summary", () => {
     await page.goto("/");
     await expect(page.getByTestId("flow-transfer-note")).toBeVisible({ timeout: 30_000 });
 
-    const contextB = await browser.newContext({
-      baseURL,
-      storageState: await signedInState(browser, "b"),
-    });
+    const contextB = await signedInContext(browser, "b", baseURL);
     try {
       const pageB = await contextB.newPage();
       await pageB.goto("/");
