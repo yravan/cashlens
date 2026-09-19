@@ -5,10 +5,10 @@ import { POST as categorizeRoute } from "@/app/api/transactions/categorize/route
 import { EXPECTED, SEED_USERS } from "@/db/seed/dataset";
 import { seedDataset } from "@/db/seed/seed";
 import { autoCategorizeBatch, BATCH_LIMIT, uncategorizedCount } from "@/lib/data/auto-categorize";
-import { listCategoryGroups, setTransactionCategory } from "@/lib/data/categories";
+import { createCategory, listCategoryGroups, setTransactionCategory, updateCategory } from "@/lib/data/categories";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
-import { accounts, transactions } from "@/lib/db/schema";
+import { accounts, classificationRuns, transactions } from "@/lib/db/schema";
 import { DEFAULT_CATEGORIES } from "@/lib/ledger/default-categories";
 import { ASSIGNMENT_SCHEMA } from "@/lib/llm/classify";
 import {
@@ -288,6 +288,54 @@ test("a concurrent manual assignment wins the race against an in-flight batch", 
     reason: null,
   });
 });
+
+test.each(["rename leaf", "rename group", "promote leaf"])(
+  "a taxonomy change during initial inference discards stale assignments: %s",
+  async (mutation) => {
+    const clerkUserId = fakeClerkUserId();
+    const { user, ids } = await provision(clerkUserId, [{ description: "COFFEE PURCHASE" }]);
+    const groups = await withAuth(clerkUserId, () => listCategoryGroups());
+    const coffee = leafNamed(groups, "Coffee Shops");
+    const group = groups.find((entry) => entry.categories.some((leaf) => leaf.id === coffee))!;
+    const [before] = await adminDb().select().from(transactions).where(eq(transactions.id, ids[0]));
+    primeClassification([
+      { item: 0, category: labelIndex("Coffee Shops"), confidence: "high", reason: "Coffee merchant" },
+    ]);
+    onceBeforeClassificationResponse(async () => {
+      await withAuth(clerkUserId, async () => {
+        const target = mutation === "rename group" ? group.id : coffee;
+        expect(await updateCategory(target, {
+          name: "Medical",
+          parentId: mutation === "rename leaf" ? group.id : null,
+          retired: false,
+        })).toEqual({ categoryId: target });
+        if (mutation === "promote leaf") {
+          expect(await createCategory({ name: "Consultations", parentId: coffee }))
+            .toHaveProperty("categoryId");
+        }
+      });
+    });
+
+    expect(await withAuth(clerkUserId, () => autoCategorizeBatch()))
+      .toEqual({ attempted: 1, categorized: 0, remaining: 1 });
+    const [after] = await adminDb().select().from(transactions).where(eq(transactions.id, ids[0]));
+    expect(after).toEqual(before);
+    const [run] = await adminDb().select().from(classificationRuns)
+      .where(eq(classificationRuns.ownerUserId, user.id));
+    expect(run).toMatchObject({ status: "failed", attempted: 1, applied: 0 });
+
+    const currentGroups = await withAuth(clerkUserId, () => listCategoryGroups());
+    const currentLeaves = currentGroups.flatMap((entry) => entry.categories);
+    const groceries = leafNamed(currentGroups, "Groceries");
+    primeClassification([
+      { item: 0, category: currentLeaves.findIndex((leaf) => leaf.id === groceries), confidence: "high", reason: "Fresh inference" },
+    ]);
+    expect(await withAuth(clerkUserId, () => autoCategorizeBatch()))
+      .toEqual({ attempted: 1, categorized: 1, remaining: 0 });
+    expect(await categoryStateOf(ids[0])).toMatchObject({ categoryId: groceries, source: "auto" });
+    expect(classificationRequests).toHaveLength(2);
+  },
+);
 
 test("invalid model output entries are dropped while the valid subset applies", async () => {
   const clerkUserId = fakeClerkUserId();

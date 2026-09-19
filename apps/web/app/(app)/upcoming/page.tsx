@@ -55,7 +55,7 @@ function MonthCalendar({ overview }: { overview: UpcomingOverview }) {
   const referenceDay = Number(overview.reference.slice(8, 10));
 
   return (
-    <div className="mt-6 overflow-x-auto">
+    <div className="relative mt-6 overflow-x-auto">
       <table data-testid="upcoming-calendar" className="w-full min-w-[36rem] table-fixed border-collapse text-left">
         <caption className="pb-2 text-left text-sm font-medium">{monthName(overview.reference)}</caption>
         <thead>
