@@ -23,7 +23,8 @@ type Column = "date" | "amount" | "outflow" | "inflow" | "description";
 const ERROR_COPY: Record<OfflineAccountError | "too_large" | "invalid_body", string> = {
   invalid_request: "Some rows can’t be imported as they are. Check the columns and try again.",
   account_not_found: "That account is no longer available.",
-  too_large: "That file is too large to import in one go. Split it and try again.",
+  too_large:
+    "That file is too large to import in one go. Split it into files by complete dates, keeping every row for a date together. A single date over the limit cannot be imported yet; do not split that date across files.",
   invalid_body: "Couldn’t send the rows. Try again.",
 };
 const FAILURE = "Couldn’t import the statement. Try again.";
