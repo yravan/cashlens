@@ -13,7 +13,14 @@ import {
 } from "@/lib/data/connections";
 import { connectPlaidItem, ProviderError } from "@/lib/data/plaid";
 import { withRequestScope } from "@/lib/db/client";
-import { accountBalances, accounts, connectionCredentials, connections, users } from "@/lib/db/schema";
+import {
+  accountBalances,
+  accountBalanceSnapshots,
+  accounts,
+  connectionCredentials,
+  connections,
+  users,
+} from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
 import {
@@ -26,6 +33,7 @@ import {
   removedAccessTokens,
   removeItemRemotely,
   resetPlaidSubstitute,
+  sandboxAccounts,
   SANDBOX_INSTITUTION,
   SUBSTITUTE_SECRET,
 } from "../harness/plaid";
@@ -98,7 +106,11 @@ test("a link token is minted for the signed-in user with the minimal transaction
 
 test("exchange vaults the access token and registers the item's accounts and balances", async () => {
   const clerkUserId = fakeClerkUserId();
-  const { publicToken, accessToken, itemId } = mintSandboxItem();
+  const providerAsOf = "2026-09-15T23:45:00.000Z";
+  const providerAccounts = sandboxAccounts();
+  providerAccounts[1].balances.last_updated_datetime = providerAsOf;
+  providerAccounts[0].balances.current = null;
+  const { publicToken, accessToken, itemId } = mintSandboxItem({ accounts: providerAccounts });
 
   const response = await withAuth(clerkUserId, () => postExchange(publicToken));
   expect(response.status).toBe(200);
@@ -133,7 +145,8 @@ test("exchange vaults the access token and registers the item's accounts and bal
   const rows = await adminDb()
     .select()
     .from(accounts)
-    .leftJoin(accountBalances, eq(accountBalances.accountId, accounts.id));
+    .leftJoin(accountBalances, eq(accountBalances.accountId, accounts.id))
+    .leftJoin(accountBalanceSnapshots, eq(accountBalanceSnapshots.accountId, accounts.id));
   const byMask = new Map(rows.map((row) => [row.accounts.mask, row]));
   expect(rows).toHaveLength(3);
   for (const row of rows) {
@@ -143,7 +156,7 @@ test("exchange vaults the access token and registers the item's accounts and bal
   }
   expect(byMask.get("0000")?.account_balances).toMatchObject({
     availableMinor: 10000,
-    currentMinor: 11000,
+    currentMinor: null,
     limitMinor: null,
   });
   expect(byMask.get("1111")?.account_balances).toMatchObject({
@@ -156,6 +169,30 @@ test("exchange vaults the access token and registers the item's accounts and bal
     currentMinor: 41000,
     limitMinor: 200000,
   });
+
+  expect(byMask.get("0000")?.account_balance_snapshots).toBeNull();
+  const savings = byMask.get("1111")!;
+  expect(savings.account_balance_snapshots).toMatchObject({
+    currentMinor: 21033,
+    currency: "USD",
+    source: "provider",
+    captureReason: "event",
+    providerAsOf: new Date(providerAsOf),
+  });
+  expect(savings.account_balance_snapshots?.observedAt).toEqual(savings.account_balances?.asOf);
+  expect(savings.account_balance_snapshots?.snapshotDay).toBe(
+    savings.account_balances?.asOf.toISOString().slice(0, 10),
+  );
+
+  const credit = byMask.get("3333")!;
+  expect(credit.account_balance_snapshots).toMatchObject({
+    currentMinor: 41000,
+    currency: "USD",
+    source: "provider",
+    captureReason: "event",
+    providerAsOf: null,
+  });
+  expect(credit.account_balance_snapshots?.observedAt).toEqual(credit.account_balances?.asOf);
 });
 
 test("a public token is single-use: a replay registers nothing new", async () => {
@@ -396,9 +433,10 @@ test("user B can never see user A's connection, accounts, or balances", async ()
   const visibleToB = await withRequestScope(clerkB, async (tx) => ({
     accounts: await tx.select().from(accounts),
     balances: await tx.select().from(accountBalances),
+    snapshots: await tx.select().from(accountBalanceSnapshots),
     connections: await tx.select().from(connections),
   }));
-  expect(visibleToB).toEqual({ accounts: [], balances: [], connections: [] });
+  expect(visibleToB).toEqual({ accounts: [], balances: [], snapshots: [], connections: [] });
 
   const mine = await withAuth(clerkB, () => postExchange(mintSandboxItem().publicToken));
   expect(mine.status).toBe(200);
