@@ -211,6 +211,25 @@ const SEED_UPCOMING: Record<SeedPersona, UpcomingProjection> = {
   empty: QUIET_APRIL,
 };
 
+const accountNameOf = (accountId: string) =>
+  SEED_ACCOUNTS.find((account) => account.id === accountId)!.name;
+
+// Every declaration starts on or after the April reference, so its next date
+// is its first; accounts and declarations list in the DAL's name order.
+function upcomingFor(persona: SeedPersona): ExpectedPersona["upcoming"] {
+  return {
+    ...SEED_UPCOMING[persona],
+    accounts: SEED_ACCOUNTS.filter((a) => a.persona === persona)
+      .map(({ id, name, currency }) => ({ id, name, currency }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    obligations: SEED_OBLIGATIONS.filter((row) => row.persona === persona)
+      .map(({ id, accountId, name, amountMinor, currency, cadence, startsOn, endsOn }) => ({
+        id, accountId, accountName: accountNameOf(accountId), name, amountMinor, currency, cadence, startsOn, endsOn, nextOn: startsOn,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
+
 // 6.4.3 yearly cost, hand-derived from the streams above (twelve monthly
 // charges of the typical amount, charges and deposits kept apart), never
 // computed by the rule.
@@ -280,7 +299,10 @@ export type ExpectedPersona = {
     autoQueue: number;
   };
   recurring: RecurringStream[];
-  upcoming: UpcomingProjection;
+  upcoming: UpcomingProjection & {
+    accounts: Pick<(typeof SEED_ACCOUNTS)[number], "id" | "name" | "currency">[];
+    obligations: (Omit<SeedObligation, "persona"> & { accountName: string; nextOn: string | null })[];
+  };
   annual: AnnualTotal[];
 };
 
@@ -455,7 +477,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
       autoQueue: mine.filter((t) => !t.categoryId && !pairedIds.has(t.id)).length,
     },
     recurring: SEED_RECURRING_STREAMS[persona],
-    upcoming: SEED_UPCOMING[persona],
+    upcoming: upcomingFor(persona),
     annual: SEED_ANNUAL[persona],
   };
 }

@@ -14,14 +14,6 @@ import { anchoredAccount, provisionedUser } from "./offline-helpers";
 const overviewAs = (persona: (typeof SEED_PERSONAS)[number], reference: string) =>
   withAuth(SEED_USERS[persona].clerkUserId, () => upcomingOverview(reference));
 
-const projectionOf = (overview: Awaited<ReturnType<typeof upcomingOverview>>) => ({
-  reference: overview.reference,
-  trackedCount: overview.trackedCount,
-  monthEnd: overview.monthEnd,
-  currencies: overview.currencies,
-  stale: overview.stale,
-});
-
 const demoStream = (normalizedName: string) => {
   const stream = EXPECTED.demo.recurring.find((s) => s.normalizedName === normalizedName)!;
   const { accountId, currency, direction } = stream;
@@ -57,7 +49,7 @@ test("the seeded ledgers project exactly the hand-verified upcoming month per pe
   await withAuth(SEED_USERS.demo.clerkUserId, () => matchTransfers());
 
   for (const persona of SEED_PERSONAS) {
-    expect(projectionOf(await overviewAs(persona, SEED_UPCOMING_REFERENCE))).toEqual({
+    expect(await overviewAs(persona, SEED_UPCOMING_REFERENCE)).toEqual({
       reference: SEED_UPCOMING_REFERENCE,
       trackedCount: EXPECTED[persona].recurring.length,
       ...EXPECTED[persona].upcoming,
@@ -70,11 +62,24 @@ test("a stored positive obligation projects exactly once as a negative outflow",
   const accountId = await accountFor(owner.id, "Checking");
   const obligationId = await addObligation(owner.clerkUserId, accountId);
 
-  expect(
-    projectionOf(await withAuth(owner.clerkUserId, () => upcomingOverview("2026-04-01"))),
-  ).toEqual({
+  expect(await withAuth(owner.clerkUserId, () => upcomingOverview("2026-04-01"))).toEqual({
     reference: "2026-04-01",
     trackedCount: 0,
+    accounts: [{ id: accountId, name: "Checking", currency: "USD" }],
+    obligations: [
+      {
+        id: obligationId,
+        accountId,
+        accountName: "Checking",
+        name: "Rent",
+        amountMinor: 180000,
+        currency: "USD",
+        cadence: "once",
+        startsOn: "2026-04-15",
+        endsOn: null,
+        nextOn: "2026-04-15",
+      },
+    ],
     monthEnd: "2026-04-30",
     currencies: [
       {
@@ -270,7 +275,7 @@ test("dismissing a stream removes its projection and total; re-confirming restor
   expect(dismissed.stale).toEqual([]);
 
   await withAuth(clerkUserId, () => setRecurringStatus(streamflix, "confirmed"));
-  expect(projectionOf(await overviewAs("demo", SEED_UPCOMING_REFERENCE))).toEqual({
+  expect(await overviewAs("demo", SEED_UPCOMING_REFERENCE)).toEqual({
     reference: SEED_UPCOMING_REFERENCE,
     trackedCount: 2,
     ...EXPECTED.demo.upcoming,
@@ -295,7 +300,7 @@ test("canceling a stream removes its projection and total exactly like dismissin
   expect((await overviewAs("demo", "2026-09-01")).stale.map((s) => s.name)).toEqual(["Acme Corp"]);
 
   await withAuth(clerkUserId, () => setRecurringStatus(streamflix, "confirmed"));
-  expect(projectionOf(await overviewAs("demo", SEED_UPCOMING_REFERENCE))).toEqual({
+  expect(await overviewAs("demo", SEED_UPCOMING_REFERENCE)).toEqual({
     reference: SEED_UPCOMING_REFERENCE,
     trackedCount: 2,
     ...EXPECTED.demo.upcoming,

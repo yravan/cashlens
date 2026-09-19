@@ -140,6 +140,18 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     ],
     upcoming: {
       monthEnd: "2026-04-30",
+      accounts: [
+        { id: seedAccount("demo", "Berlin Checking"), name: "Berlin Checking", currency: "EUR" },
+        { id: seedAccount("demo", "Cash Rewards Card"), name: "Cash Rewards Card", currency: "USD" },
+        { id: seedAccount("demo", "Cash Wallet"), name: "Cash Wallet", currency: "USD" },
+        { id: seedAccount("demo", "Everyday Checking"), name: "Everyday Checking", currency: "USD" },
+        { id: seedAccount("demo", "Rainy Day Savings"), name: "Rainy Day Savings", currency: "USD" },
+      ],
+      obligations: [
+        { id: "00000000-0000-4000-8000-000000000301", accountId: seedAccount("demo", "Everyday Checking"), accountName: "Everyday Checking", name: "Rent", amountMinor: 180000, currency: "USD", cadence: "monthly", startsOn: "2026-04-05", endsOn: null, nextOn: "2026-04-05" },
+        { id: "00000000-0000-4000-8000-000000000303", accountId: seedAccount("demo", "Cash Rewards Card"), accountName: "Cash Rewards Card", name: "Streamflix", amountMinor: 2300, currency: "USD", cadence: "monthly", startsOn: "2026-04-29", endsOn: null, nextOn: "2026-04-29" },
+        { id: "00000000-0000-4000-8000-000000000302", accountId: seedAccount("demo", "Everyday Checking"), accountName: "Everyday Checking", name: "Tuition", amountMinor: 65000, currency: "USD", cadence: "once", startsOn: "2026-04-18", endsOn: null, nextOn: "2026-04-18" },
+      ],
       currencies: [
         {
           currency: "USD",
@@ -208,6 +220,10 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     recurring: [],
     upcoming: {
       monthEnd: "2026-04-30",
+      accounts: [{ id: seedAccount("neighbor", "Neighbor Checking"), name: "Neighbor Checking", currency: "USD" }],
+      obligations: [
+        { id: "00000000-0000-4000-8000-000000000304", accountId: seedAccount("neighbor", "Neighbor Checking"), accountName: "Neighbor Checking", name: "Insurance", amountMinor: 120000, currency: "USD", cadence: "annual", startsOn: "2026-04-12", endsOn: null, nextOn: "2026-04-12" },
+      ],
       currencies: [
         {
           currency: "USD",
@@ -240,7 +256,7 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
     history: { order: [], currencies: [] },
     transfers: { pairs: [], pairedRows: 0, autoQueue: 0 },
     recurring: [],
-    upcoming: { monthEnd: "2026-04-30", currencies: [], stale: [] },
+    upcoming: { monthEnd: "2026-04-30", accounts: [], obligations: [], currencies: [], stale: [] },
     annual: [],
   });
 });
@@ -505,9 +521,12 @@ test("the dataset's upcoming month is exactly what 6.4.2's projector finds in th
       endsOn: row.endsOn ?? null,
       endedAt: null,
     }));
-    expect(projectUpcoming(streams, SEED_UPCOMING_REFERENCE, obligations)).toEqual(
-      EXPECTED[persona].upcoming,
-    );
+    const { monthEnd, currencies, stale } = EXPECTED[persona].upcoming;
+    expect(projectUpcoming(streams, SEED_UPCOMING_REFERENCE, obligations)).toEqual({
+      monthEnd,
+      currencies,
+      stale,
+    });
   }
 });
 
