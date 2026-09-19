@@ -1,13 +1,32 @@
 import "server-only";
-import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  lte,
+  notExists,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope, type ScopedTx } from "@/lib/db/client";
-import { accountBalanceSnapshots, accountType, accounts, transactions } from "@/lib/db/schema";
+import {
+  accountBalances,
+  accountBalanceSnapshots,
+  accountType,
+  accounts,
+  transactions,
+} from "@/lib/db/schema";
 import { isIsoDate } from "@/lib/ledger/history-query";
 import { isPlainObject } from "@/lib/ledger/manual-transactions";
 import { OWED_TYPES } from "@/lib/ledger/offline-accounts";
-import { logEvent } from "@/lib/log";
+import { errorClass, logEvent } from "@/lib/log";
 
 type BalanceSnapshotBase = {
   accountId: string;
@@ -432,9 +451,97 @@ export type AccountBalanceHistory = {
 
 const TYPE_ORDER: readonly string[] = accountType.enumValues;
 
+async function reconcileCurrentBalanceHistory(range: BalanceHistoryRange): Promise<void> {
+  const user = await requireUser();
+  try {
+    await withRequestScope(user.clerkUserId, async (tx) => {
+      if (range.accountIds?.length === 0) return;
+
+      const accountScope = [
+        eq(accounts.userId, user.id),
+        eq(accountBalances.userId, user.id),
+        isNotNull(accountBalances.currentMinor),
+        or(
+          eq(accounts.source, "plaid"),
+          and(eq(accounts.source, "manual"), isNotNull(accountBalances.reportedOn)),
+        )!,
+        notExists(
+          tx
+            .select({ accountId: accountBalanceSnapshots.accountId })
+            .from(accountBalanceSnapshots)
+            .where(
+              and(
+                eq(accountBalanceSnapshots.accountId, accounts.id),
+                eq(accountBalanceSnapshots.userId, user.id),
+                eq(accountBalanceSnapshots.observedAt, accountBalances.asOf),
+                or(
+                  and(
+                    eq(accounts.source, "plaid"),
+                    eq(accountBalanceSnapshots.source, "provider"),
+                  ),
+                  and(
+                    eq(accounts.source, "manual"),
+                    eq(accountBalanceSnapshots.source, "manual_anchor"),
+                  ),
+                ),
+              ),
+            ),
+        ),
+      ];
+      if (range.accountIds) accountScope.push(inArray(accounts.id, range.accountIds));
+      const candidates = await tx
+        .select({
+          accountId: accounts.id,
+          currency: accounts.currency,
+          source: accounts.source,
+          currentMinor: accountBalances.currentMinor,
+          observedAt: accountBalances.asOf,
+          reportedOn: accountBalances.reportedOn,
+        })
+        .from(accounts)
+        .innerJoin(
+          accountBalances,
+          and(eq(accountBalances.accountId, accounts.id), eq(accountBalances.userId, user.id)),
+        )
+        .where(and(...accountScope));
+
+      for (const candidate of candidates) {
+        if (candidate.currentMinor === null) continue;
+        if (candidate.source === "plaid") {
+          await captureBalanceSnapshot(tx, {
+            accountId: candidate.accountId,
+            userId: user.id,
+            currentMinor: candidate.currentMinor,
+            currency: candidate.currency,
+            source: "provider",
+            captureReason: "reconciliation",
+            observedAt: candidate.observedAt,
+            providerAsOf: null,
+          });
+        } else if (candidate.reportedOn !== null) {
+          await captureBalanceSnapshot(tx, {
+            accountId: candidate.accountId,
+            userId: user.id,
+            currentMinor: candidate.currentMinor,
+            currency: candidate.currency,
+            source: "manual_anchor",
+            snapshotDay: candidate.reportedOn,
+            captureReason: "reconciliation",
+            observedAt: candidate.observedAt,
+            providerAsOf: null,
+          });
+        }
+      }
+    });
+  } catch (error) {
+    logEvent("balance_snapshot.reconciliation_failed", { error: errorClass(error) });
+  }
+}
+
 export async function accountBalanceHistory(
   range: BalanceHistoryRange,
 ): Promise<AccountBalanceHistory[]> {
+  await reconcileCurrentBalanceHistory(range);
   const provider = await providerBalanceHistory(range);
   const manual = await manualBalanceHistory(range);
   return [...provider, ...manual].sort(

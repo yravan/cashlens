@@ -644,6 +644,391 @@ const parsedRange = (input: unknown) => {
   return parsed.range;
 };
 
+test("signed-in history reconciles a provider projection at its original observation instant", async () => {
+  const owner = await provisionedUser();
+  const accountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Checking",
+    type: "depository",
+    source: "plaid",
+    currentMinor: 12345,
+    reportedOn: null,
+  });
+  const observedAt = new Date("2026-04-02T23:30:00Z");
+  await adminDb()
+    .update(accountBalances)
+    .set({ asOf: observedAt })
+    .where(eq(accountBalances.accountId, accountId));
+
+  const history = await withAuth(owner.clerkUserId, () =>
+    accountBalanceHistory({
+      from: "2026-04-02",
+      to: "2026-04-03",
+      accountIds: [accountId],
+    }),
+  );
+
+  expect(history).toEqual([
+    {
+      accountId,
+      accountType: "depository",
+      currency: "USD",
+      points: [
+        {
+          day: "2026-04-02",
+          basis: "observed",
+          currentMinor: 12345,
+          observedDay: "2026-04-02",
+          observedAt,
+          providerAsOf: null,
+          captureReason: "reconciliation",
+        },
+        {
+          day: "2026-04-03",
+          basis: "carried",
+          currentMinor: 12345,
+          observedDay: "2026-04-02",
+          observedAt,
+          providerAsOf: null,
+          captureReason: "reconciliation",
+        },
+      ],
+    },
+  ]);
+  const snapshots = await adminDb()
+    .select()
+    .from(accountBalanceSnapshots)
+    .where(eq(accountBalanceSnapshots.accountId, accountId));
+  expect(snapshots).toHaveLength(1);
+  expect(snapshots[0]).toMatchObject({
+    snapshotDay: "2026-04-02",
+    currentMinor: 12345,
+    source: "provider",
+    captureReason: "reconciliation",
+    observedAt,
+    providerAsOf: null,
+  });
+});
+
+test("an existing original observation is not reconciled again", async () => {
+  const owner = await provisionedUser();
+  const accountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Checking",
+    type: "depository",
+    source: "plaid",
+    currentMinor: 12345,
+    reportedOn: null,
+  });
+  const observedAt = new Date("2026-04-02T10:00:00Z");
+  const providerAsOf = new Date("2026-04-02T09:45:00Z");
+  await adminDb()
+    .update(accountBalances)
+    .set({ asOf: observedAt })
+    .where(eq(accountBalances.accountId, accountId));
+  await withRequestScope(owner.clerkUserId, (tx) =>
+    captureBalanceSnapshot(tx, {
+      accountId,
+      userId: owner.id,
+      currentMinor: 12345,
+      currency: "USD",
+      source: "provider",
+      captureReason: "event",
+      observedAt,
+      providerAsOf,
+    }),
+  );
+
+  const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+  try {
+    const history = await withAuth(owner.clerkUserId, () =>
+      accountBalanceHistory({ from: "2026-04-02", to: "2026-04-02", accountIds: [accountId] }),
+    );
+
+    expect(history[0].points).toEqual([
+      {
+        day: "2026-04-02",
+        basis: "observed",
+        currentMinor: 12345,
+        observedDay: "2026-04-02",
+        observedAt,
+        providerAsOf,
+        captureReason: "event",
+      },
+    ]);
+    expect(info).not.toHaveBeenCalled();
+  } finally {
+    info.mockRestore();
+  }
+});
+
+test("reconciliation is bounded to selected owned accounts", async () => {
+  const owner = await provisionedUser();
+  const neighbor = await provisionedUser();
+  const selectedAccountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Selected checking",
+    type: "depository",
+    source: "plaid",
+    currentMinor: 12000,
+    reportedOn: null,
+  });
+  await anchoredAccount({
+    userId: owner.id,
+    name: "Omitted checking",
+    type: "depository",
+    source: "plaid",
+    currentMinor: 34000,
+    reportedOn: null,
+  });
+  const neighborAccountId = await anchoredAccount({
+    userId: neighbor.id,
+    name: "Neighbor checking",
+    type: "depository",
+    source: "plaid",
+    currentMinor: 56000,
+    reportedOn: null,
+  });
+
+  const history = await withAuth(owner.clerkUserId, () =>
+    accountBalanceHistory({
+      from: "2026-04-01",
+      to: "2026-04-01",
+      accountIds: [selectedAccountId, neighborAccountId],
+    }),
+  );
+
+  expect(history.map(({ accountId }) => accountId)).toEqual([selectedAccountId]);
+  const snapshots = await adminDb()
+    .select({
+      accountId: accountBalanceSnapshots.accountId,
+      captureReason: accountBalanceSnapshots.captureReason,
+    })
+    .from(accountBalanceSnapshots);
+  expect(snapshots).toEqual([
+    { accountId: selectedAccountId, captureReason: "reconciliation" },
+  ]);
+});
+
+test("repeated reconciliation leaves the canonical snapshot unchanged", async () => {
+  const owner = await provisionedUser();
+  const accountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Checking",
+    type: "depository",
+    source: "plaid",
+    currentMinor: 12345,
+    reportedOn: null,
+  });
+  const range = { from: "2026-04-01", to: "2026-04-01", accountIds: [accountId] };
+  await withAuth(owner.clerkUserId, () => accountBalanceHistory(range));
+  const pinnedUpdatedAt = new Date("2026-04-02T00:00:00Z");
+  await adminDb()
+    .update(accountBalanceSnapshots)
+    .set({ updatedAt: pinnedUpdatedAt })
+    .where(eq(accountBalanceSnapshots.accountId, accountId));
+
+  await withAuth(owner.clerkUserId, () => accountBalanceHistory(range));
+
+  const snapshots = await adminDb()
+    .select()
+    .from(accountBalanceSnapshots)
+    .where(eq(accountBalanceSnapshots.accountId, accountId));
+  expect(snapshots).toHaveLength(1);
+  expect(snapshots[0]).toMatchObject({
+    accountId,
+    snapshotDay: "2026-04-01",
+    currentMinor: 12345,
+    captureReason: "reconciliation",
+    updatedAt: pinnedUpdatedAt,
+  });
+});
+
+test("null provider current and missing manual reported day stay unavailable", async () => {
+  const owner = await provisionedUser();
+  const providerAccountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Checking",
+    type: "depository",
+    source: "plaid",
+    currentMinor: 10000,
+    reportedOn: null,
+  });
+  const manualAccountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Card",
+    type: "credit",
+    source: "manual",
+    currentMinor: 7000,
+    reportedOn: null,
+  });
+  await adminDb()
+    .update(accountBalances)
+    .set({ currentMinor: null, availableMinor: 10000 })
+    .where(eq(accountBalances.accountId, providerAccountId));
+
+  const history = await withAuth(owner.clerkUserId, () =>
+    accountBalanceHistory({
+      from: "2026-04-01",
+      to: "2026-04-01",
+      accountIds: [providerAccountId, manualAccountId],
+    }),
+  );
+
+  expect(history).toHaveLength(2);
+  expect(history.map(({ points }) => points)).toEqual([
+    [{ day: "2026-04-01", basis: "unavailable", currentMinor: null }],
+    [{ day: "2026-04-01", basis: "unavailable", currentMinor: null }],
+  ]);
+  expect(await adminDb().select().from(accountBalanceSnapshots)).toEqual([]);
+});
+
+test("signed-in history reconciles a manual projection on its reported day", async () => {
+  const owner = await provisionedUser();
+  const accountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Card",
+    type: "credit",
+    source: "manual",
+    currentMinor: 7000,
+    reportedOn: "2026-04-02",
+  });
+  const observedAt = new Date("2026-04-05T09:15:00Z");
+  await adminDb()
+    .update(accountBalances)
+    .set({ asOf: observedAt })
+    .where(eq(accountBalances.accountId, accountId));
+
+  const history = await withAuth(owner.clerkUserId, () =>
+    accountBalanceHistory({ from: "2026-04-02", to: "2026-04-02", accountIds: [accountId] }),
+  );
+
+  expect(history).toEqual([
+    {
+      accountId,
+      accountType: "credit",
+      currency: "USD",
+      points: [
+        {
+          day: "2026-04-02",
+          basis: "derived",
+          currentMinor: 7000,
+          anchorMinor: 7000,
+          anchorDay: "2026-04-02",
+          anchorObservedAt: observedAt,
+          captureReason: "reconciliation",
+        },
+      ],
+    },
+  ]);
+  const snapshots = await adminDb()
+    .select()
+    .from(accountBalanceSnapshots)
+    .where(eq(accountBalanceSnapshots.accountId, accountId));
+  expect(snapshots).toHaveLength(1);
+  expect(snapshots[0]).toMatchObject({
+    snapshotDay: "2026-04-02",
+    currentMinor: 7000,
+    source: "manual_anchor",
+    captureReason: "reconciliation",
+    observedAt,
+    providerAsOf: null,
+  });
+});
+
+test("history falls back to existing snapshots when reconciliation fails", async () => {
+  const owner = await provisionedUser();
+  const accountId = await anchoredAccount({
+    userId: owner.id,
+    name: "Checking",
+    type: "depository",
+    source: "plaid",
+    currentMinor: 12345,
+    reportedOn: null,
+  });
+  const priorObservedAt = new Date("2026-04-01T10:00:00Z");
+  const missingObservedAt = new Date("2026-04-02T10:00:00Z");
+  await withRequestScope(owner.clerkUserId, (tx) =>
+    captureBalanceSnapshot(tx, {
+      accountId,
+      userId: owner.id,
+      currentMinor: 10000,
+      currency: "USD",
+      source: "provider",
+      captureReason: "event",
+      observedAt: priorObservedAt,
+      providerAsOf: null,
+    }),
+  );
+  await adminDb()
+    .update(accountBalances)
+    .set({ asOf: missingObservedAt })
+    .where(eq(accountBalances.accountId, accountId));
+  await adminDb().execute(sql`
+    alter table account_balance_snapshots
+    add constraint balance_snapshot_test_reconciliation_failure
+    check (capture_reason <> 'reconciliation')
+  `);
+
+  const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+  let history;
+  try {
+    history = await withAuth(owner.clerkUserId, () =>
+      accountBalanceHistory({ from: "2026-04-01", to: "2026-04-02", accountIds: [accountId] }),
+    );
+
+    const logs = info.mock.calls.map(([line]) => line);
+    expect(logs.map((line) => JSON.parse(String(line)))).toEqual([
+      {
+        event: "balance_snapshot.reconciliation_failed",
+        error: expect.stringMatching(/Error$/),
+      },
+    ]);
+    expect(logs.join("\n")).not.toMatch(
+      /12345|10000|USD|balance_snapshot_test_reconciliation_failure/,
+    );
+  } finally {
+    info.mockRestore();
+    await adminDb().execute(sql`
+      alter table account_balance_snapshots
+      drop constraint if exists balance_snapshot_test_reconciliation_failure
+    `);
+  }
+
+  expect(history).toEqual([
+    {
+      accountId,
+      accountType: "depository",
+      currency: "USD",
+      points: [
+        {
+          day: "2026-04-01",
+          basis: "observed",
+          currentMinor: 10000,
+          observedDay: "2026-04-01",
+          observedAt: priorObservedAt,
+          providerAsOf: null,
+          captureReason: "event",
+        },
+        {
+          day: "2026-04-02",
+          basis: "carried",
+          currentMinor: 10000,
+          observedDay: "2026-04-01",
+          observedAt: priorObservedAt,
+          providerAsOf: null,
+          captureReason: "event",
+        },
+      ],
+    },
+  ]);
+  const snapshots = await adminDb()
+    .select({ snapshotDay: accountBalanceSnapshots.snapshotDay })
+    .from(accountBalanceSnapshots)
+    .where(eq(accountBalanceSnapshots.accountId, accountId));
+  expect(snapshots).toEqual([{ snapshotDay: "2026-04-01" }]);
+});
+
 test("balance history composes provider and manual account series without combining them", async () => {
   const owner = await provisionedUser();
   const neighbor = await provisionedUser();
@@ -701,6 +1086,14 @@ test("balance history composes provider and manual account series without combin
       providerAsOf: null,
     });
   });
+  await adminDb()
+    .update(accountBalances)
+    .set({ asOf: providerObservedAt })
+    .where(eq(accountBalances.accountId, providerAccountId));
+  await adminDb()
+    .update(accountBalances)
+    .set({ asOf: anchorObservedAt })
+    .where(eq(accountBalances.accountId, manualAccountId));
   await adminDb().insert(transactions).values({
     userId: owner.id,
     accountId: manualAccountId,
