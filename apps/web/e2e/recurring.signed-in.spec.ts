@@ -152,13 +152,13 @@ test.describe("recurring charge detection", () => {
     await page.goto("/recurring");
     const acme = section(page, "proposed").getByTestId("recurring-stream").filter({ hasText: "Acme Corp" });
     await acme.getByRole("button", { name: "Confirm: Acme Corp" }).click();
-    await expect(page.getByRole("alert")).toContainText("Try again");
-    await expect(page.getByRole("button", { name: "Retry" })).toBeEnabled();
+    await expect(acme.getByRole("alert")).toContainText("Try again");
+    await expect(acme.getByRole("button", { name: "Retry" })).toBeEnabled();
     expect(
       (await adminQuery("select status from recurring_streams where user_id = $1", [await userIdOf("a")])).rows,
     ).toEqual([]);
 
-    await page.getByRole("button", { name: "Retry" }).click();
+    await acme.getByRole("button", { name: "Retry" }).click();
     await expect(section(page, "confirmed")).toContainText("Acme Corp");
   });
 
@@ -183,33 +183,27 @@ test.describe("recurring charge detection", () => {
     );
     await acme.getByRole("button", { name: "Confirm: Acme Corp" }).click();
     expect((await deniedResponse).status()).toBe(403);
-    await expect(page.getByRole("alert")).toContainText("Try again");
-    await expect(page.getByRole("button", { name: "Retry" })).toBeEnabled();
+    await expect(acme.getByRole("alert")).toContainText("Try again");
+    await expect(acme.getByRole("button", { name: "Retry" })).toBeEnabled();
     expect(
       (await adminQuery("select status from recurring_streams where user_id = $1", [await userIdOf("a")])).rows,
     ).toEqual([]);
 
-    await page.getByRole("button", { name: "Retry" }).click();
+    await acme.getByRole("button", { name: "Retry" }).click();
     await expect(section(page, "confirmed")).toContainText("Acme Corp");
   });
 
   test("a stale stream 404 refreshes without showing a transport error", async ({ page }) => {
-    let attempts = 0;
-    await page.route("**/api/recurring/streams", async (route) => {
-      if (route.request().method() !== "POST") return route.continue();
-      attempts += 1;
-      if (attempts === 1) return route.fulfill({ status: 404, body: '{"error":"not_found"}' });
-      return route.continue();
-    });
-
     await page.goto("/recurring");
     const acme = section(page, "proposed").getByTestId("recurring-stream").filter({ hasText: "Acme Corp" });
+    await adminQuery("delete from transactions where user_id = $1 and merchant = $2", [await userIdOf("a"), "Acme Corp"]);
+    const response = page.waitForResponse((item) =>
+      item.url().endsWith("/api/recurring/streams") && item.request().method() === "POST",
+    );
     await acme.getByRole("button", { name: "Confirm: Acme Corp" }).click();
-    await expect(page.getByRole("alert")).toHaveCount(0);
-    await expect(acme.getByRole("button", { name: "Confirm: Acme Corp" })).toBeVisible();
-
-    await acme.getByRole("button", { name: "Confirm: Acme Corp" }).click();
-    await expect(section(page, "confirmed")).toContainText("Acme Corp");
+    expect((await response).status()).toBe(404);
+    await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
+    await expect(section(page, "proposed").getByTestId("recurring-stream").filter({ hasText: "Acme Corp" })).toHaveCount(0);
   });
 
   test("a lost successful response explains the uncertain outcome and retries idempotently", async ({ page }) => {
@@ -228,14 +222,14 @@ test.describe("recurring charge detection", () => {
     await page.goto("/recurring");
     const streamflix = section(page, "proposed").getByTestId("recurring-stream").filter({ hasText: "Streamflix" });
     await streamflix.getByRole("button", { name: "Mark canceled: Streamflix" }).click();
-    await expect(page.getByRole("alert")).toContainText("may have succeeded");
-    await expect(page.getByRole("button", { name: "Retry" })).toBeEnabled();
+    await expect(streamflix.getByRole("alert")).toContainText("may have succeeded");
+    await expect(streamflix.getByRole("button", { name: "Retry" })).toBeEnabled();
     expect(
       (await adminQuery("select status from recurring_streams where user_id = $1", [userId])).rows,
     ).toEqual([{ status: "canceled" }]);
     expect(await ledgerSnapshot(userId)).toEqual(before);
 
-    await page.getByRole("button", { name: "Retry" }).click();
+    await streamflix.getByRole("button", { name: "Retry" }).click();
     await expect(section(page, "canceled")).toContainText("Streamflix");
     await expect(page.getByTestId("annual-out")).toHaveText("$0.00");
     expect(await ledgerSnapshot(userId)).toEqual(before);
