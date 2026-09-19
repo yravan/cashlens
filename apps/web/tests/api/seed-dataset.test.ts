@@ -22,12 +22,6 @@ const seedCategory = (persona: "demo" | "neighbor", name: string, kind: "group" 
 const seedAccount = (persona: "demo" | "neighbor", name: string) =>
   SEED_ACCOUNTS.find((a) => a.persona === persona && a.name === name)!.id;
 
-const OBLIGATION_COUNTS: Record<SeedPersona, number> = {
-  demo: 3,
-  neighbor: 1,
-  empty: 0,
-};
-
 test("the dataset's exported totals match the hand-verified anchors", () => {
   expect(EXPECTED.demo).toEqual({
     accounts: 5,
@@ -263,50 +257,10 @@ test("the dataset's exported totals match the hand-verified anchors", () => {
 
 test("the scheduled-obligation fixtures pin the approved declarations", () => {
   expect(SEED_OBLIGATIONS).toEqual([
-    {
-      persona: "demo",
-      id: "00000000-0000-4000-8000-000000000301",
-      accountId: seedAccount("demo", "Everyday Checking"),
-      name: "Rent",
-      amountMinor: 180000,
-      currency: "USD",
-      cadence: "monthly",
-      startsOn: "2026-04-05",
-      endsOn: null,
-    },
-    {
-      persona: "demo",
-      id: "00000000-0000-4000-8000-000000000302",
-      accountId: seedAccount("demo", "Everyday Checking"),
-      name: "Tuition",
-      amountMinor: 65000,
-      currency: "USD",
-      cadence: "once",
-      startsOn: "2026-04-18",
-      endsOn: null,
-    },
-    {
-      persona: "demo",
-      id: "00000000-0000-4000-8000-000000000303",
-      accountId: seedAccount("demo", "Cash Rewards Card"),
-      name: "Streamflix",
-      amountMinor: 2300,
-      currency: "USD",
-      cadence: "monthly",
-      startsOn: "2026-04-29",
-      endsOn: null,
-    },
-    {
-      persona: "neighbor",
-      id: "00000000-0000-4000-8000-000000000304",
-      accountId: seedAccount("neighbor", "Neighbor Checking"),
-      name: "Insurance",
-      amountMinor: 120000,
-      currency: "USD",
-      cadence: "annual",
-      startsOn: "2026-04-12",
-      endsOn: null,
-    },
+    { persona: "demo", id: "00000000-0000-4000-8000-000000000301", accountId: seedAccount("demo", "Everyday Checking"), name: "Rent", amountMinor: 180000, currency: "USD", cadence: "monthly", startsOn: "2026-04-05", endsOn: null },
+    { persona: "demo", id: "00000000-0000-4000-8000-000000000302", accountId: seedAccount("demo", "Everyday Checking"), name: "Tuition", amountMinor: 65000, currency: "USD", cadence: "once", startsOn: "2026-04-18", endsOn: null },
+    { persona: "demo", id: "00000000-0000-4000-8000-000000000303", accountId: seedAccount("demo", "Cash Rewards Card"), name: "Streamflix", amountMinor: 2300, currency: "USD", cadence: "monthly", startsOn: "2026-04-29", endsOn: null },
+    { persona: "neighbor", id: "00000000-0000-4000-8000-000000000304", accountId: seedAccount("neighbor", "Neighbor Checking"), name: "Insurance", amountMinor: 120000, currency: "USD", cadence: "annual", startsOn: "2026-04-12", endsOn: null },
   ]);
 });
 
@@ -565,7 +519,7 @@ test("the dataset's transfer pairs are the two hand-verified zero-sum moves, mat
 type PersistedPersona = Omit<
   ExpectedPersona,
   "overview" | "history" | "transfers" | "flow" | "spending" | "recurring" | "upcoming" | "annual"
-> & { obligations: number };
+>;
 
 async function personaInDb(userId: string): Promise<PersistedPersona> {
   const db = adminDb();
@@ -611,20 +565,9 @@ async function personaInDb(userId: string): Promise<PersistedPersona> {
 }
 
 function ledgerExpected(persona: SeedPersona): PersistedPersona {
-  const { accounts, transactions, balances, pendingCount, categories, uncategorized, review, assigned, posted } =
+  const { accounts, transactions, balances, obligations, pendingCount, categories, uncategorized, review, assigned, posted } =
     EXPECTED[persona];
-  return {
-    accounts,
-    transactions,
-    balances,
-    obligations: OBLIGATION_COUNTS[persona],
-    pendingCount,
-    categories,
-    uncategorized,
-    review,
-    assigned,
-    posted,
-  };
+  return { accounts, transactions, balances, obligations, pendingCount, categories, uncategorized, review, assigned, posted };
 }
 
 test("seeding lands every persona's ledger in the database exactly, and reseeding is idempotent", async () => {
@@ -635,25 +578,14 @@ test("seeding lands every persona's ledger in the database exactly, and reseedin
     expect(await personaInDb(ids[persona])).toEqual(ledgerExpected(persona));
   }
 
-  const obligations = await adminDb()
-    .select({
-      id: scheduledObligations.id,
-      userId: scheduledObligations.userId,
-      accountId: scheduledObligations.accountId,
-      name: scheduledObligations.name,
-      amountMinor: scheduledObligations.amountMinor,
-      currency: scheduledObligations.currency,
-      cadence: scheduledObligations.cadence,
-      startsOn: scheduledObligations.startsOn,
-      endsOn: scheduledObligations.endsOn,
-      endedAt: scheduledObligations.endedAt,
-    })
-    .from(scheduledObligations);
+  const obligations = await adminDb().select().from(scheduledObligations);
   expect(obligations.sort((a, b) => a.id.localeCompare(b.id))).toEqual(
     SEED_OBLIGATIONS.map(({ persona, ...row }) => ({
       ...row,
       userId: ids[persona],
       endedAt: null,
+      createdAt: expect.any(Date),
+      updatedAt: expect.any(Date),
     })).sort((a, b) => a.id.localeCompare(b.id)),
   );
 
