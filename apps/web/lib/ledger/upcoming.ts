@@ -294,7 +294,7 @@ export function projectUpcoming(
       occurrence.accountId,
       occurrence.currency,
       occurrence.date,
-      Math.abs(occurrence.amountMinor),
+      occurrence.amountMinor,
     ]);
   const detectedOverlapKeys = new Set(
     listed.filter((occurrence) => occurrence.source === "detected").map(overlapKey),

@@ -125,6 +125,34 @@ test("the canonical exact overlap keeps, counts, and marks both sources", async 
   ]);
 });
 
+test("a deposit and an obligation of equal magnitude on one account and day never overlap", async () => {
+  await seedDataset(adminDb());
+  const acme = demoStream("ACME CORP");
+  await addObligation(SEED_USERS.demo.clerkUserId, acme.accountId, {
+    name: "Payroll mirror",
+    amountMinor: 250000,
+    startsOn: "2026-04-27",
+  });
+
+  const overview = await overviewAs("demo", SEED_UPCOMING_REFERENCE);
+  const [usd] = overview.currencies;
+  expect(usd.toLeaveMinor).toBe(-499600);
+  expect(usd.toArriveMinor).toBe(250000);
+  expect(
+    [...usd.charges, ...usd.deposits]
+      .filter(
+        (occurrence) =>
+          occurrence.accountId === acme.accountId &&
+          occurrence.date === "2026-04-27" &&
+          Math.abs(occurrence.amountMinor) === 250000,
+      )
+      .map((occurrence) => [occurrence.source, occurrence.amountMinor, occurrence.possibleOverlap]),
+  ).toEqual([
+    ["obligation", -250000, false],
+    ["detected", 250000, false],
+  ]);
+});
+
 test("projection eligibility is scoped to retained active declarations", async () => {
   const owner = await provisionedUser();
   const neighbor = await provisionedUser();
