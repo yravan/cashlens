@@ -63,7 +63,7 @@ test("a disconnected connection discloses and purges attached obligations", asyn
     await row.getByTestId("purge-connection").click();
     const confirmation = row.getByTestId("disconnect-confirm");
     await expect(confirmation).toContainText(
-      "Permanently delete Synthetic fixture's 1 account and 1 imported transaction and 1 known obligation? This cannot be undone.",
+      "Permanently delete Synthetic fixture's 1 account, 1 imported transaction, and 1 known obligation? This cannot be undone.",
     );
     await confirmation.getByRole("button", { name: "Cancel" }).click();
     await expect(row.getByTestId("disconnect-confirm")).toHaveCount(0);
