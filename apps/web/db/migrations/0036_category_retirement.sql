@@ -1,0 +1,2 @@
+ALTER TABLE "categories" ADD COLUMN "retired_at" timestamp with time zone;--> statement-breakpoint
+CREATE POLICY "categories_update_own" ON "categories" AS PERMISSIVE FOR UPDATE TO "cashlens_app" USING (user_id = (select app_current_user_id())) WITH CHECK (user_id = (select app_current_user_id()));

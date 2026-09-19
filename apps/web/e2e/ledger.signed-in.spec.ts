@@ -6,7 +6,7 @@ import { formatMinorUnits } from "../lib/ledger/minor-units";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, appQuery, appQueryScopedAs, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
-import { signedInState } from "./session";
+import { signedInContext, signedInState } from "./session";
 
 const PROBE_A = "ledger_rls_probe_a";
 const PROBE_B = "ledger_rls_probe_b";
@@ -69,6 +69,10 @@ test.describe("ledger row-level security backstop", () => {
       b.userId, b.accountId, -4321, "USD", "2026-01-17",
       "HOTEL HOLD", null, "pending", "plaid", "probe-txn-b1",
     ]);
+    await adminQuery(
+      "insert into categories (user_id, name, sort_order) values ($1, 'Probe Group', 0), ($2, 'Probe Group', 0)",
+      [a.userId, b.userId],
+    );
   });
 
   test.afterAll(async () => {
@@ -201,12 +205,15 @@ test.describe("ledger row-level security backstop", () => {
 
   test("the app role's ledger write surface: inserts, balances, lifecycle, and pending settlement", async () => {
     for (const statement of [
-      "update accounts set name = 'overwritten'",
+      "update accounts set type = type",
+      "update accounts set user_id = user_id",
       "update transactions set user_id = user_id",
-      "update transactions set account_id = account_id",
       "update transactions set source = source",
       "update account_balances set user_id = user_id",
       "delete from account_balances",
+      "update categories set sort_order = sort_order",
+      "update categories set user_id = user_id",
+      "delete from categories",
     ]) {
       await expect(
         appQueryScopedAs(PROBE_A, statement),
@@ -218,6 +225,25 @@ test.describe("ledger row-level security backstop", () => {
       "update account_balances set current_minor = 0 returning account_id",
     );
     expect(refresh.rows).toEqual([{ account_id: a.accountId }]);
+
+    const retiredCategories = await appQueryScopedAs(
+      PROBE_A,
+      "update categories set name = 'Renamed', retired_at = now() where name = 'Probe Group' returning user_id",
+    );
+    expect(retiredCategories.rows).toEqual([{ user_id: a.userId }]);
+
+    const renamed = await appQueryScopedAs(
+      PROBE_A,
+      "update accounts set name = 'overwritten' returning user_id",
+    );
+    expect(renamed.rows).toEqual([{ user_id: a.userId }]);
+
+    const accountUpdated = await appQueryScopedAs(
+      PROBE_A,
+      "update transactions set account_id = account_id returning user_id",
+    );
+    expect(accountUpdated.rowCount).toBe(2);
+    for (const row of accountUpdated.rows) expect(row.user_id).toBe(a.userId);
 
     const modified = await appQueryScopedAs(
       PROBE_A,
@@ -383,10 +409,7 @@ test.describe("ledger read seam", () => {
 
     await expectLedger(page, EXPECTED.demo);
 
-    const contextB = await browser.newContext({
-      baseURL,
-      storageState: await signedInState(browser, "b"),
-    });
+    const contextB = await signedInContext(browser, "b", baseURL);
     try {
       const pageB = await contextB.newPage();
       await expectLedger(pageB, EXPECTED.neighbor);

@@ -7,6 +7,7 @@ import { AccountsOverview } from "./accounts-overview";
 import { CleanupResume } from "./cleanup-resume";
 import { ConnectButton } from "./connect-button";
 import { ConnectionsList } from "./connections-list";
+import { AddOfflineAccount } from "./offline-account-controls";
 import { SyncResume } from "./sync-resume";
 
 export const metadata: Metadata = { title: "Accounts" };
@@ -34,9 +35,15 @@ export default async function AccountsPage() {
           : `${overview.accounts.length} accounts in the ledger`}
       </p>
       <p className="mt-2 max-w-xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-        Balances as your institutions last reported them, kept separate by currency.
+        Balances as your institutions last reported them, or as you last entered them, kept
+        separate by currency.
       </p>
-      <ConnectButton activeInstitutionIds={activeInstitutionIds} />
+      <div className="flex flex-wrap items-start gap-x-3">
+        <ConnectButton activeInstitutionIds={activeInstitutionIds} />
+        <AddOfflineAccount
+          currencies={[...new Set(overview.accounts.map((account) => account.currency))]}
+        />
+      </div>
       <AccountsOverview overview={overview} />
       <ConnectionsList connections={connections} />
       <SyncResume connectionIds={resumable} />

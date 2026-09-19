@@ -218,6 +218,97 @@
       "when": 1789102745806,
       "tag": "0030_category_taxonomy_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789102745807,
+      "tag": "0031_manual_transaction_account_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789245863867,
+      "tag": "0032_offline_account_anchor",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789245865304,
+      "tag": "0033_offline_account_anchor_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789258002896,
+      "tag": "0034_offline_account_rename_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789258004321,
+      "tag": "0035_offline_account_rename_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789290486221,
+      "tag": "0036_category_retirement",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1789290487000,
+      "tag": "0037_category_edit_grant",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1789366136418,
+      "tag": "0038_recurring_stream_canceled",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1789461910185,
+      "tag": "0039_fair_ulik",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789461910186,
+      "tag": "0040_scheduled_obligation_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789577461616,
+      "tag": "0041_certain_lyja",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1789577507321,
+      "tag": "0042_balance_snapshot_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1789846027415,
+      "tag": "0043_recurring_identity_bounds",
+      "breakpoints": true
     }
   ]
 }

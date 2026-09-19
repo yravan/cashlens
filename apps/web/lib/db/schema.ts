@@ -11,6 +11,7 @@ import {
   pgPolicy,
   pgRole,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -62,6 +63,17 @@ export const accountType = pgEnum("account_type", [
   "loan",
   "investment",
   "other",
+]);
+
+export const balanceSnapshotSource = pgEnum("balance_snapshot_source", [
+  "provider",
+  "manual_anchor",
+]);
+
+export const balanceCaptureReason = pgEnum("balance_capture_reason", [
+  "event",
+  "bootstrap",
+  "reconciliation",
 ]);
 
 export const transactionStatus = pgEnum("transaction_status", [
@@ -214,6 +226,12 @@ export const accounts = pgTable(
     index("accounts_user_id_idx").on(t.userId),
     check("accounts_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
     ...ownRowPolicies("accounts"),
+    pgPolicy("accounts_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
     // Purge (2.1.5): deleting an account cascades its transactions and
     // balances through composite (id, user_id) FKs, so the cascade can never
     // cross a user boundary.
@@ -231,6 +249,7 @@ export const categories = pgTable(
     parentId: uuid("parent_id"),
     name: text("name").notNull(),
     sortOrder: integer("sort_order").notNull(),
+    retiredAt: timestamp("retired_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => [
@@ -252,6 +271,12 @@ export const categories = pgTable(
       sql`name = btrim(name) and char_length(name) between 1 and 60`,
     ),
     ...ownRowPolicies("categories"),
+    pgPolicy("categories_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
   ],
 );
 
@@ -563,9 +588,18 @@ export const transferPairs = pgTable(
 export const recurringStreamStatus = pgEnum("recurring_stream_status", [
   "confirmed",
   "dismissed",
+  "canceled",
 ]);
 
 export const flowDirection = pgEnum("flow_direction", ["inflow", "outflow"]);
+
+export const scheduledObligationCadence = pgEnum("scheduled_obligation_cadence", [
+  "once",
+  "weekly",
+  "biweekly",
+  "monthly",
+  "annual",
+]);
 
 // Recurring detection (6.4.1) is recomputed from the ledger on every read; a
 // row here exists only once the user acted on a proposed stream, keyed on the
@@ -600,10 +634,65 @@ export const recurringStreams = pgTable(
     check("recurring_streams_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
     check(
       "recurring_streams_name_bounded",
-      sql`normalized_name = btrim(normalized_name) and char_length(normalized_name) between 1 and 200`,
+      sql`normalized_name = btrim(normalized_name) and char_length(normalized_name) between 1 and 1500`,
     ),
     ...ownRowPolicies("recurring_streams"),
     pgPolicy("recurring_streams_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
+  ],
+);
+
+export const scheduledObligations = pgTable(
+  "scheduled_obligations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: uuid("account_id").notNull(),
+    name: text("name").notNull(),
+    amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+    currency: char("currency", { length: 3 }).notNull(),
+    cadence: scheduledObligationCadence("cadence").notNull(),
+    startsOn: date("starts_on").notNull(),
+    endsOn: date("ends_on"),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    unique("scheduled_obligations_id_user_id_unique").on(t.id, t.userId),
+    foreignKey({
+      name: "scheduled_obligations_account_user_fk",
+      columns: [t.accountId, t.userId],
+      foreignColumns: [accounts.id, accounts.userId],
+    }).onDelete("cascade"),
+    index("scheduled_obligations_account_user_idx").on(t.accountId, t.userId),
+    index("scheduled_obligations_active_user_start_idx")
+      .on(t.userId, t.startsOn)
+      .where(sql`ended_at is null`),
+    check(
+      "scheduled_obligations_amount_positive_safe",
+      sql`amount_minor > 0 and amount_minor <= 9007199254740991`,
+    ),
+    check("scheduled_obligations_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
+    check(
+      "scheduled_obligations_name_trimmed",
+      sql`name = btrim(name) and char_length(name) between 1 and 200`,
+    ),
+    check(
+      "scheduled_obligations_end_ordered",
+      sql`ends_on is null or ends_on >= starts_on`,
+    ),
+    check(
+      "scheduled_obligations_once_unbounded",
+      sql`cadence <> 'once' or ends_on is null`,
+    ),
+    ...ownRowPolicies("scheduled_obligations"),
+    pgPolicy("scheduled_obligations_update_own", {
       for: "update",
       to: appRole,
       using: ownRow,
@@ -645,6 +734,7 @@ export const accountBalances = pgTable(
     currentMinor: bigint("current_minor", { mode: "number" }),
     limitMinor: bigint("limit_minor", { mode: "number" }),
     asOf: timestamp("as_of", { withTimezone: true }).notNull(),
+    reportedOn: date("reported_on"),
     createdAt: timestamps.createdAt,
   },
   (t) => [
@@ -660,6 +750,46 @@ export const accountBalances = pgTable(
     ),
     ...ownRowPolicies("account_balances"),
     pgPolicy("account_balances_update_own", {
+      for: "update",
+      to: appRole,
+      using: ownRow,
+      withCheck: ownRow,
+    }),
+  ],
+);
+
+export const accountBalanceSnapshots = pgTable(
+  "account_balance_snapshots",
+  {
+    accountId: uuid("account_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    snapshotDay: date("snapshot_day").notNull(),
+    currentMinor: bigint("current_minor", { mode: "number" }).notNull(),
+    currency: char("currency", { length: 3 }).notNull(),
+    source: balanceSnapshotSource("source").notNull(),
+    captureReason: balanceCaptureReason("capture_reason").notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    providerAsOf: timestamp("provider_as_of", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    primaryKey({
+      name: "account_balance_snapshots_account_day_pk",
+      columns: [t.accountId, t.snapshotDay],
+    }),
+    foreignKey({
+      name: "account_balance_snapshots_account_user_fk",
+      columns: [t.accountId, t.userId],
+      foreignColumns: [accounts.id, accounts.userId],
+    }).onDelete("cascade"),
+    index("account_balance_snapshots_user_day_account_idx").on(
+      t.userId,
+      t.snapshotDay,
+      t.accountId,
+    ),
+    check("account_balance_snapshots_currency_iso4217", sql`currency ~ '^[A-Z]{3}$'`),
+    ...ownRowPolicies("account_balance_snapshots"),
+    pgPolicy("account_balance_snapshots_update_own", {
       for: "update",
       to: appRole,
       using: ownRow,

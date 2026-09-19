@@ -1,0 +1,210 @@
+import "server-only";
+import { and, eq, sql } from "drizzle-orm";
+
+import { UUID_PATTERN } from "@/lib/crypto/credentials";
+import { captureBalanceSnapshot } from "@/lib/data/balance-history";
+import { repairTransfers } from "@/lib/data/manual-transactions";
+import { requireUser } from "@/lib/data/users";
+import { withRequestScope } from "@/lib/db/client";
+import { accountBalances, accounts, transactions } from "@/lib/db/schema";
+import {
+  offlineBalanceMinor,
+  type OfflineAccountInput,
+  type OfflineBalanceInput,
+  type OfflineRenameInput,
+} from "@/lib/ledger/offline-accounts";
+import { importRows, type StatementImportInput } from "@/lib/ledger/statement-import";
+import { logEvent } from "@/lib/log";
+
+export type OfflineAccountError = "invalid_request" | "account_not_found";
+export type OfflineAccountResult = { accountId: string } | { error: OfflineAccountError };
+export type StatementImportResult =
+  | { accountId: string; inserted: number; skipped: number }
+  | { error: OfflineAccountError };
+
+const IMPORT_CHUNK = 500;
+
+const manualAccount = (accountId: string, userId: string) =>
+  and(eq(accounts.id, accountId), eq(accounts.userId, userId), eq(accounts.source, "manual"));
+
+export async function createOfflineAccount(
+  input: OfflineAccountInput,
+): Promise<OfflineAccountResult> {
+  const user = await requireUser();
+  const currentMinor = offlineBalanceMinor(input.balance, input.currency);
+  if (currentMinor === null) return { error: "invalid_request" };
+
+  return withRequestScope(user.clerkUserId, async (tx) => {
+    const [created] = await tx
+      .insert(accounts)
+      .values({
+        userId: user.id,
+        connectionId: null,
+        name: input.name,
+        type: input.type,
+        subtype: null,
+        mask: null,
+        currency: input.currency,
+        source: "manual",
+        sourceId: null,
+      })
+      .returning({ id: accounts.id });
+    if (!created) throw new Error("offline account insert returned no row");
+
+    const [balance] = await tx
+      .insert(accountBalances)
+      .values({
+        accountId: created.id,
+        userId: user.id,
+        availableMinor: null,
+        currentMinor,
+        limitMinor: null,
+        asOf: sql`now()`,
+        reportedOn: input.reportedOn,
+      })
+      .returning({ observedAt: sql<string>`${accountBalances.asOf}::text` });
+    if (!balance) throw new Error("offline balance insert returned no row");
+    await captureBalanceSnapshot(tx, {
+      accountId: created.id,
+      userId: user.id,
+      snapshotDay: input.reportedOn,
+      currentMinor,
+      currency: input.currency,
+      source: "manual_anchor",
+      captureReason: "event",
+      observedAt: balance.observedAt,
+      providerAsOf: null,
+    });
+    return { accountId: created.id };
+  });
+}
+
+export async function updateOfflineBalance(
+  accountId: string,
+  input: OfflineBalanceInput,
+): Promise<OfflineAccountResult> {
+  const user = await requireUser();
+  if (!UUID_PATTERN.test(accountId)) return { error: "account_not_found" };
+
+  return withRequestScope(user.clerkUserId, async (tx) => {
+    const [account] = await tx
+      .select({ id: accounts.id, currency: accounts.currency })
+      .from(accounts)
+      .where(manualAccount(accountId, user.id));
+    if (!account) return { error: "account_not_found" as const };
+
+    const currentMinor = offlineBalanceMinor(input.balance, account.currency);
+    if (currentMinor === null) return { error: "invalid_request" as const };
+
+    const anchor = {
+      availableMinor: null,
+      currentMinor,
+      limitMinor: null,
+      asOf: sql`now()`,
+      reportedOn: input.reportedOn,
+    };
+    const [balance] = await tx
+      .insert(accountBalances)
+      .values({ accountId: account.id, userId: user.id, ...anchor })
+      .onConflictDoUpdate({ target: accountBalances.accountId, set: anchor })
+      .returning({ observedAt: sql<string>`${accountBalances.asOf}::text` });
+    if (!balance) throw new Error("offline balance upsert returned no row");
+    await captureBalanceSnapshot(tx, {
+      accountId: account.id,
+      userId: user.id,
+      snapshotDay: input.reportedOn,
+      currentMinor,
+      currency: account.currency,
+      source: "manual_anchor",
+      captureReason: "event",
+      observedAt: balance.observedAt,
+      providerAsOf: null,
+    });
+    return { accountId: account.id };
+  });
+}
+
+export async function renameOfflineAccount(
+  accountId: string,
+  input: OfflineRenameInput,
+): Promise<OfflineAccountResult> {
+  const user = await requireUser();
+  if (!UUID_PATTERN.test(accountId)) return { error: "account_not_found" };
+
+  return withRequestScope(user.clerkUserId, async (tx) => {
+    const [renamed] = await tx
+      .update(accounts)
+      .set({ name: input.name, updatedAt: sql`now()` })
+      .where(manualAccount(accountId, user.id))
+      .returning({ id: accounts.id });
+    return renamed ? { accountId: renamed.id } : { error: "account_not_found" as const };
+  });
+}
+
+export async function deleteOfflineAccount(accountId: string): Promise<OfflineAccountResult> {
+  const user = await requireUser();
+  if (!UUID_PATTERN.test(accountId)) return { error: "account_not_found" };
+
+  const result = await withRequestScope(user.clerkUserId, async (tx) => {
+    const [deleted] = await tx
+      .delete(accounts)
+      .where(manualAccount(accountId, user.id))
+      .returning({ id: accounts.id });
+    return deleted ? { accountId: deleted.id } : { error: "account_not_found" as const };
+  });
+
+  if (!("error" in result)) await repairTransfers(user, "delete_offline_account");
+  return result;
+}
+
+export async function importStatementRows(
+  accountId: string,
+  input: StatementImportInput,
+): Promise<StatementImportResult> {
+  const user = await requireUser();
+  if (!UUID_PATTERN.test(accountId)) return { error: "account_not_found" };
+
+  const result = await withRequestScope(user.clerkUserId, async (tx) => {
+    const [account] = await tx
+      .select({ id: accounts.id, currency: accounts.currency })
+      .from(accounts)
+      .where(manualAccount(accountId, user.id));
+    if (!account) return { error: "account_not_found" as const };
+    const rows = await importRows(input.rows, account.currency);
+    if (rows === null) return { error: "invalid_request" as const };
+
+    let inserted = 0;
+    for (let at = 0; at < rows.length; at += IMPORT_CHUNK) {
+      const chunk = await tx
+        .insert(transactions)
+        .values(
+          rows.slice(at, at + IMPORT_CHUNK).map((row) => ({
+            userId: user.id,
+            accountId: account.id,
+            amountMinor: row.amountMinor,
+            currency: account.currency,
+            date: row.date,
+            description: row.description,
+            merchant: null,
+            status: "posted" as const,
+            source: "import" as const,
+            sourceId: row.sourceId,
+          })),
+        )
+        .onConflictDoNothing();
+      inserted += chunk.rowCount ?? 0;
+    }
+    return { accountId: account.id, inserted, skipped: rows.length - inserted };
+  });
+
+  if (!("error" in result)) {
+    logEvent("statement_import.run", {
+      accountId: result.accountId,
+      received: input.rows.length,
+      inserted: result.inserted,
+      skipped: result.skipped,
+    });
+    await repairTransfers(user, "import_statement");
+  }
+  return result;
+}

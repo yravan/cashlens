@@ -1,0 +1,1 @@
+ALTER TABLE "account_balances" ADD COLUMN "reported_on" date;

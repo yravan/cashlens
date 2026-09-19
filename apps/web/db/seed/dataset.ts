@@ -1,6 +1,7 @@
 import type { accountBalances, accounts, categories, transactions, users } from "../../lib/db/schema.ts";
 import { DEFAULT_CATEGORIES } from "../../lib/ledger/default-categories.ts";
 import type { RecurringStream } from "../../lib/ledger/recurring-detection.ts";
+import type { AnnualTotal } from "../../lib/ledger/subscriptions.ts";
 import type { UpcomingProjection } from "../../lib/ledger/upcoming.ts";
 
 export const SEED_PERSONAS = ["demo", "neighbor", "empty"] as const;
@@ -171,10 +172,10 @@ const SEED_UPCOMING: Record<SeedPersona, UpcomingProjection> = {
         toLeaveMinor: -2300,
         toArriveMinor: 250000,
         charges: [
-          { accountId: A.card, currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -2300, lastDate: "2026-03-29", date: "2026-04-29", overdue: false },
+          { source: "detected", accountId: A.card, currency: "USD", direction: "outflow", normalizedName: "STREAMFLIX", name: "Streamflix", cadence: "monthly", amountMinor: -2300, lastDate: "2026-03-29", date: "2026-04-29", overdue: false, possibleOverlap: false },
         ],
         deposits: [
-          { accountId: A.checking, currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: 250000, lastDate: "2026-03-27", date: "2026-04-27", overdue: false },
+          { source: "detected", accountId: A.checking, currency: "USD", direction: "inflow", normalizedName: "ACME CORP", name: "Acme Corp", cadence: "monthly", amountMinor: 250000, lastDate: "2026-03-27", date: "2026-04-27", overdue: false, possibleOverlap: false },
         ],
       },
     ],
@@ -184,13 +185,22 @@ const SEED_UPCOMING: Record<SeedPersona, UpcomingProjection> = {
   empty: QUIET_APRIL,
 };
 
+// 6.4.3 yearly cost, hand-derived from the streams above (twelve monthly
+// charges of the typical amount, charges and deposits kept apart), never
+// computed by the rule.
+const SEED_ANNUAL: Record<SeedPersona, AnnualTotal[]> = {
+  demo: [{ currency: "USD", outMinor: -27600, inMinor: 3000000 }],
+  neighbor: [],
+  empty: [],
+};
+
 const AS_OF = new Date("2026-03-31T12:00:00Z");
 
 export const SEED_BALANCES: SeedRow<typeof accountBalances.$inferInsert>[] = [
   { persona: "demo", accountId: A.checking, availableMinor: 234120, currentMinor: 235370, limitMinor: null, asOf: AS_OF },
   { persona: "demo", accountId: A.savings, availableMinor: 1500000, currentMinor: 1500000, limitMinor: null, asOf: AS_OF },
   { persona: "demo", accountId: A.card, availableMinor: 748755, currentMinor: 51245, limitMinor: 800000, asOf: AS_OF },
-  { persona: "demo", accountId: A.wallet, availableMinor: null, currentMinor: 8600, limitMinor: null, asOf: AS_OF },
+  { persona: "demo", accountId: A.wallet, availableMinor: null, currentMinor: 8600, limitMinor: null, asOf: AS_OF, reportedOn: "2026-03-14" },
   { persona: "demo", accountId: A.euro, availableMinor: 120450, currentMinor: 120450, limitMinor: null, asOf: AS_OF },
   { persona: "neighbor", accountId: A.neighborChecking, availableMinor: 50000, currentMinor: 50000, limitMinor: null, asOf: AS_OF },
 ];
@@ -209,8 +219,14 @@ type CurrencySpending = {
 };
 type OverviewAccount = Pick<
   (typeof SEED_ACCOUNTS)[number],
-  "name" | "type" | "subtype" | "mask" | "currency"
-> & { currentMinor: number | null };
+  "name" | "type" | "subtype" | "mask" | "currency" | "source"
+> & {
+  currentMinor: number | null;
+  reportedMinor: number | null;
+  reportedOn: string | null;
+  sinceCount: number;
+  transactionCount: number;
+};
 
 export type ExpectedPersona = {
   accounts: number;
@@ -237,18 +253,41 @@ export type ExpectedPersona = {
   };
   recurring: RecurringStream[];
   upcoming: UpcomingProjection;
+  annual: AnnualTotal[];
 };
 
 const ACCOUNT_TYPE_ORDER = ["depository", "credit", "loan", "investment", "other"];
+const OWED_ACCOUNT_TYPES = new Set(["credit", "loan"]);
 
+// Seed rows are inserted after AS_OF, so a row dated the anchor day counts as
+// recorded after the anchor (the DAL's created_at > as_of tie-break).
 function overviewFor(persona: SeedPersona): ExpectedPersona["overview"] {
-  const current = new Map(
-    SEED_BALANCES.filter((b) => b.persona === persona).map((b) => [b.accountId, b.currentMinor ?? null]),
+  const balances = new Map(
+    SEED_BALANCES.filter((b) => b.persona === persona).map((b) => [b.accountId, b]),
   );
+  const mine = SEED_TRANSACTIONS.filter((t) => t.persona === persona);
   const accounts = SEED_ACCOUNTS.filter((a) => a.persona === persona)
-    .map(({ id, name, type, subtype, mask, currency }) => ({
-      name, type, subtype: subtype ?? null, mask: mask ?? null, currency, currentMinor: current.get(id) ?? null,
-    }))
+    .map(({ id, name, type, subtype, mask, currency, source }) => {
+      const balance = balances.get(id);
+      const reportedMinor = balance?.currentMinor ?? null;
+      const reportedOn = balance?.reportedOn ?? null;
+      const rows = mine.filter((t) => t.accountId === id);
+      const since =
+        source === "manual" && reportedOn !== null
+          ? rows.filter((t) => t.status === "posted" && t.date >= reportedOn)
+          : [];
+      const sinceMinor = since.reduce((sum, t) => sum + t.amountMinor, 0);
+      const currentMinor =
+        reportedMinor === null || source !== "manual"
+          ? reportedMinor
+          : OWED_ACCOUNT_TYPES.has(type)
+            ? reportedMinor - sinceMinor
+            : reportedMinor + sinceMinor;
+      return {
+        name, type, subtype: subtype ?? null, mask: mask ?? null, currency, source,
+        currentMinor, reportedMinor, reportedOn, sinceCount: since.length, transactionCount: rows.length,
+      };
+    })
     .sort(
       (a, b) =>
         ACCOUNT_TYPE_ORDER.indexOf(a.type) - ACCOUNT_TYPE_ORDER.indexOf(b.type) ||
@@ -386,6 +425,7 @@ function expectedFor(persona: SeedPersona): ExpectedPersona {
     },
     recurring: SEED_RECURRING_STREAMS[persona],
     upcoming: SEED_UPCOMING[persona],
+    annual: SEED_ANNUAL[persona],
   };
 }
 

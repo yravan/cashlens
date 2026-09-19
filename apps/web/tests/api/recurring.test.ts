@@ -4,13 +4,21 @@ import { expect, test } from "vitest";
 import { POST as streamsRoute } from "@/app/api/recurring/streams/route";
 import { EXPECTED, SEED_ACCOUNTS, SEED_USERS } from "@/db/seed/dataset";
 import { seedDataset } from "@/db/seed/seed";
-import { recurringOverview, setRecurringStatus, type StreamIdentity } from "@/lib/data/recurring";
+import {
+  recurringOverview,
+  setRecurringStatus,
+  upcomingOverview,
+  type StreamIdentity,
+} from "@/lib/data/recurring";
 import { matchTransfers } from "@/lib/data/transfers";
+import { chargedAfterCancel, priceIncreased } from "@/lib/ledger/subscriptions";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
 import { accounts, recurringStreams, transactions } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
 import { adminDb } from "../harness/db";
+import { sandboxTransaction } from "../harness/plaid";
+import { backfilled } from "./plaid-helpers";
 
 type Row = {
   account: number;
@@ -87,17 +95,22 @@ test("the seeded ledgers detect exactly the hand-verified streams, all proposed"
   await withAuth(SEED_USERS.demo.clerkUserId, () => matchTransfers());
 
   const demo = await withAuth(SEED_USERS.demo.clerkUserId, () => recurringOverview());
-  expect(demo.streams).toEqual(
-    EXPECTED.demo.recurring.map((stream) => ({ ...stream, status: "proposed" })),
-  );
+  expect(demo).toEqual({
+    streams: EXPECTED.demo.recurring.map((stream) => ({
+      ...stream,
+      status: "proposed",
+      decidedOn: null,
+    })),
+    annual: EXPECTED.demo.annual,
+  });
 
   for (const persona of ["neighbor", "empty"] as const) {
     const theirs = await withAuth(SEED_USERS[persona].clerkUserId, () => recurringOverview());
-    expect(theirs.streams).toEqual([]);
+    expect(theirs).toEqual({ streams: [], annual: [] });
   }
 });
 
-test("confirm and dismiss persist by stream identity, one row per stream, flippable", async () => {
+test("confirm, dismiss, and cancel persist by stream identity, one row per stream, flippable", async () => {
   const ids = await seedDataset(adminDb());
   const clerkUserId = SEED_USERS.demo.clerkUserId;
   const streamflix = demoStream("STREAMFLIX");
@@ -116,9 +129,105 @@ test("confirm and dismiss persist by stream identity, one row per stream, flippa
     ["ACME CORP", "proposed"],
   ]);
 
-  expect(await decisionRows(ids.demo)).toEqual([
-    { accountId: streamflix.accountId, normalizedName: "STREAMFLIX", status: "dismissed" },
+  expect(await withAuth(clerkUserId, () => setRecurringStatus(streamflix, "canceled"))).toBe(true);
+  const canceled = await withAuth(clerkUserId, () => recurringOverview());
+  expect(canceled.streams.map((s) => [s.normalizedName, s.status, s.decidedOn === null])).toEqual([
+    ["STREAMFLIX", "canceled", false],
+    ["ACME CORP", "proposed", true],
   ]);
+
+  expect(await decisionRows(ids.demo)).toEqual([
+    { accountId: streamflix.accountId, normalizedName: "STREAMFLIX", status: "canceled" },
+  ]);
+});
+
+test("canceling or dismissing a stream drops its yearly cost from the totals; it's back restores it", async () => {
+  await seedDataset(adminDb());
+  const clerkUserId = SEED_USERS.demo.clerkUserId;
+  const annual = () => withAuth(clerkUserId, async () => (await recurringOverview()).annual);
+  const [usd] = EXPECTED.demo.annual;
+
+  await withAuth(clerkUserId, () => setRecurringStatus(demoStream("STREAMFLIX"), "canceled"));
+  expect(await annual()).toEqual([{ ...usd, outMinor: 0 }]);
+
+  await withAuth(clerkUserId, () => setRecurringStatus(demoStream("STREAMFLIX"), "confirmed"));
+  expect(await annual()).toEqual(EXPECTED.demo.annual);
+
+  await withAuth(clerkUserId, () => setRecurringStatus(demoStream("ACME CORP"), "dismissed"));
+  expect(await annual()).toEqual([{ ...usd, inMinor: 0 }]);
+});
+
+test("a price increase reads the detector's last kept charge against the typical amount", async () => {
+  const music = (amountMinor: number, date: string) => ({
+    account: 0,
+    amountMinor,
+    date,
+    description: "MUSIC PLUS",
+  });
+  const hiked = fakeClerkUserId();
+  await provision(hiked, 1, [
+    music(-1549, "2026-01-10"),
+    music(-1549, "2026-02-10"),
+    music(-1549, "2026-03-10"),
+    music(-1799, "2026-04-10"),
+  ]);
+  const [stream] = (await withAuth(hiked, () => recurringOverview())).streams;
+  expect(stream).toMatchObject({
+    typicalAmountMinor: -1549,
+    lastAmountMinor: -1799,
+    confidence: "medium",
+  });
+  expect(priceIncreased(stream)).toBe(true);
+
+  const settled = fakeClerkUserId();
+  await provision(settled, 1, [
+    music(-1549, "2026-01-10"),
+    music(-1549, "2026-02-10"),
+    music(-1549, "2026-03-10"),
+    music(-1799, "2026-04-10"),
+    music(-1799, "2026-05-10"),
+    music(-1799, "2026-06-10"),
+  ]);
+  const [caughtUp] = (await withAuth(settled, () => recurringOverview())).streams;
+  expect(caughtUp).toMatchObject({ typicalAmountMinor: -1674, lastAmountMinor: -1799 });
+  expect(priceIncreased(caughtUp)).toBe(false);
+});
+
+test("charged after cancel: the decision day is the row's own updated_at, compared strictly by day", async () => {
+  const ids = await seedDataset(adminDb());
+  const clerkUserId = SEED_USERS.demo.clerkUserId;
+  const streamflix = demoStream("STREAMFLIX");
+  await withAuth(clerkUserId, () => setRecurringStatus(streamflix, "canceled"));
+  const streamflixNow = async () =>
+    (await withAuth(clerkUserId, () => recurringOverview())).streams.find(
+      (s) => s.normalizedName === "STREAMFLIX",
+    )!;
+
+  for (const [stampedAt, decidedOn, flagged] of [
+    ["2026-03-01T12:00:00Z", "2026-03-01", true],
+    ["2026-03-28T23:59:59Z", "2026-03-28", true],
+    ["2026-03-29T00:00:00Z", "2026-03-29", false],
+    ["2026-03-30T00:00:00Z", "2026-03-30", false],
+  ] as const) {
+    await adminDb()
+      .update(recurringStreams)
+      .set({ updatedAt: new Date(stampedAt) })
+      .where(eq(recurringStreams.userId, ids.demo));
+    const stream = await streamflixNow();
+    expect(stream).toMatchObject({ status: "canceled", lastDate: "2026-03-29", decidedOn });
+    expect(chargedAfterCancel(stream)).toBe(flagged);
+  }
+
+  const restamped = await withAuth(clerkUserId, () =>
+    postStatus({ ...streamflix, status: "canceled" }),
+  );
+  expect(restamped.status).toBe(200);
+  const [row] = await adminDb()
+    .select({ updatedAt: recurringStreams.updatedAt })
+    .from(recurringStreams)
+    .where(eq(recurringStreams.userId, ids.demo));
+  expect(row.updatedAt.getTime()).not.toBe(Date.parse("2026-03-30T00:00:00Z"));
+  expect((await streamflixNow()).status).toBe("canceled");
 });
 
 test("a decision reattaches when new occurrences extend the stream", async () => {
@@ -183,10 +292,95 @@ test("the route stores a decision for the signed-in user and 404s unknown stream
     { accountId: acme.accountId, normalizedName: "ACME CORP", status: "confirmed" },
   ]);
 
+  const canceled = await withAuth(clerkUserId, () => postStatus({ ...acme, status: "canceled" }));
+  expect(canceled.status).toBe(200);
+  expect(await decisionRows(ids.demo)).toEqual([
+    { accountId: acme.accountId, normalizedName: "ACME CORP", status: "canceled" },
+  ]);
+
   const unknown = await withAuth(clerkUserId, () =>
     postStatus({ ...acme, normalizedName: "NO SUCH STREAM", status: "confirmed" }),
   );
   expect(unknown.status).toBe(404);
+});
+
+test("Plaid's 500-unit Unicode identities stay distinct through decisions and projections", async () => {
+  const clerkUserId = fakeClerkUserId();
+  const name = "\uFB03".repeat(500);
+  const secondName = `${"\uFB03".repeat(499)}A`;
+  const checkingNormalized = "FFI".repeat(500);
+  const cardNormalized = `${"FFI".repeat(499)}A`;
+  await backfilled(
+    clerkUserId,
+    ...["2026-01-15", "2026-02-15", "2026-03-15"].flatMap((date) => [
+      sandboxTransaction("acct-checking", 12, name, date),
+      sandboxTransaction("acct-checking", 12, secondName, date),
+    ]),
+  );
+
+  const overview = await withAuth(clerkUserId, () => recurringOverview());
+  const ingested = await adminDb()
+    .select({ description: transactions.description, merchant: transactions.merchant })
+    .from(transactions);
+  expect(ingested).toHaveLength(6);
+  expect(ingested.every((row) => row.description.length === 500 && row.merchant === null)).toBe(true);
+  expect(new Set(overview.streams.map((stream) => stream.normalizedName))).toEqual(
+    new Set([cardNormalized, checkingNormalized]),
+  );
+  expect(overview.streams.every((stream) => stream.normalizedName.length <= 1500)).toBe(true);
+  expect(new Set(overview.streams.map((stream) => stream.normalizedName)).size).toBe(2);
+  expect(overview.annual).toEqual([{ currency: "USD", outMinor: -28800, inMinor: 0 }]);
+
+  const checking = overview.streams.find((stream) => stream.normalizedName === checkingNormalized)!;
+  const second = overview.streams.find((stream) => stream.normalizedName === cardNormalized)!;
+  const checkingIdentity: StreamIdentity = {
+    accountId: checking.accountId,
+    currency: checking.currency,
+    direction: checking.direction,
+    normalizedName: checking.normalizedName,
+  };
+  const secondIdentity: StreamIdentity = {
+    accountId: second.accountId,
+    currency: second.currency,
+    direction: second.direction,
+    normalizedName: second.normalizedName,
+  };
+  const post = (identity: StreamIdentity, status: "confirmed" | "canceled") =>
+    withAuth(clerkUserId, () => postStatus({ ...identity, status }));
+
+  expect((await post(checkingIdentity, "confirmed")).status).toBe(200);
+  expect((await post(secondIdentity, "confirmed")).status).toBe(200);
+  expect(await withAuth(clerkUserId, () => recurringOverview())).toMatchObject({
+    annual: [{ currency: "USD", outMinor: -28800, inMinor: 0 }],
+  });
+  const beforeCancel = await withAuth(clerkUserId, () => upcomingOverview("2026-04-01"));
+  expect(beforeCancel).toMatchObject({
+    trackedCount: 2,
+    currencies: [{ currency: "USD", toLeaveMinor: -2400 }],
+  });
+  expect((await post(checkingIdentity, "canceled")).status).toBe(200);
+  expect(await decisionRows((await withAuth(clerkUserId, () => requireUser())).id)).toEqual([
+    { accountId: second.accountId, normalizedName: cardNormalized, status: "confirmed" },
+    { accountId: checking.accountId, normalizedName: checkingNormalized, status: "canceled" },
+  ]);
+  expect(checkingNormalized).toHaveLength(1500);
+
+  expect(await withAuth(clerkUserId, () => recurringOverview())).toMatchObject({
+    annual: [{ currency: "USD", outMinor: -14400, inMinor: 0 }],
+  });
+  expect(await withAuth(clerkUserId, () => upcomingOverview("2026-04-01"))).toMatchObject({
+    trackedCount: 1,
+    currencies: [{ currency: "USD", toLeaveMinor: -1200 }],
+  });
+
+  const tooLong = await withAuth(clerkUserId, () =>
+    postStatus({
+      ...checkingIdentity,
+      normalizedName: `${checkingNormalized}X`,
+      status: "confirmed",
+    }),
+  );
+  expect(tooLong.status).toBe(400);
 });
 
 test("the route rejects signed-out, cross-origin, and malformed callers before any work", async () => {
@@ -207,8 +401,9 @@ test("the route rejects signed-out, cross-origin, and malformed callers before a
     { ...acme, direction: "sideways" },
     { ...acme, normalizedName: "" },
     { ...acme, normalizedName: " PADDED " },
-    { ...acme, normalizedName: "X".repeat(201) },
+    { ...acme, normalizedName: "X".repeat(1501) },
     { ...acme, status: "maybe" },
+    { ...acme, status: "cancelled" },
   ]) {
     const response = await withAuth(SEED_USERS.demo.clerkUserId, () => postStatus(bad));
     expect(response.status).toBe(400);
@@ -224,11 +419,20 @@ test("cross-user isolation: a neighbor can neither see nor decide the demo user'
   await withAuth(clerkA, () => setRecurringStatus(streamflix, "confirmed"));
 
   expect(await withAuth(clerkB, () => setRecurringStatus(streamflix, "dismissed"))).toBe(false);
+  expect(await withAuth(clerkB, () => setRecurringStatus(streamflix, "canceled"))).toBe(false);
   const foreign = await withAuth(clerkB, () => postStatus({ ...streamflix, status: "dismissed" }));
   expect(foreign.status).toBe(404);
+  const foreignCancel = await withAuth(clerkB, () =>
+    postStatus({ ...streamflix, status: "canceled" }),
+  );
+  const unknownCancel = await withAuth(clerkB, () =>
+    postStatus({ ...streamflix, normalizedName: "NO SUCH STREAM", status: "canceled" }),
+  );
+  expect(foreignCancel.status).toBe(404);
+  expect(await foreignCancel.text()).toBe(await unknownCancel.text());
 
   const theirs = await withAuth(clerkB, () => recurringOverview());
-  expect(theirs.streams).toEqual([]);
+  expect(theirs).toEqual({ streams: [], annual: [] });
 
   const visible = await withRequestScope(clerkB, (tx) =>
     tx.select({ id: recurringStreams.id }).from(recurringStreams),
@@ -237,7 +441,7 @@ test("cross-user isolation: a neighbor can neither see nor decide the demo user'
   const forged = await withRequestScope(clerkB, (tx) =>
     tx
       .update(recurringStreams)
-      .set({ status: "dismissed" })
+      .set({ status: "canceled" })
       .where(eq(recurringStreams.userId, ids.demo)),
   );
   expect(forged.rowCount).toBe(0);

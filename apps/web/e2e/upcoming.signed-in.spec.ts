@@ -4,7 +4,7 @@ import { SEED_CLERK_IDS } from "../db/seed/dataset";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
-import { signedInState } from "./session";
+import { signedInContext, signedInState } from "./session";
 
 const clerkIdOf = (key: "a" | "b"): string =>
   JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8"))[key].clerkUserId;
@@ -59,6 +59,10 @@ test.describe("upcoming expenses view", () => {
     await expect(charge).toContainText("Monthly · expected Apr 29, 2026 · last on Mar 29, 2026");
     await expect(charge).toContainText("-$23.00");
     await expect(charge).not.toContainText("not seen");
+    await expect(charge.getByRole("link", { name: "Streamflix" })).toHaveAttribute(
+      "href",
+      /^\/transactions\?account=[0-9a-f-]+&q=Streamflix$/,
+    );
 
     const deposit = page.getByTestId("upcoming-deposit");
     await expect(deposit).toHaveCount(1);
@@ -76,6 +80,45 @@ test.describe("upcoming expenses view", () => {
     await expect(page).toHaveURL("/upcoming");
   });
 
+  test("a passed known obligation uses neutral copy and never links to transactions", async ({
+    page,
+  }) => {
+    const userId = await userIdOf("a");
+    const account = await adminQuery(
+      "select id from accounts where user_id = $1 and name = 'Everyday Checking'",
+      [userId],
+    );
+    await adminQuery("delete from transactions where user_id = $1", [userId]);
+    await adminQuery(
+      `insert into scheduled_obligations
+         (user_id, account_id, name, amount_minor, currency, cadence, starts_on)
+       values ($1, $2, 'Rent', 180000, 'USD', 'once', '2026-04-15')`,
+      [userId, account.rows[0].id],
+    );
+
+    await page.goto("/upcoming?on=2026-04-20");
+
+    await expect(page.getByTestId("upcoming-empty")).toHaveCount(0);
+    await expect(page.getByTestId("upcoming-to-leave")).toHaveText("-$1,800.00", {
+      timeout: 30_000,
+    });
+    const charge = page.getByTestId("upcoming-charge");
+    await expect(charge).toContainText("Rent");
+    await expect(charge).toContainText("One time · expected Apr 15, 2026 — Scheduled date passed");
+    await expect(charge).toContainText("-$1,800.00");
+    await expect(charge).not.toContainText("not seen yet");
+    await expect(charge.locator('a[href^="/transactions?"]')).toHaveCount(0);
+
+    const calendarEntry = page
+      .getByTestId("upcoming-calendar")
+      .locator("td")
+      .filter({ hasText: "Rent" });
+    await expect(calendarEntry).toContainText("15");
+    await expect(calendarEntry).toContainText("Scheduled date passed");
+    await expect(calendarEntry).not.toContainText("not seen yet");
+    await expect(calendarEntry.locator("a")).toHaveCount(0);
+  });
+
   test("an expected date the reference has passed is labeled not-seen and still counted", async ({
     page,
   }) => {
@@ -88,6 +131,12 @@ test.describe("upcoming expenses view", () => {
     await expect(deposit).toContainText("expected Apr 27, 2026 — not seen yet");
     await expect(page.getByTestId("upcoming-to-arrive")).toHaveText("+$2,500.00");
     await expect(page.getByTestId("upcoming-charge")).not.toContainText("not seen");
+    const calendarEntry = page
+      .getByTestId("upcoming-calendar")
+      .locator("td")
+      .filter({ hasText: "Acme Corp" });
+    await expect(calendarEntry).toContainText("expected but not seen yet");
+    await expect(calendarEntry).not.toContainText("Scheduled date passed");
   });
 
   test("a January month-end subscription stays due on March 31 after February", async ({ page }) => {
@@ -156,10 +205,7 @@ test.describe("upcoming expenses view", () => {
       timeout: 30_000,
     });
 
-    const contextB = await browser.newContext({
-      baseURL,
-      storageState: await signedInState(browser, "b"),
-    });
+    const contextB = await signedInContext(browser, "b", baseURL);
     try {
       const pageB = await contextB.newPage();
       await pageB.goto("/upcoming?on=2026-04-01");

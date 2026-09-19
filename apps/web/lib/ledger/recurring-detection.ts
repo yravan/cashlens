@@ -45,9 +45,9 @@ const CADENCE_WINDOWS: { cadence: RecurringCadence; lo: number; hi: number }[] =
 // the stream (variable bills drift); within 3/40 (7.5%, Actual Budget's approx
 // threshold) counts as amount-stable.
 const ACCEPT = { num: 1, den: 4 };
-const STABLE = { num: 3, den: 40 };
+export const STABLE = { num: 3, den: 40 };
 
-const withinBand = (amount: number, typical: number, band: { num: number; den: number }) =>
+export const withinBand = (amount: number, typical: number, band: { num: number; den: number }) =>
   band.den * Math.abs(amount - typical) <= band.num * Math.abs(typical);
 
 const median = (sorted: readonly number[]): number => {

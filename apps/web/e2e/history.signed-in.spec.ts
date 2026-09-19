@@ -6,7 +6,7 @@ import { formatMinorUnits } from "../lib/ledger/minor-units";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
-import { signedInState } from "./session";
+import { signedInContext, signedInState } from "./session";
 
 const clerkIdOf = (key: "a" | "b"): string =>
   JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8"))[key].clerkUserId;
@@ -180,10 +180,7 @@ test.describe("transaction history", () => {
       "Rainy Day Savings",
     ]);
 
-    const contextB = await browser.newContext({
-      baseURL,
-      storageState: await signedInState(browser, "b"),
-    });
+    const contextB = await signedInContext(browser, "b", baseURL);
     try {
       const pageB = await contextB.newPage();
       await pageB.goto("/transactions");
@@ -228,7 +225,9 @@ test.describe("transaction history", () => {
     await expect(page.getByTestId("transactions-count")).toHaveText(
       "0 transactions in the ledger",
     );
-    await expect(page.getByText("No transactions yet")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "An account is required" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add transaction" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Go to accounts" })).toBeVisible();
     await expect(form(page)).toHaveCount(0);
   });
 

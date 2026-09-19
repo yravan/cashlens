@@ -3,6 +3,7 @@ import { beforeEach, expect, test } from "vitest";
 
 import { autoCategorizeBatch, InferenceBusyError } from "@/lib/data/auto-categorize";
 import { listCategoryGroups, setTransactionCategory } from "@/lib/data/categories";
+import { updateManualTransaction } from "@/lib/data/manual-transactions";
 import {
   applyReclassification,
   proposeReclassification,
@@ -682,16 +683,35 @@ test("apply holds the owner taxonomy lock from validation through commit", async
   });
 });
 
-test.each(["manual", "transfer", "aba", "microsecond"] as const)(
+test.each(["manual", "manual-edit", "transfer", "aba", "microsecond"] as const)(
   "apply reports a %s conflict without overwriting the current row",
   async (race) => {
     const owner = await fixture();
     const transactionId = await addAuto(owner);
     const companion = await addTransaction(owner, { description: "PAIR IN", amountMinor: 1299 });
+    if (race === "manual-edit") {
+      await adminDb().execute(sql`
+        update transactions
+        set updated_at = '2026-09-10 12:34:56.123456+00'::timestamptz
+        where id = ${transactionId}
+      `);
+    }
+    const beforeProposal = await categoryState(transactionId);
     const proposed = await propose(owner);
     if (race === "manual") {
       await withAuth(owner.clerkUserId, () =>
         setTransactionCategory(transactionId, owner.leaf("Coffee Shops")));
+    } else if (race === "manual-edit") {
+      await withAuth(owner.clerkUserId, () =>
+        updateManualTransaction(transactionId, {
+          accountId: owner.account.id,
+          direction: "outflow",
+          amount: "13.00",
+          date: "2026-09-10",
+          description: "STALE AUTOMATIC VENDOR",
+          merchant: null,
+          categoryId: owner.leaf("Miscellaneous"),
+        }));
     } else if (race === "transfer") {
       await adminDb().insert(transferPairs).values({
         userId: owner.user.id,
@@ -712,6 +732,16 @@ test.each(["manual", "transfer", "aba", "microsecond"] as const)(
       `);
     }
     const current = await categoryState(transactionId);
+    if (race === "manual-edit") {
+      expect({ ...current, updatedAt: beforeProposal.updatedAt }).toEqual(beforeProposal);
+      expect(current.updatedAt).not.toBe(beforeProposal.updatedAt);
+      await expect(
+        adminDb()
+          .select({ amountMinor: transactions.amountMinor })
+          .from(transactions)
+          .where(eq(transactions.id, transactionId)),
+      ).resolves.toEqual([{ amountMinor: -1300 }]);
+    }
 
     await expect(applyReclassification({
       ownerClerkUserId: owner.clerkUserId,

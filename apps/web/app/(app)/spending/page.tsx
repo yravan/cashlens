@@ -200,7 +200,12 @@ export default async function SpendingPage({
 
   const heading = (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">Spending</h1>
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Spending</h1>
+        <Link href="/categories" className="text-sm underline underline-offset-4">
+          Manage categories
+        </Link>
+      </div>
       {summary.options.currencies.length > 0 && <TransferMatch />}
       <p className="mt-2 max-w-xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
         True spend per category from posted transactions, most spent first — money in shows with
