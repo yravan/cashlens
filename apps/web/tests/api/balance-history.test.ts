@@ -710,6 +710,66 @@ test.each(["plaid", "manual"] as const)("%s replay is a complete no-op and fresh
     .toEqual([{ snapshotDay: "2026-04-01", currentMinor: 11000 }, { snapshotDay: "2026-04-02", currentMinor: 11000 }]);
 });
 
+test("a later event without provider time can correct a genuinely timestamped snapshot", async () => {
+  const fixture = await captureFixture();
+  await fixture.write({ ...fixture.capture, source: "provider", providerAsOf: new Date("2026-04-01T11:00:00Z") });
+  const later = { ...fixture.capture, currentMinor: 12000, observedAt: new Date("2026-04-01T13:00:00Z") };
+  await fixture.write(later);
+  expect(await fixture.stored()).toMatchObject([{
+    snapshotDay: "2026-04-01", currentMinor: 12000, observedAt: later.observedAt,
+    captureReason: "event", providerAsOf: null,
+  }]);
+});
+
+test("reconciliation fills a missing provider day without altering prior genuine provenance", async () => {
+  const fixture = await captureFixture();
+  await fixture.write({ ...fixture.capture, source: "provider", providerAsOf: new Date("2026-04-01T11:00:00Z") });
+  const [original] = await fixture.stored();
+  const observedAt = new Date("2026-04-02T12:00:00Z");
+  await adminDb().update(accountBalances).set({ currentMinor: 12000, asOf: observedAt })
+    .where(eq(accountBalances.accountId, fixture.accountId));
+  const history = await withAuth(fixture.owner.clerkUserId, () => accountBalanceHistory({
+    from: "2026-04-02", to: "2026-04-02", accountIds: [fixture.accountId],
+  }));
+  expect(history[0].points).toEqual([{
+    day: "2026-04-02", basis: "observed", currentMinor: 12000, observedDay: "2026-04-02",
+    observedAt, providerAsOf: null, captureReason: "reconciliation",
+  }]);
+  const stored = await fixture.stored();
+  expect(stored).toHaveLength(2);
+  expect(stored.find((row) => row.snapshotDay === "2026-04-01")).toEqual(original);
+  expect(stored.find((row) => row.snapshotDay === "2026-04-02")).toMatchObject({
+    currentMinor: 12000, observedAt, providerAsOf: null, captureReason: "reconciliation",
+  });
+});
+
+test.each(["plaid", "manual"] as const)("%s same-day reconciliation corrects null provenance and retains the raw anchor", async (source) => {
+  const fixture = await captureFixture(source);
+  await fixture.write();
+  const observedAt = new Date("2026-04-01T13:00:00Z");
+  await adminDb().update(accountBalances).set({ currentMinor: 12000, asOf: observedAt })
+    .where(eq(accountBalances.accountId, fixture.accountId));
+  await adminDb().insert(transactions).values({
+    userId: fixture.owner.id, accountId: fixture.accountId, amountMinor: -500,
+    currency: "USD", date: "2026-04-01", description: "After recovered anchor",
+    source: "manual", status: "posted", createdAt: new Date("2026-04-01T14:00:00Z"),
+  });
+  const history = await withAuth(fixture.owner.clerkUserId, () => accountBalanceHistory({
+    from: "2026-04-01", to: "2026-04-01", accountIds: [fixture.accountId],
+  }));
+  expect(history[0].points).toEqual([source === "plaid" ? {
+    day: "2026-04-01", basis: "observed", currentMinor: 12000, observedDay: "2026-04-01",
+    observedAt, providerAsOf: null, captureReason: "reconciliation",
+  } : {
+    day: "2026-04-01", basis: "derived", currentMinor: 11500, anchorMinor: 12000,
+    anchorDay: "2026-04-01", anchorObservedAt: observedAt, captureReason: "reconciliation",
+  }]);
+  expect(await fixture.stored()).toMatchObject([{
+    snapshotDay: "2026-04-01", currentMinor: 12000, observedAt,
+    providerAsOf: null, captureReason: "reconciliation",
+  }]);
+});
+
 test("equal observation times reject contradictory provider provenance and permit later correction", async () => {
   const fixture = await captureFixture();
   await fixture.write();

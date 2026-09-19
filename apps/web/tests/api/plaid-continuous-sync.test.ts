@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
-import { beforeEach, expect, test } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 
+import { accountBalanceHistory } from "@/lib/data/balance-history";
 import { listResumableSyncs } from "@/lib/data/plaid-sync";
 import { accountBalances, accountBalanceSnapshots, connections, transactions } from "@/lib/db/schema";
 import { fakeClerkUserId, withAuth } from "../harness/clerk";
@@ -313,6 +314,54 @@ test("balances refresh through the live-balance endpoint only when a run changes
   const [unchanged] = await balanceOf(checkingId);
   expect(unchanged).toMatchObject({ availableMinor: 89250, currentMinor: 90025 });
   await expect(snapshotsOf(checkingId)).resolves.toEqual([snapshot]);
+});
+
+test("history reconciliation cannot revive a rejected stale provider refresh", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    vi.setSystemTime(new Date("2026-09-16T09:00:00Z"));
+    const { clerkUserId, accessToken, sync, accountId } = await backfilled(fakeClerkUserId());
+    const checkingId = accountId.get(CHECKING)!;
+    const observedAt = new Date("2026-09-16T10:00:00Z");
+    const providerAsOf = new Date("2026-09-16T09:30:00Z");
+    vi.setSystemTime(observedAt);
+    pushSyncUpdates(accessToken, {
+      added: [sandboxTransaction(CHECKING, 8, "FRESH BALANCE", "2026-09-16")],
+      balances: {
+        [CHECKING]: { current: 900.25, last_updated_datetime: providerAsOf.toISOString() },
+      },
+    });
+    await expect((await sync()).json()).resolves.toEqual(step("complete", 1));
+    const [original] = await snapshotsOf(checkingId);
+    expect(original).toMatchObject({
+      currentMinor: 90025, observedAt, providerAsOf, captureReason: "event",
+    });
+
+    const laterObservedAt = new Date("2026-09-16T11:00:00Z");
+    vi.setSystemTime(laterObservedAt);
+    pushSyncUpdates(accessToken, {
+      added: [sandboxTransaction(CHECKING, 1, "STALE BALANCE", "2026-09-16")],
+      balances: {
+        [CHECKING]: { current: 800, last_updated_datetime: "2026-09-16T08:30:00Z" },
+      },
+    });
+    await expect((await sync()).json()).resolves.toEqual(step("complete", 1));
+    expect((await balanceOf(checkingId))[0]).toMatchObject({
+      currentMinor: 80000, asOf: laterObservedAt,
+    });
+    expect(await snapshotsOf(checkingId)).toEqual([original]);
+
+    const history = await withAuth(clerkUserId, () => accountBalanceHistory({
+      from: "2026-09-16", to: "2026-09-16", accountIds: [checkingId],
+    }));
+    expect(history[0].points).toEqual([{
+      day: "2026-09-16", basis: "observed", currentMinor: 90025,
+      observedDay: "2026-09-16", observedAt, providerAsOf, captureReason: "event",
+    }]);
+    expect(await snapshotsOf(checkingId)).toEqual([original]);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("stalled and stale connections surface for resume; fresh, disconnected, and foreign ones never do", async () => {

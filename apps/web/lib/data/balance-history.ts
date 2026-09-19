@@ -89,6 +89,12 @@ export async function captureBalanceSnapshot(
         and excluded.provider_as_of is not null
         and excluded.provider_as_of < account_balance_snapshots.provider_as_of
       )
+      and not (
+        account_balance_snapshots.source = 'provider'
+        and account_balance_snapshots.provider_as_of is not null
+        and excluded.capture_reason = 'reconciliation'
+        and excluded.provider_as_of is null
+      )
     returning account_id
   `);
   if (written.rows.length > 0) return;
