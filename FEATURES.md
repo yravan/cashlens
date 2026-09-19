@@ -74,7 +74,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
   - **2.2.2 Statement file import** `[P1]` — Upload CSV or statement exports to backfill accounts a connection can't reach; rows land in the ledger like any other source. *(Built after 2.2.3: an import needs a destination account, and an unconnected institution's account exists only as an offline account.)*
   - **2.2.3 Offline accounts** `[P1]` — Track accounts with no feed — cash, prepaid balances, niche platforms like Kalshi — by periodically updating a balance.
 - **2.3 Gmail ingestion** `[P1]`
-  - **2.3.1 Gmail connect** `[P1]` — Authorize read access to the inbox, scoped to finding financial mail; disconnectable like any other source.
+  - **2.3.1 Gmail connect** `[P1]` — Connect and revoke Gmail through an independently controlled processor (9.5); disclose mailbox-wide permission without giving Cash Lens mailbox credentials.
   - **2.3.2 Receipt & invoice detection** `[P1]` — Continuously identify emails that are receipts, invoices, bills, or payment confirmations, and store them as documents with merchant, date, and amount.
   - **2.3.3 Receipt parsing & line items** `[P1]` — Extract structured line items from receipt emails: products, prices, tax, tip.
   - **2.3.4 Inbox backfill** `[P1]` — Scan historical email for past receipts and invoices, so old transactions get explained too.
@@ -208,6 +208,10 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 - **9.2 Data protection & minimization** `[P1]` — Sensitive data is protected at rest and in transit; only what features need is kept; deletion actually deletes everywhere.
 - **9.3 Sync reliability** `[P2]` — Failed syncs retry themselves; persistent failures surface to the user instead of rotting silently.
 - **9.4 Data correctness audits** `[P3]` — Periodic self-checks that balances and flows reconcile against sources, with discrepancies flagged.
+- **9.5 Mailbox isolation** `[P1]`
+  - **9.5.1 Independent mailbox authority** `[P1]` — A compromised Cash Lens cannot read general email, forge upstream search authority, or change processor policy and destinations.
+  - **9.5.2 Controlled evidence release** `[P1]` — Release financial evidence without unrelated correspondence or recovery material; approve in groups through an independent interface first, with evaluated automation later.
+  - **9.5.3 Processor lifecycle** `[P1]` — Independently control enrollment, updates, rollback, recovery, pause, and revocation; ordinary web deployment credentials cannot replace the processor or its policy.
 
 ## 10. Engineering Foundation
 
@@ -220,7 +224,7 @@ The MVP: track expenses, transactions, recurring and upcoming charges, and cash 
 - **10.5 Developer documentation** `[P1]` — A quickstart that takes a fresh machine to a running app and green tests in minutes; updated as the project evolves.
 - **10.6 Preview deployments** `[P1]` — Every proposed change can be seen running at its own temporary address before it merges — reviewed in the browser, not just the diff.
 - **10.7 Security scanning** `[MVP]` — Every change is automatically checked for leaked secrets, vulnerable dependencies, and known risky patterns; findings block merge.
-- **10.8 Transaction understanding evaluation** `[P1]` — Measure evidence retrieval, factual support, item allocations, correction propagation, and downstream totals against independently checked cases before expanding automation.
+- **10.8 Transaction understanding evaluation** `[P1]` — Measure evidence retrieval, factual support, item allocations, correction propagation, downstream totals, and private-data leakage against independently checked cases before expanding automation.
 
 ---
 
