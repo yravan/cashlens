@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createClerkClient } from "@clerk/backend";
-import { clerk, clerkSetup } from "@clerk/testing/playwright";
+import { clerk, clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test as setup } from "@playwright/test";
 
 import {
@@ -35,6 +35,7 @@ for (const { key, email, storageState } of USERS) {
       existing.data[0] ??
       (await clerkClient.users.createUser({ emailAddress: [email] }));
 
+    await setupClerkTestingToken({ page });
     await page.goto("/sign-in");
     await clerk.loaded({ page });
     await clerk.signIn({ page, emailAddress: email });

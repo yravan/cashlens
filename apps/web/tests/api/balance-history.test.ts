@@ -951,11 +951,11 @@ test("failed authoritative capture rolls back manual creation and re-anchor", as
   try {
     await expect(withAuth(owner.clerkUserId, () => createManualAccount(request(
       "http://localhost/api/accounts/manual", JSON.stringify({ name: "Rejected account", type: "other", currency: "USD", balance: "250.00", reportedOn: "2026-04-01" }),
-    )))).rejects.toMatchObject({ cause: { code: "23514", message: "injected snapshot failure" } });
+    )))).rejects.toMatchObject({ message: "Database query failed", cause: { code: "23514" } });
     expect(await adminDb().select({ id: accounts.id }).from(accounts)).toEqual([{ id: accountId }]);
     await expect(withAuth(owner.clerkUserId, () => updateManualBalance(request(
       `http://localhost/api/accounts/${accountId}/manual`, JSON.stringify({ balance: "275.00", reportedOn: "2026-04-02" }),
-    ), { params: Promise.resolve({ accountId }) }))).rejects.toMatchObject({ cause: { code: "23514", message: "injected snapshot failure" } });
+    ), { params: Promise.resolve({ accountId }) }))).rejects.toMatchObject({ message: "Database query failed", cause: { code: "23514" } });
     expect(await adminDb().select().from(accountBalances)).toEqual(before);
     expect(await adminDb().select().from(accountBalanceSnapshots)).toEqual([]);
   } finally {
