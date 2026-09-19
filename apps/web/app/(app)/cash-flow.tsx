@@ -26,9 +26,9 @@ const signed = (minor: bigint, currency: string) =>
 
 function Amount({ label, value, testId }: { label: string; value: string; testId: string }) {
   return (
-    <div className="min-w-0">
+    <div className="w-max max-w-full min-w-0">
       <p className="text-xs font-medium tracking-wide text-zinc-500 dark:text-zinc-400">{label}</p>
-      <p data-testid={testId} className="mt-0.5 font-mono text-sm font-medium tabular-nums">
+      <p data-testid={testId} className="mt-0.5 break-all font-mono text-sm font-medium tabular-nums">
         {value}
       </p>
     </div>
@@ -103,7 +103,7 @@ export function CashFlow({ summary }: { summary: CashFlowSummary }) {
                     >
                       {label}
                     </Link>
-                    <div className="grid grid-cols-3 gap-3 sm:justify-items-end sm:text-right">
+                    <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
                       <Amount label="Money in" testId="flow-in" value={formatMinorUnits(flow.inflowMinor, currency)} />
                       <Amount label="Money out" testId="flow-out" value={formatMinorUnits(flow.outflowMinor, currency)} />
                       <Amount label="Net" testId="flow-net" value={signed(flow.netMinor, currency)} />

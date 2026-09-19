@@ -40,6 +40,139 @@ async function expectMonth(
   await expect(row.getByTestId("flow-net")).toHaveText(net(flow.netMinor, currency));
 }
 
+async function seedExactKwdAggregate() {
+  const userId = await userIdOf("a");
+  const positive = await adminQuery(
+    `insert into accounts (user_id, name, type, currency, source)
+     values ($1, 'Exact KWD wallet', 'other', 'KWD', 'manual') returning id`,
+    [userId],
+  );
+  const negative = await adminQuery(
+    `insert into accounts (user_id, name, type, currency, source)
+     values ($1, 'Exact negative KWD cash', 'depository', 'KWD', 'manual') returning id`,
+    [userId],
+  );
+  const positiveId = positive.rows[0].id;
+  const negativeId = negative.rows[0].id;
+  await adminQuery(
+    `insert into account_balances
+       (account_id, user_id, current_minor, as_of, reported_on)
+     values ($1, $3, 0, '2026-04-01T12:00:00Z', '2026-04-01'),
+            ($2, $3, 0, '2026-04-01T12:00:00Z', '2026-04-01')`,
+    [positiveId, negativeId, userId],
+  );
+  await adminQuery(
+    `insert into transactions
+       (user_id, account_id, amount_minor, currency, date, description, status, source)
+     select $1, $2, $3, 'KWD', '2026-04-02', 'EXACT POSITIVE', 'posted', 'manual'
+     from generate_series(1, 1024)`,
+    [userId, positiveId, Number.MAX_SAFE_INTEGER],
+  );
+  await adminQuery(
+    `insert into transactions
+       (user_id, account_id, amount_minor, currency, date, description, status, source)
+     values ($1, $2, 2, 'KWD', '2026-04-02', 'EXACT POSITIVE TWO', 'posted', 'manual'),
+            ($1, $3, -2, 'KWD', '2026-04-09', 'EXACT NEGATIVE TWO', 'posted', 'manual')`,
+    [userId, positiveId, negativeId],
+  );
+  await adminQuery(
+    `insert into transactions
+       (user_id, account_id, amount_minor, currency, date, description, status, source)
+     select $1, $2, -($3::bigint), 'KWD', '2026-04-09', 'EXACT NEGATIVE', 'posted', 'manual'
+     from generate_series(1, 1024)`,
+    [userId, negativeId, Number.MAX_SAFE_INTEGER],
+  );
+  await adminQuery(
+    `update transactions set category_id = (
+       select id from categories where user_id = $1 and parent_id is not null order by id limit 1
+     ) where user_id = $1 and account_id = $2`,
+    [userId, positiveId],
+  );
+  await adminQuery(
+    `update categories set name = $2 where user_id = $1 and id in (
+       select category_id from transactions where user_id = $1 and account_id = $3
+     )`,
+    [userId, "A".repeat(60), positiveId],
+  );
+  await adminQuery(
+    `update categories set name = $2 where user_id = $1 and id in (
+       select parent_id from categories where user_id = $1 and name = $3
+     )`,
+    [userId, "B".repeat(60), "A".repeat(60)],
+  );
+}
+
+const EXACT_KWD = "KWD\u00a09,223,372,036,854,774.786";
+const EXACT_NEGATIVE_KWD = "-KWD\u00a09,223,372,036,854,774.786";
+
+async function expectAmountContained(amount: Locator, page: Page) {
+  const element = await amount.evaluate(({ scrollWidth, clientWidth }) => ({ scrollWidth, clientWidth }));
+  expect.soft(element.scrollWidth).toBeLessThanOrEqual(element.clientWidth);
+  const main = await page.locator("main").evaluate(({ scrollWidth, clientWidth }) => ({
+    scrollWidth,
+    clientWidth,
+  }));
+  expect.soft(main.scrollWidth).toBeLessThanOrEqual(main.clientWidth);
+}
+
+async function expectAmountTextNotToOverlap(amounts: Locator[]) {
+  const groups = await Promise.all(amounts.map((amount) => amount.evaluate((element) => {
+    return Array.from(element.parentElement?.children ?? [element]).map((child) => {
+      const range = document.createRange();
+      range.selectNodeContents(child);
+      const { left, right, top, bottom } = range.getBoundingClientRect();
+      return { left, right, top, bottom };
+    });
+  })));
+  for (let left = 0; left < groups.length; left += 1) {
+    for (let right = left + 1; right < groups.length; right += 1) {
+      for (const a of groups[left]) {
+        for (const b of groups[right]) {
+          const overlaps = a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+          expect.soft(overlaps).toBe(false);
+        }
+      }
+    }
+  }
+}
+
+async function expectAmountOnOneLine(amount: Locator) {
+  const lines = await amount.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    return range.getClientRects().length;
+  });
+  expect.soft(lines).toBe(1);
+}
+
+async function expectAmountWithinOwnRow(amount: Locator) {
+  const geometry = await amount.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const text = range.getBoundingClientRect();
+    const row = element.parentElement?.getBoundingClientRect();
+    const labelElement = element.previousElementSibling;
+    if (labelElement) range.selectNodeContents(labelElement);
+    const label = labelElement ? range.getBoundingClientRect() : undefined;
+    return {
+      contained: row !== undefined && text.left >= row.left && text.right <= row.right,
+      overlapsLabel: label !== undefined
+        && text.left < label.right && text.right > label.left
+        && text.top < label.bottom && text.bottom > label.top,
+    };
+  });
+  expect.soft(geometry.contained).toBe(true);
+  expect.soft(geometry.overlapsLabel).toBe(false);
+}
+
+async function expectDocumentContained(page: Page) {
+  const viewport = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  expect.soft(viewport.scrollWidth).toBeLessThanOrEqual(viewport.clientWidth);
+}
+
 test.describe("cash-flow summary", () => {
   test.beforeEach(async ({ request, playwright, browser, baseURL }) => {
     expect((await request.get("/api/me")).status()).toBe(200);
@@ -109,47 +242,97 @@ test.describe("cash-flow summary", () => {
     );
   });
 
-  test("an odd aggregate beyond Number's safe range renders exactly across money views", async ({
+  test("an aggregate beyond Number's safe range renders exactly across money views", async ({
     page,
   }) => {
-    const userId = await userIdOf("a");
-    const account = await adminQuery(
-      `insert into accounts (user_id, name, type, currency, source)
-       values ($1, 'Exact KWD wallet', 'depository', 'KWD', 'manual') returning id`,
-      [userId],
-    );
-    const accountId = account.rows[0].id;
-    await adminQuery(
-      `insert into account_balances
-         (account_id, user_id, current_minor, as_of, reported_on)
-       values ($1, $2, 0, '2026-04-01T12:00:00Z', '2026-04-01')`,
-      [accountId, userId],
-    );
-    await adminQuery(
-      `insert into transactions
-         (user_id, account_id, amount_minor, currency, date, description, status, source)
-       values ($1, $2, $3, 'KWD', '2026-04-02', 'EXACT ONE', 'posted', 'manual'),
-              ($1, $2, 2, 'KWD', '2026-04-02', 'EXACT TWO', 'posted', 'manual')`,
-      [userId, accountId, Number.MAX_SAFE_INTEGER],
-    );
-    const exact = "KWD\u00a09,007,199,254,740.993";
+    await seedExactKwdAggregate();
 
     await page.goto("/");
-    await expect(monthRow(currencySection(page, "KWD"), "April 2026").getByTestId("flow-in"))
-      .toHaveText(exact);
+    const flow = monthRow(currencySection(page, "KWD"), "April 2026");
+    await expect(flow.getByTestId("flow-in")).toHaveText(EXACT_KWD);
+    await expect(flow.getByTestId("flow-out")).toHaveText(EXACT_NEGATIVE_KWD);
+    await expect(flow.getByTestId("flow-net")).toHaveText("KWD\u00a00.000");
 
     await page.goto("/spending?currency=KWD");
-    await expect(page.getByTestId("spend-currency-KWD").getByTestId("spend-in")).toHaveText(exact);
+    const spending = page.getByTestId("spend-currency-KWD");
+    await expect(spending.getByTestId("spend-in")).toHaveText(EXACT_KWD);
+    await expect(spending.getByTestId("spend-out")).toHaveText(EXACT_NEGATIVE_KWD);
+    await expect(spending.getByTestId("spend-net")).toHaveText("KWD\u00a00.000");
 
     await page.goto("/accounts");
-    await expect(page.getByTestId("cash-on-hand-KWD")).toHaveText(exact);
+    await expect(page.getByTestId("cash-on-hand-KWD")).toHaveText(EXACT_NEGATIVE_KWD);
     const row = page.getByTestId("account-row").filter({ hasText: "Exact KWD wallet" });
-    await expect(row).toContainText(exact);
+    await expect(row).toContainText(EXACT_KWD);
     await row.getByRole("button", { name: "Update balance" }).click();
     await expect(row.getByLabel("Current balance")).toHaveValue("0");
     await row.getByRole("button", { name: "Cancel" }).click();
-    await expect(row).toContainText(exact);
+    await expect(row).toContainText(EXACT_KWD);
   });
+
+  for (const width of [320, 640, 768, 1280]) {
+    test(`money views contain the full amount at ${width}px`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 800 });
+      await seedExactKwdAggregate();
+
+      await page.goto("/");
+      const flow = monthRow(currencySection(page, "KWD"), "April 2026");
+      await expect.soft(flow.getByTestId("flow-in")).toHaveText(EXACT_KWD);
+      await expect.soft(flow.getByTestId("flow-out")).toHaveText(EXACT_NEGATIVE_KWD);
+      await expect.soft(flow.getByTestId("flow-net")).toHaveText("KWD\u00a00.000");
+      const flowAmounts = await flow.getByTestId(/^flow-/).all();
+      for (const amount of flowAmounts) {
+        await expectAmountContained(amount, page);
+      }
+      await expectAmountTextNotToOverlap(flowAmounts);
+      // The ordinary seeded shell independently overflows only at 768px; keep that finding
+      // separate while still checking the money surface's main and amount bounds there.
+      if (width !== 768) await expectDocumentContained(page);
+      await page.screenshot({ path: testInfo.outputPath(`exact-dashboard-${width}.png`), fullPage: true });
+
+      await page.goto("/spending?currency=KWD");
+      const spending = page.getByTestId("spend-currency-KWD");
+      await expect.soft(spending.getByTestId("spend-in")).toHaveText(EXACT_KWD);
+      await expect.soft(spending.getByTestId("spend-out")).toHaveText(EXACT_NEGATIVE_KWD);
+      await expect.soft(spending.getByTestId("spend-net")).toHaveText("KWD\u00a00.000");
+      const spendingAmounts = await spending.getByTestId(/^spend-(in|out|net)$/).all();
+      for (const amount of spendingAmounts) {
+        await expectAmountContained(amount, page);
+      }
+      await expectAmountTextNotToOverlap(spendingAmounts);
+      const category = spending.getByTestId("category-net");
+      const group = spending.getByTestId("spend-group").getByTestId("group-net");
+      const uncategorized = spending.getByTestId("spend-uncategorized").getByTestId("group-net");
+      await expect.soft(category).toHaveText(`+${EXACT_KWD}`);
+      await expect.soft(group).toHaveText(`+${EXACT_KWD}`);
+      await expect.soft(uncategorized).toHaveText(EXACT_NEGATIVE_KWD);
+      for (const amount of [category, group, uncategorized]) {
+        await expectAmountContained(amount, page);
+        await expectAmountWithinOwnRow(amount);
+        await expectAmountOnOneLine(amount);
+      }
+      if (width !== 768) await expectDocumentContained(page);
+      await page.screenshot({ path: testInfo.outputPath(`exact-spending-${width}.png`), fullPage: true });
+
+      await page.goto("/accounts");
+      const accounts = page.getByTestId("cash-on-hand-KWD");
+      await expect.soft(accounts).toHaveText(EXACT_NEGATIVE_KWD);
+      await expectAmountContained(accounts, page);
+      await expectAmountWithinOwnRow(accounts);
+      const positive = page.getByTestId("account-row").filter({ hasText: "Exact KWD wallet" });
+      const negative = page.getByTestId("account-row").filter({ hasText: "Exact negative KWD cash" });
+      await expect.soft(positive).toContainText(EXACT_KWD);
+      await expect.soft(negative).toContainText(EXACT_NEGATIVE_KWD);
+      await expectAmountContained(positive.getByText(EXACT_KWD, { exact: true }), page);
+      await expectAmountContained(negative.getByText(EXACT_NEGATIVE_KWD, { exact: true }), page);
+      await expectAmountOnOneLine(accounts);
+      await expectAmountOnOneLine(positive.getByText(EXACT_KWD, { exact: true }));
+      await expectAmountOnOneLine(negative.getByText(EXACT_NEGATIVE_KWD, { exact: true }));
+      await expectAmountWithinOwnRow(positive.getByText(EXACT_KWD, { exact: true }));
+      await expectAmountWithinOwnRow(negative.getByText(EXACT_NEGATIVE_KWD, { exact: true }));
+      if (width !== 768) await expectDocumentContained(page);
+      await page.screenshot({ path: testInfo.outputPath(`exact-accounts-${width}.png`), fullPage: true });
+    });
+  }
 
   test("a neighbor's dashboard shows only their flow and none of the demo ledger", async ({
     page,
