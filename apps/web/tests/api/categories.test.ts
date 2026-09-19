@@ -624,9 +624,9 @@ test("move relocates a leaf's totals between groups, nests a childless root, and
   const entertainmentBefore = EXPECTED_USD_GROUPS.find((group) => group.id === entertainment)!;
   const leaf = foodBefore.categories.find((category) => category.id === restaurants)!;
   const shifted = (group: typeof foodBefore, sign: 1 | -1) => ({
-    spentMinor: group.spentMinor + sign * leaf.spentMinor,
-    receivedMinor: group.receivedMinor + sign * leaf.receivedMinor,
-    netMinor: group.netMinor + sign * leaf.netMinor,
+    spentMinor: group.spentMinor + BigInt(sign) * leaf.spentMinor,
+    receivedMinor: group.receivedMinor + BigInt(sign) * leaf.receivedMinor,
+    netMinor: group.netMinor + BigInt(sign) * leaf.netMinor,
   });
   const entertainmentAfter = {
     ...entertainmentBefore,

@@ -65,13 +65,14 @@ function formatter(currency: string, digits: number): Intl.NumberFormat {
 
 // Intl applies the exponent itself, so the integer goes in as a decimal string —
 // no float division, exact at every magnitude a bigint column holds.
-export function formatMinorUnits(minorUnits: number, currency: string): string {
-  if (!Number.isSafeInteger(minorUnits)) {
+export function formatMinorUnits(minorUnits: number | bigint, currency: string): string {
+  if (typeof minorUnits === "number" && !Number.isSafeInteger(minorUnits)) {
     throw new Error("minor units must be a safe integer");
   }
   const digits = currencyExponent(currency);
-  const units = Math.abs(minorUnits).toString().padStart(digits + 1, "0");
+  const negative = minorUnits < 0;
+  const units = (negative ? -minorUnits : minorUnits).toString().padStart(digits + 1, "0");
   const point = units.length - digits;
-  const decimal = `${minorUnits < 0 ? "-" : ""}${units.slice(0, point)}${digits ? `.${units.slice(point)}` : ""}`;
+  const decimal = `${negative ? "-" : ""}${units.slice(0, point)}${digits ? `.${units.slice(point)}` : ""}`;
   return formatter(currency, digits).format(decimal as Intl.StringNumericLiteral);
 }

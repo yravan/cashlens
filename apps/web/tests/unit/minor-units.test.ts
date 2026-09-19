@@ -73,3 +73,11 @@ test.each([0.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 
     expect(() => formatMinorUnits(minor, "USD")).toThrow("safe integer");
   },
 );
+
+test.each([
+  [BigInt("9007199254740993"), "USD", "$90,071,992,547,409.93"],
+  [BigInt("123"), "JPY", "¥123"],
+  [BigInt("-123456"), "BHD", "-BHD 123.456"],
+])("%s bigint minor units in %s format exactly", (minor, currency, expected) => {
+  expect(formatMinorUnits(minor, currency)).toBe(expected);
+});
