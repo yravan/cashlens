@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { clerk } from "@clerk/testing/playwright";
+import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { devices, expect, type Browser, type Page } from "@playwright/test";
 
 import { BASE_URL, STORAGE_STATE_A, STORAGE_STATE_B } from "../playwright.config";
@@ -53,18 +53,57 @@ export async function signedInState(
   user: "a" | "b" = "a",
 ): Promise<string> {
   const file = STATE_FILE[user];
-  if (savedRemainingMs(user) > MIN_REMAINING_MS) return file;
-
   const context = await browser.newContext({
     ...devices["Desktop Chrome"],
     storageState: file,
   });
   try {
+    const ready = async () => {
+      if (remainingMs(await context.cookies()) <= MIN_REMAINING_MS) return false;
+      const response = await context.request.get(`${BASE_URL}/api/me`, {
+        maxRedirects: 0,
+      });
+      try {
+        expect([200, 307, 401]).toContain(response.status());
+        return response.status() === 200 &&
+          response.headers()["content-type"]?.includes("application/json");
+      } finally {
+        await response.dispose();
+      }
+    };
+    if (await ready()) return file;
+
+    await setupClerkTestingToken({ context });
     const page = await context.newPage();
     await refreshPageSession(page);
+    await expect
+      .poll(ready, {
+        timeout: 15_000,
+        message: "Clerk session did not become ready for authenticated requests",
+      })
+      .toBe(true);
     await context.storageState({ path: file });
   } finally {
     await context.close();
   }
   return file;
+}
+
+export async function signedInContext(
+  browser: Browser,
+  user: "a" | "b",
+  baseURL = BASE_URL,
+) {
+  const context = await browser.newContext({
+    ...devices["Desktop Chrome"],
+    baseURL,
+    storageState: await signedInState(browser, user),
+  });
+  try {
+    await setupClerkTestingToken({ context });
+    return context;
+  } catch (error) {
+    await context.close();
+    throw error;
+  }
 }

@@ -7,7 +7,7 @@ import { formatMinorUnits } from "../lib/ledger/minor-units";
 import { E2E_USERS_FILE } from "../playwright.config";
 import { adminQuery, appQueryScopedAs, seedLedgerFixture } from "./db";
 import { expect, test } from "./fixtures";
-import { refreshPageSession, signedInState } from "./session";
+import { refreshPageSession, signedInContext, signedInState } from "./session";
 
 const clerkIdOf = (key: "a" | "b"): string =>
   JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8"))[key].clerkUserId;
@@ -215,10 +215,7 @@ test.describe("offline accounts", () => {
     expect(createdObligation.status()).toBe(201);
     await page.reload();
 
-    const contextB = await browser.newContext({
-      baseURL,
-      storageState: await signedInState(browser, "b"),
-    });
+    const contextB = await signedInContext(browser, "b", baseURL);
     try {
       const pageB = await contextB.newPage();
       await pageB.goto("/accounts");
