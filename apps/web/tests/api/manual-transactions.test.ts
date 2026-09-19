@@ -1057,7 +1057,7 @@ test("match-defining edits invalidate active pairs before fallible rematching", 
     expect(JSON.parse(String(info.mock.calls[0][0]))).toEqual({
       event: "transfer_match.run_failed",
       operation: "update_manual_transaction",
-      errorClass: "DrizzleQueryError",
+      errorClass: "DatabaseQueryError",
     });
   } finally {
     await adminDb().execute(
@@ -1250,7 +1250,7 @@ test("matcher failure is sanitized and cannot reverse a committed create", async
     expect(JSON.parse(String(info.mock.calls[0][0]))).toEqual({
       event: "transfer_match.run_failed",
       operation: "create_manual_transaction",
-      errorClass: "DrizzleQueryError",
+      errorClass: "DatabaseQueryError",
     });
   } finally {
     await adminDb().execute(

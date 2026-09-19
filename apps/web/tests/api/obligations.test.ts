@@ -1290,15 +1290,15 @@ test("all obligation routes sanitize unexpected database failures", async () => 
     expect(logs).toEqual([
       JSON.stringify({
         event: "obligation_mutation.run_failed",
-        errorClass: "DrizzleQueryError",
+        errorClass: "DatabaseQueryError",
       }),
       JSON.stringify({
         event: "obligation_mutation.run_failed",
-        errorClass: "DrizzleQueryError",
+        errorClass: "DatabaseQueryError",
       }),
       JSON.stringify({
         event: "obligation_mutation.run_failed",
-        errorClass: "DrizzleQueryError",
+        errorClass: "DatabaseQueryError",
       }),
     ]);
     expect(logs.join("\n")).not.toMatch(/PRIVATE|Rent|1800\.00/);
