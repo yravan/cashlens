@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { clerk } from "@clerk/testing/playwright";
 import type { Page } from "@playwright/test";
 
 import { EXPECTED, SEED_CLERK_IDS } from "../db/seed/dataset";
@@ -32,6 +33,7 @@ async function restoreWallClockSession(page: Page) {
   await page.clock.setSystemTime(new Date());
   await refreshPageSession(page);
   await page.goto("/accounts");
+  await clerk.loaded({ page });
 }
 
 async function offlineAccount(userId: string, name: string) {
@@ -91,6 +93,7 @@ test.describe("offline accounts", () => {
     baseURL,
   }) => {
     await page.goto("/accounts");
+    await clerk.loaded({ page });
     await expect(page.getByTestId("accounts-count")).toHaveText("5 accounts in the ledger");
     await page.getByTestId("add-offline-account").click();
     const add = page.getByRole("form", { name: "Add offline account" });
@@ -126,6 +129,7 @@ test.describe("offline accounts", () => {
     await expect(page.getByTestId("cash-on-hand-USD")).toHaveText(usd(SEED_CASH + 10000));
 
     await page.goto("/transactions");
+    await clerk.loaded({ page });
     await page.getByRole("button", { name: "Add transaction" }).click();
     const form = page.getByRole("form", { name: "Add transaction" });
     await form.getByLabel("Account").selectOption({ label: "Petty Cash · USD" });
@@ -138,6 +142,7 @@ test.describe("offline accounts", () => {
     );
 
     await page.goto("/accounts");
+    await clerk.loaded({ page });
     await expect(accountRow(page, "Petty Cash")).toContainText(usd(7500));
     await expect(accountRow(page, "Petty Cash").getByTestId("reported-balance")).toHaveText(
       `Reported ${usd(10000)} on 2026-09-11 · 1 transaction since`,
@@ -245,6 +250,7 @@ test.describe("offline accounts", () => {
   }) => {
     await page.setViewportSize({ width: 320, height: 800 });
     await page.goto("/accounts");
+    await clerk.loaded({ page });
     await page.getByTestId("add-offline-account").click();
     const add = page.getByRole("form", { name: "Add offline account" });
     await add.getByLabel("Name").fill("Store Card");
