@@ -172,14 +172,14 @@ test("rows dated after the anchor day move the shown balance and earlier rows on
     expect((await withAuth(owner.clerkUserId, () => post(id, around))).status).toBe(200);
   }
   expect(await overviewRow(owner.clerkUserId, held)).toMatchObject({
-    currentMinor: 10000 - 700 - 500 + 300,
+    currentMinor: BigInt(10000 - 700 - 500 + 300),
     reportedMinor: 10000,
     reportedOn: "2026-04-01",
     sinceCount: 3,
     transactionCount: 4,
   });
   expect(await overviewRow(owner.clerkUserId, owed)).toMatchObject({
-    currentMinor: 5000 + 700 + 500 - 300,
+    currentMinor: BigInt(5000 + 700 + 500 - 300),
     reportedMinor: 5000,
     sinceCount: 3,
     transactionCount: 4,

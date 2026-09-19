@@ -21,7 +21,7 @@ function monthParts(month: string): { label: string; from: string; to: string } 
   };
 }
 
-const signed = (minor: number, currency: string) =>
+const signed = (minor: bigint, currency: string) =>
   `${minor > 0 ? "+" : ""}${formatMinorUnits(minor, currency)}`;
 
 function Amount({ label, value, testId }: { label: string; value: string; testId: string }) {

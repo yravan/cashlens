@@ -14,7 +14,7 @@ import { SpendingFilters } from "./spending-filters";
 
 export const metadata: Metadata = { title: "Spending" };
 
-const signed = (minor: number, currency: string) =>
+const signed = (minor: bigint, currency: string) =>
   `${minor > 0 ? "+" : ""}${formatMinorUnits(minor, currency)}`;
 
 function drillHref(categoryId: string, query: SpendingQuery, currency: string): string {
@@ -40,10 +40,10 @@ function DirectionNote({
   totals,
   currency,
 }: {
-  totals: { spentMinor: number; receivedMinor: number };
+  totals: { spentMinor: bigint; receivedMinor: bigint };
   currency: string;
 }) {
-  if (totals.spentMinor === 0 || totals.receivedMinor === 0) return null;
+  if (totals.spentMinor === BigInt(0) || totals.receivedMinor === BigInt(0)) return null;
   return (
     <p data-testid="direction-note" className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
       {formatMinorUnits(totals.spentMinor, currency)} out ·{" "}

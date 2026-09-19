@@ -25,13 +25,13 @@ const monthRow = (section: Locator, label: string) =>
 const flowOf = (persona: "demo" | "neighbor", currency: string) =>
   EXPECTED[persona].flow.find((entry) => entry.currency === currency)!;
 
-const net = (minor: number, currency: string) =>
+const net = (minor: bigint, currency: string) =>
   `${minor > 0 ? "+" : ""}${formatMinorUnits(minor, currency)}`;
 
 async function expectMonth(
   section: Locator,
   label: string,
-  flow: { inflowMinor: number; outflowMinor: number; netMinor: number },
+  flow: { inflowMinor: bigint; outflowMinor: bigint; netMinor: bigint },
   currency: string,
 ) {
   const row = monthRow(section, label);
@@ -107,6 +107,48 @@ test.describe("cash-flow summary", () => {
     await expect(page.getByTestId("transactions-count")).toHaveText(
       `${marchUsdRows} matching transactions`,
     );
+  });
+
+  test("an odd aggregate beyond Number's safe range renders exactly across money views", async ({
+    page,
+  }) => {
+    const userId = await userIdOf("a");
+    const account = await adminQuery(
+      `insert into accounts (user_id, name, type, currency, source)
+       values ($1, 'Exact KWD wallet', 'depository', 'KWD', 'manual') returning id`,
+      [userId],
+    );
+    const accountId = account.rows[0].id;
+    await adminQuery(
+      `insert into account_balances
+         (account_id, user_id, current_minor, as_of, reported_on)
+       values ($1, $2, 0, '2026-04-01T12:00:00Z', '2026-04-01')`,
+      [accountId, userId],
+    );
+    await adminQuery(
+      `insert into transactions
+         (user_id, account_id, amount_minor, currency, date, description, status, source)
+       values ($1, $2, $3, 'KWD', '2026-04-02', 'EXACT ONE', 'posted', 'manual'),
+              ($1, $2, 2, 'KWD', '2026-04-02', 'EXACT TWO', 'posted', 'manual')`,
+      [userId, accountId, Number.MAX_SAFE_INTEGER],
+    );
+    const exact = "KWD\u00a09,007,199,254,740.993";
+
+    await page.goto("/");
+    await expect(monthRow(currencySection(page, "KWD"), "April 2026").getByTestId("flow-in"))
+      .toHaveText(exact);
+
+    await page.goto("/spending?currency=KWD");
+    await expect(page.getByTestId("spend-currency-KWD").getByTestId("spend-in")).toHaveText(exact);
+
+    await page.goto("/accounts");
+    await expect(page.getByTestId("cash-on-hand-KWD")).toHaveText(exact);
+    const row = page.getByTestId("account-row").filter({ hasText: "Exact KWD wallet" });
+    await expect(row).toContainText(exact);
+    await row.getByRole("button", { name: "Update balance" }).click();
+    await expect(row.getByLabel("Current balance")).toHaveValue("0");
+    await row.getByRole("button", { name: "Cancel" }).click();
+    await expect(row).toContainText(exact);
   });
 
   test("a neighbor's dashboard shows only their flow and none of the demo ledger", async ({

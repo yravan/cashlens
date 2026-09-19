@@ -147,7 +147,7 @@ const leafRow = (group: Locator, name: string) =>
 const demoLeafId = (name: string) =>
   SEED_CATEGORIES.find((c) => c.persona === "demo" && c.name === name && c.parentId !== null)!.id;
 
-const signed = (minor: number, currency: string) =>
+const signed = (minor: number | bigint, currency: string) =>
   `${minor > 0 ? "+" : ""}${formatMinorUnits(minor, currency)}`;
 
 async function categoryOf(userId: string, name: string) {

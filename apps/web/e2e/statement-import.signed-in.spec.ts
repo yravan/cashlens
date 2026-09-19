@@ -13,7 +13,7 @@ const FIXTURE = path.join(__dirname, "statement-fixture.csv");
 const WALLET_ID = SEED_ACCOUNTS.find((row) => row.name === "Cash Wallet")!.id;
 const WALLET = EXPECTED.demo.overview.accounts.find((row) => row.name === "Cash Wallet")!;
 const AFTER_ANCHOR_MINOR = 2000 - 1525 - 1525 - 600 + 975;
-const usd = (minor: number) => formatMinorUnits(minor, "USD");
+const usd = (minor: number | bigint) => formatMinorUnits(minor, "USD");
 
 const clerkIdOf = (key: "a" | "b"): string =>
   JSON.parse(fs.readFileSync(E2E_USERS_FILE, "utf8"))[key].clerkUserId;
@@ -113,7 +113,7 @@ test.describe("statement import", () => {
     await expect(page.getByTestId("import-result")).toHaveText(
       "Imported 6 transactions · 0 were already in the ledger",
     );
-    await expect(wallet).toContainText(usd(WALLET.currentMinor! + AFTER_ANCHOR_MINOR));
+    await expect(wallet).toContainText(usd(WALLET.currentMinor! + BigInt(AFTER_ANCHOR_MINOR)));
     await expect(wallet.getByTestId("reported-balance")).toHaveText(reported(WALLET.sinceCount + 5));
 
     const imported = await adminQuery(
@@ -148,7 +148,7 @@ test.describe("statement import", () => {
     await expect(page.getByTestId("import-result")).toHaveText(
       "Imported 0 transactions · 6 were already in the ledger",
     );
-    await expect(wallet).toContainText(usd(WALLET.currentMinor! + AFTER_ANCHOR_MINOR));
+    await expect(wallet).toContainText(usd(WALLET.currentMinor! + BigInt(AFTER_ANCHOR_MINOR)));
     expect(
       (
         await adminQuery(
@@ -173,7 +173,7 @@ test.describe("statement import", () => {
     await expect(transactionRow(page, "E2E TAXI")).toHaveCount(2);
 
     await page.goto("/accounts");
-    await expect(wallet).toContainText(usd(WALLET.currentMinor! + AFTER_ANCHOR_MINOR + 600));
+    await expect(wallet).toContainText(usd(WALLET.currentMinor! + BigInt(AFTER_ANCHOR_MINOR + 600)));
     await expect(wallet.getByTestId("reported-balance")).toHaveText(reported(WALLET.sinceCount + 4));
 
     const contextB = await browser.newContext({
@@ -209,7 +209,7 @@ test.describe("statement import", () => {
       "Imported 6 transactions · 0 were already in the ledger",
     );
     await expect(accountRow(page, "Cash Wallet")).toContainText(
-      usd(WALLET.currentMinor! + AFTER_ANCHOR_MINOR),
+      usd(WALLET.currentMinor! + BigInt(AFTER_ANCHOR_MINOR)),
     );
     expect(await overflow()).toBeLessThanOrEqual(0);
   });

@@ -24,7 +24,7 @@ function Summary({
 }: {
   title: string;
   detail: string;
-  totals: Record<string, number>;
+  totals: Record<string, bigint>;
   testId: string;
 }) {
   const entries = Object.entries(totals).sort(([a], [b]) => a.localeCompare(b));

@@ -1423,18 +1423,18 @@ test("flows through every canonical ledger consumer", async () => {
   await expectFlow(
     ["03", "02", "01"].map((month) => ({
       month: `2026-${month}`,
-      inflowMinor: 0,
-      outflowMinor: -1299,
-      netMinor: -1299,
+      inflowMinor: BigInt(0),
+      outflowMinor: BigInt(-1299),
+      netMinor: BigInt(-1299),
     })),
     0,
   );
   expect((await spending()).currencies).toEqual([
     {
       currency: "USD",
-      totals: { spentMinor: -3897, receivedMinor: 0, netMinor: -3897 },
+      totals: { spentMinor: BigInt(-3897), receivedMinor: BigInt(0), netMinor: BigInt(-3897) },
       groups: [],
-      uncategorized: { spentMinor: -3897, receivedMinor: 0, netMinor: -3897 },
+      uncategorized: { spentMinor: BigInt(-3897), receivedMinor: BigInt(0), netMinor: BigInt(-3897) },
     },
   ]);
   await expectRecurring(true);
@@ -1466,16 +1466,16 @@ test("flows through every canonical ledger consumer", async () => {
   await expectFlow(
     ["02", "01"].map((month) => ({
       month: `2026-${month}`,
-      inflowMinor: 0,
-      outflowMinor: -1299,
-      netMinor: -1299,
+      inflowMinor: BigInt(0),
+      outflowMinor: BigInt(-1299),
+      netMinor: BigInt(-1299),
     })),
     2,
   );
   expect((await spending()).currencies[0]).toMatchObject({
-    totals: { spentMinor: -2598, receivedMinor: 0, netMinor: -2598 },
+    totals: { spentMinor: BigInt(-2598), receivedMinor: BigInt(0), netMinor: BigInt(-2598) },
     groups: [],
-    uncategorized: { spentMinor: -2598, receivedMinor: 0, netMinor: -2598 },
+    uncategorized: { spentMinor: BigInt(-2598), receivedMinor: BigInt(0), netMinor: BigInt(-2598) },
   });
   expect(await queueCount()).toBe(2);
   await expectRecurring(false);
@@ -1587,18 +1587,18 @@ test("flows through every canonical ledger consumer", async () => {
   expect((await history()).rows.every((row) => row.transferPairId === null)).toBe(true);
   await expectFlow(
     [
-      { month: "2026-03", inflowMinor: 1300, outflowMinor: -1299, netMinor: 1 },
-      { month: "2026-02", inflowMinor: 0, outflowMinor: -1299, netMinor: -1299 },
-      { month: "2026-01", inflowMinor: 0, outflowMinor: -1299, netMinor: -1299 },
+      { month: "2026-03", inflowMinor: BigInt(1300), outflowMinor: BigInt(-1299), netMinor: BigInt(1) },
+      { month: "2026-02", inflowMinor: BigInt(0), outflowMinor: BigInt(-1299), netMinor: BigInt(-1299) },
+      { month: "2026-01", inflowMinor: BigInt(0), outflowMinor: BigInt(-1299), netMinor: BigInt(-1299) },
     ],
     0,
   );
   const restored = (await spending()).currencies[0];
-  expect(restored.totals).toEqual({ spentMinor: -3897, receivedMinor: 1300, netMinor: -2597 });
+  expect(restored.totals).toEqual({ spentMinor: BigInt(-3897), receivedMinor: BigInt(1300), netMinor: BigInt(-2597) });
   expect(restored.uncategorized).toEqual({
-    spentMinor: -2598,
-    receivedMinor: 1300,
-    netMinor: -1298,
+    spentMinor: BigInt(-2598),
+    receivedMinor: BigInt(1300),
+    netMinor: BigInt(-1298),
   });
   expect(
     restored.groups.map((group) => [
@@ -1606,7 +1606,7 @@ test("flows through every canonical ledger consumer", async () => {
       group.netMinor,
       group.categories.map((category) => [category.name, category.netMinor]),
     ]),
-  ).toEqual([["Health & Wellness", -1299, [["Fitness", -1299]]]]);
+  ).toEqual([["Health & Wellness", BigInt(-1299), [["Fitness", BigInt(-1299)]]]]);
   await expectRecurring(true);
   await expectBalancesUnchanged();
 
