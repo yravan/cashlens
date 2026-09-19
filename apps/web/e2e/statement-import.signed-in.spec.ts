@@ -216,7 +216,7 @@ test.describe("statement import", () => {
     await expect(page.getByTestId("import-result")).toHaveText(
       "Imported 2 transactions · 0 were already in the ledger",
     );
-    await expect(wallet).toContainText(usd(WALLET.currentMinor! - 1250 + 975));
+    await expect(wallet).toContainText(usd(WALLET.currentMinor! - BigInt(1250) + BigInt(975)));
     const saved = await adminQuery(
       "select amount_minor::int as amount from transactions where user_id = $1 and account_id = $2 and source = 'import' order by date",
       [userA, WALLET_ID],
