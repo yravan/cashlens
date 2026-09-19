@@ -1,3 +1,4 @@
+import { clerk, clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { expect, test } from "@playwright/test";
 
 test("a signed-out request to a protected page redirects to the sign-in page", async ({
@@ -31,9 +32,12 @@ test("a signed-out request to an unknown API path is redirected, not served", as
 test("a signed-out browser visit lands on the login page showing the Google sign-in affordance", async ({
   page,
 }) => {
+  await clerkSetup();
+  await setupClerkTestingToken({ page });
   await page.goto("/");
 
   await expect(page).toHaveURL(/\/sign-in/);
+  await clerk.loaded({ page });
   await expect(
     page.getByRole("button", { name: /continue with google/i }),
   ).toBeVisible();

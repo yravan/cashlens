@@ -1,3 +1,4 @@
+import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { test as base } from "@playwright/test";
 
 import { signedInState } from "./session";
@@ -12,5 +13,9 @@ export const test = base.extend({
   // a bare `use(...)` call as a misplaced React hook.
   storageState: async ({ browser }, provide) => {
     await provide(await signedInState(browser));
+  },
+  context: async ({ context }, provide) => {
+    await setupClerkTestingToken({ context });
+    await provide(context);
   },
 });

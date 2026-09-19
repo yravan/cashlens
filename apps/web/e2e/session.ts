@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { clerk } from "@clerk/testing/playwright";
+import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { devices, expect, type Browser } from "@playwright/test";
 
 import { BASE_URL, STORAGE_STATE_A, STORAGE_STATE_B } from "../playwright.config";
@@ -39,13 +39,27 @@ export async function signedInState(
   user: "a" | "b" = "a",
 ): Promise<string> {
   const file = STATE_FILE[user];
-  if (savedRemainingMs(user) > MIN_REMAINING_MS) return file;
-
   const context = await browser.newContext({
     ...devices["Desktop Chrome"],
     storageState: file,
   });
   try {
+    const ready = async () => {
+      if (remainingMs(await context.cookies()) <= MIN_REMAINING_MS) return false;
+      const response = await context.request.get(`${BASE_URL}/api/me`, {
+        maxRedirects: 0,
+      });
+      try {
+        expect([200, 307, 401]).toContain(response.status());
+        return response.status() === 200 &&
+          response.headers()["content-type"]?.includes("application/json");
+      } finally {
+        await response.dispose();
+      }
+    };
+    if (await ready()) return file;
+
+    await setupClerkTestingToken({ context });
     const page = await context.newPage();
     // Public route on purpose: proxy.ts redirects a protected one before the
     // app document loads, so clerk-js — the only thing that re-mints a
@@ -53,11 +67,11 @@ export async function signedInState(
     await page.goto(`${BASE_URL}/sign-in`, { waitUntil: "domcontentloaded" });
     await clerk.loaded({ page });
     await expect
-      .poll(async () => remainingMs(await context.cookies()), {
+      .poll(ready, {
         timeout: 15_000,
-        message: "clerk-js did not re-mint __session on the public sign-in page",
+        message: "Clerk session did not become ready for authenticated requests",
       })
-      .toBeGreaterThan(MIN_REMAINING_MS);
+      .toBe(true);
     await context.storageState({ path: file });
   } finally {
     await context.close();

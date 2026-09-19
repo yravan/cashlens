@@ -57,3 +57,42 @@ test("a request context built from a dead storage state is refreshed, not silent
     throw error;
   }
 });
+
+test("a fresh token without client state is repaired before a request context uses it", async ({
+  browser,
+  playwright,
+  baseURL,
+}) => {
+  test.setTimeout(60_000);
+  await signedInState(browser);
+  const backup = fs.readFileSync(STORAGE_STATE_A, "utf8");
+  const state = JSON.parse(backup);
+  state.cookies = state.cookies.filter(
+    (cookie: { name: string }) => !cookie.name.startsWith("__client_uat"),
+  );
+  fs.writeFileSync(STORAGE_STATE_A, JSON.stringify(state));
+  try {
+    expect(savedRemainingMs()).toBeGreaterThan(20_000);
+    const broken = await playwright.request.newContext({ baseURL, storageState: STORAGE_STATE_A });
+    try {
+      expect((await broken.get("/api/me", { maxRedirects: 0 })).status()).toBe(307);
+    } finally {
+      await broken.dispose();
+    }
+
+    const repaired = await playwright.request.newContext({
+      baseURL,
+      storageState: await signedInState(browser),
+    });
+    try {
+      const response = await repaired.get("/api/me", { maxRedirects: 0 });
+      expect(response.status()).toBe(200);
+      expect(response.headers()["content-type"]).toContain("application/json");
+      expect(await response.json()).toMatchObject({ id: expect.any(String) });
+    } finally {
+      await repaired.dispose();
+    }
+  } finally {
+    fs.writeFileSync(STORAGE_STATE_A, backup);
+  }
+});
