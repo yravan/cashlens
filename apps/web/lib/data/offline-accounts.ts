@@ -2,6 +2,7 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 
 import { UUID_PATTERN } from "@/lib/crypto/credentials";
+import { captureBalanceSnapshot } from "@/lib/data/balance-history";
 import { repairTransfers } from "@/lib/data/manual-transactions";
 import { requireUser } from "@/lib/data/users";
 import { withRequestScope } from "@/lib/db/client";
@@ -50,14 +51,29 @@ export async function createOfflineAccount(
       .returning({ id: accounts.id });
     if (!created) throw new Error("offline account insert returned no row");
 
-    await tx.insert(accountBalances).values({
+    const [balance] = await tx
+      .insert(accountBalances)
+      .values({
+        accountId: created.id,
+        userId: user.id,
+        availableMinor: null,
+        currentMinor,
+        limitMinor: null,
+        asOf: sql`now()`,
+        reportedOn: input.reportedOn,
+      })
+      .returning({ observedAt: sql<string>`${accountBalances.asOf}::text` });
+    if (!balance) throw new Error("offline balance insert returned no row");
+    await captureBalanceSnapshot(tx, {
       accountId: created.id,
       userId: user.id,
-      availableMinor: null,
+      snapshotDay: input.reportedOn,
       currentMinor,
-      limitMinor: null,
-      asOf: sql`now()`,
-      reportedOn: input.reportedOn,
+      currency: input.currency,
+      source: "manual_anchor",
+      captureReason: "event",
+      observedAt: balance.observedAt,
+      providerAsOf: null,
     });
     return { accountId: created.id };
   });
@@ -87,10 +103,23 @@ export async function updateOfflineBalance(
       asOf: sql`now()`,
       reportedOn: input.reportedOn,
     };
-    await tx
+    const [balance] = await tx
       .insert(accountBalances)
       .values({ accountId: account.id, userId: user.id, ...anchor })
-      .onConflictDoUpdate({ target: accountBalances.accountId, set: anchor });
+      .onConflictDoUpdate({ target: accountBalances.accountId, set: anchor })
+      .returning({ observedAt: sql<string>`${accountBalances.asOf}::text` });
+    if (!balance) throw new Error("offline balance upsert returned no row");
+    await captureBalanceSnapshot(tx, {
+      accountId: account.id,
+      userId: user.id,
+      snapshotDay: input.reportedOn,
+      currentMinor,
+      currency: account.currency,
+      source: "manual_anchor",
+      captureReason: "event",
+      observedAt: balance.observedAt,
+      providerAsOf: null,
+    });
     return { accountId: account.id };
   });
 }
